@@ -49,11 +49,14 @@ normalize_model() {
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   case "$normalized" in
     sam2.1-hiera-tiny|sam2.1-hiera-small|sam2.1-hiera-base-plus|sam2.1-hiera-large|\
-    sam3-concepts)
+    medsam2-latest|sam3-concepts)
       printf '%s\n' "$normalized"
       ;;
     sam3)
       printf '%s\n' "sam3-concepts"
+      ;;
+    medsam2)
+      printf '%s\n' "medsam2-latest"
       ;;
     *)
       return 1
@@ -227,6 +230,12 @@ set_model_metadata() {
       CHECKPOINT_NAME="sam2.1_hiera_large.pt"
       CHECKPOINT_SIZE=898083611
       MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_l.yaml"
+      ;;
+    medsam2-latest)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_latest.pt"
+      CHECKPOINT_SIZE=156040129
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
       ;;
     sam3-concepts)
       FAMILY="sam3"

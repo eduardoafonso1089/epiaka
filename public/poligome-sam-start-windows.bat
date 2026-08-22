@@ -107,6 +107,14 @@ if /I "!MODEL_ID!"=="sam3" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
 )
+if /I "!MODEL_ID!"=="medsam2-latest" (
+  set "MODEL_ID=medsam2-latest"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2" (
+  set "MODEL_ID=medsam2-latest"
+  exit /b 0
+)
 if /I "!MODEL_ID!"=="sam3-concepts" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
@@ -119,6 +127,7 @@ if /I "!MODEL_ID!"=="sam2.1-hiera-tiny" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-small" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-base-plus" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-large" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-latest" exit /b 0
 if /I "!MODEL_ID!"=="sam3-concepts" exit /b 0
 exit /b 1
 

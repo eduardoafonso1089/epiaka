@@ -57,10 +57,17 @@ function benchmarkSummary(model: (typeof SAM_MODELS)[number]) {
       details: `SA-V ${model.benchmark.saVJAndF} · MOSE ${model.benchmark.moseJAndF} · LVOS ${model.benchmark.lvosV2JAndF} J&F. ${model.benchmark.software}`,
     };
   }
+  if (model.benchmark.kind === "sam3-image-concepts") {
+    return {
+      value: `${model.benchmark.latencyMs} ms`,
+      label: model.benchmark.hardware,
+      details: "Imagem com mais de 100 objetos, segundo o benchmark publicado pela Meta",
+    };
+  }
   return {
-    value: `${model.benchmark.latencyMs} ms`,
+    value: "Sem número comparável",
     label: model.benchmark.hardware,
-    details: "Imagem com mais de 100 objetos, segundo o benchmark publicado pela Meta",
+    details: model.benchmark.notes[0],
   };
 }
 
@@ -88,7 +95,7 @@ export default function SamSetupModal({
   const windowsPlatformLabel = "Windows · WSL2";
   const unixPlatformLabel = model.family === "sam3"
     ? "Linux · NVIDIA CUDA"
-    : "Linux · macOS (CPU) · WSL2";
+    : "Linux · macOS (Apple Silicon) · WSL2";
 
   return <div className="modal-backdrop sam-catalog-backdrop">
     <section className="sam-catalog-modal" role="dialog" aria-modal="true" aria-labelledby="sam-catalog-title">
@@ -99,8 +106,8 @@ export default function SamSetupModal({
 
       <div className="sam-catalog-body">
         <aside className="sam-model-list" aria-label="Modelos disponíveis">
-          {(["sam2", "sam3"] as const).map((family) => <section key={family}>
-            <h3>{family === "sam2" ? "SAM 2.1 · recomendado" : "SAM 3 · conceitos"}</h3>
+          {(["sam2", "medsam2", "sam3"] as const).map((family) => <section key={family}>
+            <h3>{family === "sam2" ? "SAM 2.1 · recomendado" : family === "medsam2" ? "Domínio · imagem médica" : "SAM 3 · conceitos"}</h3>
             {SAM_MODELS.filter((candidate) => candidate.family === family).map((candidate) => <button
               key={candidate.id}
               className={candidate.id === model.id ? "active" : ""}
@@ -115,7 +122,7 @@ export default function SamSetupModal({
 
         <div className="sam-model-detail">
           <section className="sam-model-hero">
-            <div><span className={`family ${model.family}`}>{model.family === "sam2" ? "SAM 2.1" : model.family.toUpperCase()}</span>{model.experimental && <span className="experimental">Experimental</span>}</div>
+            <div><span className={`family ${model.family}`}>{model.family === "sam2" ? "SAM 2.1" : model.family === "medsam2" ? "MedSAM2" : model.family.toUpperCase()}</span>{model.experimental && <span className="experimental">Experimental</span>}</div>
             <h3>{model.name}</h3>
             <p>{model.description}</p>
             <div className="sam-model-facts">

@@ -167,6 +167,14 @@ MODEL_SPECS = {
         COMMON_CAPABILITIES,
         "configs/sam2.1/sam2.1_hiera_l.yaml",
     ),
+    "medsam2-latest": ModelSpec(
+        "medsam2-latest",
+        "sam2",
+        "hiera_tiny",
+        "MedSAM2_latest.pt",
+        COMMON_CAPABILITIES,
+        "configs/sam2.1/sam2.1_hiera_t.yaml",
+    ),
     "sam3-concepts": ModelSpec(
         "sam3-concepts",
         "sam3",
@@ -175,7 +183,7 @@ MODEL_SPECS = {
         (*COMMON_CAPABILITIES, "text", "box_exemplar"),
     ),
 }
-MODEL_ALIASES = {"sam3": "sam3-concepts"}
+MODEL_ALIASES = {"sam3": "sam3-concepts", "medsam2": "medsam2-latest"}
 
 
 class PointPrompt(BaseModel):

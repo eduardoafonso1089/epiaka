@@ -1,4 +1,4 @@
-export type SamModelFamily = "sam2" | "sam3";
+export type SamModelFamily = "sam2" | "sam3" | "medsam2";
 
 export type SamPlatformSupportLevel =
   | "supported"
@@ -75,7 +75,7 @@ export type SamCapabilities = {
 };
 
 export type SamOfficialBenchmark = {
-  kind: "sam2-video" | "sam3-image-concepts";
+  kind: "sam2-video" | "sam3-image-concepts" | "domain-not-comparable";
   hardware: string;
   software: string | null;
   fps: number | null;
@@ -110,7 +110,7 @@ export type SamFutureCapability = {
 export type SamModelDefinition = {
   id: string;
   family: SamModelFamily;
-  version: "1" | "2.1" | "3";
+  version: "1" | "2.1" | "3" | "2.1-med";
   name: string;
   recommended: boolean;
   experimental: boolean;
@@ -168,6 +168,37 @@ const SAM_LICENSE = {
   notes:
     "Licença própria da Meta, diferente de Apache 2.0. A distribuição deve preservar os termos e há restrições adicionais de uso; valide juridicamente antes de disponibilizar em produção.",
 } as const;
+
+const MEDSAM2_WEIGHTS_LICENSE = {
+  name: "CC BY-SA 4.0 · somente pesquisa e educação",
+  spdx: null,
+  url: "https://huggingface.co/wanglab/MedSAM2",
+  notes:
+    "O código do MedSAM2 é Apache 2.0, mas o card oficial dos pesos declara que eles podem ser usados apenas para pesquisa e educação. Uso comercial não está autorizado; valide juridicamente antes de habilitar este modelo em produção.",
+} as const;
+
+const MEDSAM2_BENCHMARK = {
+  kind: "domain-not-comparable",
+  hardware: "não publicado em tabela equivalente",
+  software: null,
+  fps: null,
+  latencyMs: null,
+  saVJAndF: null,
+  moseJAndF: null,
+  lvosV2JAndF: null,
+  notes: [
+    "Os autores publicam DSC por modalidade, não FPS de vídeo; não há tabela comparável à do SAM 2.1.",
+    "Em imagem natural o desempenho cai, porque os pesos foram especializados em imagem médica.",
+  ],
+  sourceUrl: "https://github.com/bowang-lab/MedSAM2",
+} as const satisfies SamOfficialBenchmark;
+
+const MEDSAM2_PLATFORM_SUPPORT = {
+  linux: { level: "recommended", notes: "Usa o mesmo runtime do SAM 2.1; nenhum ambiente adicional é criado." },
+  windows: { level: "wsl-recommended", notes: "Mesmo caminho WSL2 do SAM 2.1." },
+  macos: { level: "partial", notes: "Herda a limitação do SAM 2.1 no macOS: apenas Apple Silicon e CPU/MPS." },
+  browser: { level: "backend-required", notes: "Inferência local pelo conector; não roda no navegador." },
+} as const satisfies SamModelDefinition["platformSupport"];
 
 const SAM2_CAPABILITIES = {
   imageSegmentation: true,
@@ -540,6 +571,45 @@ export const SAM_MODELS = [
     platformSupport: SAM2_PLATFORM_SUPPORT,
     futureCapabilities: [],
     officialSources: SAM2_SOURCES,
+  },
+  {
+    id: "medsam2-latest",
+    family: "medsam2",
+    version: "2.1-med",
+    name: "MedSAM2 (imagem médica)",
+    recommended: false,
+    experimental: true,
+    installable: true,
+    parameters: { count: 38_900_000, label: "38.9M" },
+    checkpoint: {
+      fileName: "MedSAM2_latest.pt",
+      approximateSizeBytes: 156_040_129,
+      approximateSizeLabel: "~156 MB",
+      format: "PyTorch .pt",
+      downloadUrl: "https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt",
+      gated: false,
+      notes:
+        "Download público no Hugging Face, sem aprovação prévia, diferente do SAM 3. Verificamos que o checkpoint carrega com a configuração oficial sam2.1_hiera_t.yaml.",
+    },
+    license: MEDSAM2_WEIGHTS_LICENSE,
+    description:
+      "Ajuste fino do SAM 2.1 Hiera Tiny para imagem médica, treinado pelo grupo de Bo Wang sobre TC, RM e ultrassom. Reaproveita o runtime do SAM 2.1 já instalado, sem criar ambiente novo.",
+    capabilities: SAM2_CAPABILITIES,
+    capabilityNotes: [
+      "Aceita os mesmos prompts do SAM 2.1: pontos positivos e negativos, além de caixas.",
+      "Especializado em TC, RM e ultrassom; em fotografia comum o resultado é pior que o do SAM 2.1 padrão.",
+      "Não cobre radiografia odontológica, que não faz parte do treino publicado.",
+    ],
+    requirements: SAM2_REQUIREMENTS,
+    benchmark: MEDSAM2_BENCHMARK,
+    platformSupport: MEDSAM2_PLATFORM_SUPPORT,
+    futureCapabilities: [],
+    officialSources: {
+      repository: "https://github.com/bowang-lab/MedSAM2",
+      documentation: "https://github.com/bowang-lab/MedSAM2#readme",
+      paper: "https://arxiv.org/abs/2504.03600",
+      checkpoint: "https://huggingface.co/wanglab/MedSAM2",
+    },
   },
   {
     id: "sam3-concepts",

@@ -6,7 +6,7 @@ POLIGOME_SAM_INSTALLER_API=2
 DEFAULT_SITE_URL="https://www.poligome.com"
 DEFAULT_ASSET_BASE_URL="https://raw.githubusercontent.com/eduardoafonso1089/epiaka/main/public"
 DEFAULT_CONNECTOR_URL="https://raw.githubusercontent.com/eduardoafonso1089/epiaka/4603525db08be5e86fb95ea58b43d606d731f99f/public/poligome-sam-local.py"
-DEFAULT_CONNECTOR_SHA256="b8fee85c425bcbe745ae4d482494ea3b8c549d69f06641d40949d48c5ca0905d"
+DEFAULT_CONNECTOR_SHA256="8cb33322f738e4405f4b15f9e2815363dadcfb17f2e51587652aae5e160eb301"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_URL="${POLIGOME_SITE_URL:-${DEFAULT_SITE_URL}}"
 SITE_URL="${SITE_URL%/}"
@@ -37,6 +37,7 @@ Modelos aceitos:
   sam2.1-hiera-small
   sam2.1-hiera-base-plus
   sam2.1-hiera-large
+  medsam2-latest         (alias aceito: medsam2)
   sam3-concepts          (alias aceito: sam3)
 
 Sem MODELO, o instalador abre um menu. SAM 3 exige Linux, GPU NVIDIA,
@@ -60,11 +61,14 @@ normalize_model() {
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   case "$normalized" in
     sam2.1-hiera-tiny|sam2.1-hiera-small|sam2.1-hiera-base-plus|sam2.1-hiera-large|\
-    sam3-concepts)
+    medsam2-latest|sam3-concepts)
       printf '%s\n' "$normalized"
       ;;
     sam3)
       printf '%s\n' "sam3-concepts"
+      ;;
+    medsam2)
+      printf '%s\n' "medsam2-latest"
       ;;
     *)
       return 1
@@ -79,15 +83,17 @@ choose_model() {
   printf '  2) SAM 2.1 Hiera Small     (~184 MB; recomendado)\n' >&2
   printf '  3) SAM 2.1 Hiera Base+     (~324 MB; imagem/vídeo)\n' >&2
   printf '  4) SAM 2.1 Hiera Large     (~898 MB; imagem/vídeo)\n' >&2
-  printf '  5) SAM 3 Concepts          (~3,45 GB; Linux + NVIDIA)\n\n' >&2
-  printf 'Digite 1–5 ou o ID completo: ' >&2
+  printf '  5) MedSAM2                 (~156 MB; imagem médica)\n' >&2
+  printf '  6) SAM 3 Concepts          (~3,45 GB; Linux + NVIDIA)\n\n' >&2
+  printf 'Digite 1–6 ou o ID completo: ' >&2
   IFS= read -r choice || fail "não foi possível ler a escolha. Informe o ID como primeiro argumento."
   case "$choice" in
     1) printf '%s\n' "sam2.1-hiera-tiny" ;;
     2) printf '%s\n' "sam2.1-hiera-small" ;;
     3) printf '%s\n' "sam2.1-hiera-base-plus" ;;
     4) printf '%s\n' "sam2.1-hiera-large" ;;
-    5) printf '%s\n' "sam3-concepts" ;;
+    5) printf '%s\n' "medsam2-latest" ;;
+    6) printf '%s\n' "sam3-concepts" ;;
     *) normalize_model "$choice" || fail "modelo inválido: ${choice}" ;;
   esac
 }
@@ -374,6 +380,13 @@ set_model_metadata() {
       CHECKPOINT_URL="https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
       CHECKPOINT_SIZE=898083611
       MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_l.yaml"
+      ;;
+    medsam2-latest)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_latest.pt"
+      CHECKPOINT_URL="https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt"
+      CHECKPOINT_SIZE=156040129
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
       ;;
     sam3-concepts)
       FAMILY="sam3"

@@ -16,6 +16,7 @@ MODELS=(
   sam2.1-hiera-small
   sam2.1-hiera-base-plus
   sam2.1-hiera-large
+  medsam2-latest
   sam3-concepts
 )
 
@@ -24,6 +25,7 @@ declare -A MODEL_FAMILY=(
   [sam2.1-hiera-small]=sam2
   [sam2.1-hiera-base-plus]=sam2
   [sam2.1-hiera-large]=sam2
+  [medsam2-latest]=sam2
   [sam3-concepts]=sam3
 )
 
@@ -32,6 +34,7 @@ declare -A CHECKPOINT_NAME=(
   [sam2.1-hiera-small]=sam2.1_hiera_small.pt
   [sam2.1-hiera-base-plus]=sam2.1_hiera_base_plus.pt
   [sam2.1-hiera-large]=sam2.1_hiera_large.pt
+  [medsam2-latest]=MedSAM2_latest.pt
   [sam3-concepts]=sam3.pt
 )
 
@@ -40,6 +43,7 @@ declare -A CHECKPOINT_URL=(
   [sam2.1-hiera-small]=https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt
   [sam2.1-hiera-base-plus]=https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt
   [sam2.1-hiera-large]=https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt
+  [medsam2-latest]=https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt
   [sam3-concepts]=""
 )
 
@@ -48,6 +52,7 @@ declare -A CHECKPOINT_SIZE=(
   [sam2.1-hiera-small]=184416285
   [sam2.1-hiera-base-plus]=323606802
   [sam2.1-hiera-large]=898083611
+  [medsam2-latest]=156040129
   [sam3-concepts]=3450062241
 )
 
@@ -56,6 +61,7 @@ declare -A MODEL_CONFIG=(
   [sam2.1-hiera-small]=configs/sam2.1/sam2.1_hiera_s.yaml
   [sam2.1-hiera-base-plus]=configs/sam2.1/sam2.1_hiera_b+.yaml
   [sam2.1-hiera-large]=configs/sam2.1/sam2.1_hiera_l.yaml
+  [medsam2-latest]=configs/sam2.1/sam2.1_hiera_t.yaml
   [sam3-concepts]=""
 )
 
@@ -897,7 +903,7 @@ test_cross_artifact_matrix() {
   )
   assert_model_list_matches "catálogo da aplicação" "${app_models[@]}"
   assert_model_list_matches "conector Python" "${connector_models[@]}"
-  pass "catálogo, conector e instaladores usam os mesmos cinco IDs"
+  pass "catálogo, conector e instaladores usam os mesmos seis IDs"
 }
 
 test_pinned_default_connector() {

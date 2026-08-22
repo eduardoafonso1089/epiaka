@@ -7,7 +7,7 @@ set "POLIGOME_SAM_WINDOWS_INSTALLER_API=2"
 set "DEFAULT_SITE_URL=https://www.poligome.com"
 set "DEFAULT_ASSET_BASE_URL=https://raw.githubusercontent.com/eduardoafonso1089/epiaka/main/public"
 set "DEFAULT_CONNECTOR_URL=https://raw.githubusercontent.com/eduardoafonso1089/epiaka/4603525db08be5e86fb95ea58b43d606d731f99f/public/poligome-sam-local.py"
-set "DEFAULT_CONNECTOR_SHA256=b8fee85c425bcbe745ae4d482494ea3b8c549d69f06641d40949d48c5ca0905d"
+set "DEFAULT_CONNECTOR_SHA256=8cb33322f738e4405f4b15f9e2815363dadcfb17f2e51587652aae5e160eb301"
 set "SITE_URL=%POLIGOME_SITE_URL%"
 if not defined SITE_URL set "SITE_URL=%DEFAULT_SITE_URL%"
 if "!SITE_URL:~-1!"=="/" set "SITE_URL=!SITE_URL:~0,-1!"
@@ -65,9 +65,10 @@ echo   1^) SAM 2.1 Hiera Tiny   ^(instalação automática no WSL2^)
 echo   2^) SAM 2.1 Hiera Small  ^(WSL2; recomendado^)
 echo   3^) SAM 2.1 Hiera Base+  ^(instalação automática no WSL2^)
 echo   4^) SAM 2.1 Hiera Large  ^(instalação automática no WSL2^)
-echo   5^) SAM 3 Concepts       ^(WSL2 + GPU NVIDIA^)
+echo   5^) MedSAM2              ^(imagem medica; WSL2^)
+echo   6^) SAM 3 Concepts       ^(WSL2 + GPU NVIDIA^)
 echo.
-set /p "MODEL_CHOICE=Digite 1-5 ou o ID completo: "
+set /p "MODEL_CHOICE=Digite 1-6 ou o ID completo: "
 if "!MODEL_CHOICE!"=="1" (
   set "MODEL_ID=sam2.1-hiera-tiny"
   exit /b 0
@@ -85,6 +86,10 @@ if "!MODEL_CHOICE!"=="4" (
   exit /b 0
 )
 if "!MODEL_CHOICE!"=="5" (
+  set "MODEL_ID=medsam2-latest"
+  exit /b 0
+)
+if "!MODEL_CHOICE!"=="6" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
 )
@@ -113,6 +118,14 @@ if /I "!MODEL_ID!"=="sam3" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
 )
+if /I "!MODEL_ID!"=="medsam2-latest" (
+  set "MODEL_ID=medsam2-latest"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2" (
+  set "MODEL_ID=medsam2-latest"
+  exit /b 0
+)
 if /I "!MODEL_ID!"=="sam3-concepts" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
@@ -125,6 +138,7 @@ if /I "!MODEL_ID!"=="sam2.1-hiera-tiny" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-small" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-base-plus" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-large" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-latest" exit /b 0
 if /I "!MODEL_ID!"=="sam3-concepts" exit /b 0
 exit /b 1
 

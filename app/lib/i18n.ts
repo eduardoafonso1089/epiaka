@@ -2,7 +2,7 @@ export type Language = "pt" | "en" | "fr" | "es";
 export type ThemeMode = "system" | "light" | "dark";
 
 const pt = {
-  saved: "Sessão local pronta", saving: "Alterações não salvas", samActive: "SAM local ativo", activateSam: "Ativar SAM local",
+  saved: "Sessão local pronta", saving: "Alterações não salvas", samActive: "SAM local ativo", activateSam: "Ativar SAM local", aiModel: "Modelo de IA", aiModelNone: "Ativar modelo de IA",
   export: "Exportar", exportFormat: "Formato de exportação", cocoDesc: "caixas, polígonos e pontos-chave", yoloDesc: "um label por imagem + data.yaml", projectBackup: "projeto portátil com imagens e anotações",
   images: "IMAGENS", openImages: "Abrir imagens", importImages: "Importar imagens", searchImage: "Buscar imagem…", progress: "Progresso", of: "de", localImage: "Imagem local", privacy: "Nada é enviado ou armazenado. Salve o projeto antes de fechar.", emptyProjectTitle: "Comece um novo projeto", emptyProjectHint: "Importe suas imagens ou abra um projeto Poligome salvo anteriormente.",
   select: "Selecionar e mover (V)", pan: "Mover canvas (H)", box: "Caixa (B)", polygon: "Polígono por pontos (P)", freehand: "Polígono à mão livre (F)", point: "Ponto-chave (K)", line: "Linha / polilinha (L)", sam: "Segmentar com SAM (S)",
@@ -127,7 +127,7 @@ export type TranslationKey = keyof typeof pt;
 const translations: Record<Language, Record<TranslationKey, string>> = {
   pt,
   en: {
-    saved: "Local session ready", saving: "Unsaved changes", samActive: "Local SAM active", activateSam: "Enable local SAM",
+    saved: "Local session ready", saving: "Unsaved changes", samActive: "Local SAM active", activateSam: "Enable local SAM", aiModel: "AI model", aiModelNone: "Enable AI model",
     export: "Export", exportFormat: "Export format", cocoDesc: "boxes, polygons and keypoints", yoloDesc: "one label per image + data.yaml", projectBackup: "portable project with images and annotations",
     images: "IMAGES", openImages: "Open images", importImages: "Import images", searchImage: "Search image…", progress: "Progress", of: "of", localImage: "Local image", privacy: "Nothing is uploaded or stored. Save the project before closing.", emptyProjectTitle: "Start a new project", emptyProjectHint: "Import your images or open a previously saved Poligome project.",
     select: "Select and move (V)", pan: "Pan canvas (H)", box: "Box (B)", polygon: "Point polygon (P)", freehand: "Freehand polygon (F)", point: "Keypoint (K)", line: "Line / polyline (L)", sam: "Segment with SAM (S)",
@@ -247,7 +247,7 @@ fileMenu: "File", renameProject: "Rename project", projectImages: "images", proj
     landingLanguageLabel: "Language",
   },
   fr: {
-    saved: "Session locale prête", saving: "Modifications non enregistrées", samActive: "SAM local actif", activateSam: "Activer le SAM local",
+    saved: "Session locale prête", saving: "Modifications non enregistrées", samActive: "SAM local actif", activateSam: "Activer le SAM local", aiModel: "Modèle d'IA", aiModelNone: "Activer le modèle d'IA",
     export: "Exporter", exportFormat: "Format d’export", cocoDesc: "boîtes, polygones et points clés", yoloDesc: "une étiquette par image + data.yaml", projectBackup: "projet portable avec images et annotations",
     images: "IMAGES", openImages: "Ouvrir les images", importImages: "Importer des images", searchImage: "Rechercher une image…", progress: "Progression", of: "sur", localImage: "Image locale", privacy: "Rien n’est envoyé ni stocké. Enregistrez le projet avant de fermer.", emptyProjectTitle: "Commencer un nouveau projet", emptyProjectHint: "Importez vos images ou ouvrez un projet Poligome déjà enregistré.",
     select: "Sélectionner et déplacer (V)", pan: "Déplacer le canevas (H)", box: "Rectangle (B)", polygon: "Polygone par points (P)", freehand: "Polygone à main levée (F)", point: "Point clé (K)", line: "Ligne / polyligne (L)", sam: "Segmenter avec SAM (S)",
@@ -367,7 +367,7 @@ fileMenu: "Fichier", renameProject: "Renommer le projet", projectImages: "images
     landingLanguageLabel: "Langue",
   },
   es: {
-    saved: "Sesión local lista", saving: "Cambios sin guardar", samActive: "SAM local activo", activateSam: "Activar SAM local",
+    saved: "Sesión local lista", saving: "Cambios sin guardar", samActive: "SAM local activo", activateSam: "Activar SAM local", aiModel: "Modelo de IA", aiModelNone: "Activar modelo de IA",
     export: "Exportar", exportFormat: "Formato de exportación", cocoDesc: "cajas, polígonos y puntos clave", yoloDesc: "una etiqueta por imagen + data.yaml", projectBackup: "proyecto portátil con imágenes y anotaciones",
     images: "IMÁGENES", openImages: "Abrir imágenes", importImages: "Importar imágenes", searchImage: "Buscar imagen…", progress: "Progreso", of: "de", localImage: "Imagen local", privacy: "Nada se envía ni almacena. Guarda el proyecto antes de cerrar.", emptyProjectTitle: "Inicia un nuevo proyecto", emptyProjectHint: "Importa tus imágenes o abre un proyecto Poligome guardado anteriormente.",
     select: "Seleccionar y mover (V)", pan: "Mover lienzo (H)", box: "Rectángulo (B)", polygon: "Polígono por puntos (P)", freehand: "Polígono a mano alzada (F)", point: "Punto clave (K)", line: "Línea / polilínea (L)", sam: "Segmentar con SAM (S)",

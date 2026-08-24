@@ -1,21 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import {
-  AlertTriangle, Check, Cpu, Download, ExternalLink, Gauge, HardDrive,
-  KeyRound, Laptop, Link2, Server, ShieldCheck, Sparkles, Terminal, X,
+  AlertTriangle, Boxes, Check, Cpu, Download, ExternalLink, Gauge, HardDrive,
+  KeyRound, Laptop, Link2, Pencil, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, X,
 } from "lucide-react";
 import { SAM_MODELS, getSamModel } from "../lib/sam-models";
-import type { SamModelId } from "../lib/sam-models";
+import { BYOM_MODEL_ID_PATTERN, describeByomModel } from "../lib/sam-models";
+import type { ByomModel, SamModelDefinition } from "../lib/sam-models";
 
 type ConnectionState = "idle" | "checking" | "loading" | "ready" | "error" | "offline";
 
 type Props = {
-  selectedModelId: SamModelId;
+  selectedModelId: string;
   loadedModelId: string | null;
   connectionState: ConnectionState;
   runtimeLabel: string;
   endpoint: string;
-  onSelectModel: (modelId: SamModelId) => void;
+  /** Modelos BYOM anunciados pelo conector; vazio quando não há contêiner registrado. */
+  byomModels: readonly ByomModel[];
+  /** Modelo BYOM escolhido para anotar, ou null quando o SAM é quem está em uso. */
+  byomModelId: string | null;
+  byomBusy: boolean;
+  onSelectModel: (modelId: string) => void;
+  onSelectByomModel: (modelId: string | null) => void;
+  onRunByomModel: (modelId: string) => void;
+  onRegisterByomModel: (entry: { modelId: string; name: string; port: number; notes?: string }) => void;
+  onRemoveByomModel: (modelId: string) => void;
   onEndpointChange: (endpoint: string) => void;
   onConnect: () => void;
   onClose: () => void;
@@ -49,7 +60,7 @@ function statusLabel(state: ConnectionState, modelMatches: boolean) {
   return "Conector não encontrado";
 }
 
-function benchmarkSummary(model: (typeof SAM_MODELS)[number]) {
+function benchmarkSummary(model: SamModelDefinition) {
   if (model.benchmark.kind === "sam2-video") {
     return {
       value: `${model.benchmark.fps} FPS de vídeo`,
@@ -71,17 +82,239 @@ function benchmarkSummary(model: (typeof SAM_MODELS)[number]) {
   };
 }
 
+const BYOM_STEPS = [
+  {
+    title: "1. Escreva o servidor de inferência",
+    body:
+      "O contêiner precisa responder GET /ping com 200 quando estiver pronto e receber POST /invocations na porta 8080. Baixe o exemplo abaixo e substitua a função predict() pelo seu modelo.",
+    command: "curl -O https://www.poligome.com/byom/serve.py",
+  },
+  {
+    title: "2. Construa a imagem",
+    body:
+      "O Dockerfile de exemplo já declara a porta 8080, cria /opt/ml/model e inicia com serve. Use o seu próprio se preferir, desde que respeite o contrato.",
+    command: "docker build -t meu-modelo .",
+  },
+  {
+    title: "3. Registre o modelo",
+    body:
+      "O registro grava um arquivo em ~/.poligome-sam/byom. O identificador precisa começar com byom- para nunca colidir com um modelo oficial.",
+    command: "bash poligome-byom-macos-linux.sh register --model-id byom-meu-modelo --image meu-modelo",
+  },
+  {
+    title: "4. Suba o contêiner",
+    body:
+      "O comando publica a porta apenas em 127.0.0.1 e espera o /ping responder antes de declarar sucesso. Depois disso o modelo aparece na lista abaixo.",
+    command: "bash poligome-byom-macos-linux.sh start --model-id byom-meu-modelo",
+  },
+] as const;
+
+function ByomEntry({
+  model,
+  busy,
+  onRun,
+  onRemove,
+  onSave,
+}: {
+  model: ByomModel;
+  busy: boolean;
+  onRun: (modelId: string) => void;
+  onRemove: (modelId: string) => void;
+  onSave: (entry: { modelId: string; name: string; port: number; notes: string }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(model.name);
+  const [port, setPort] = useState(String(Number(model.endpoint.split(":").at(-1)) || 8080));
+  const [notes, setNotes] = useState(model.notes);
+  const portNumber = Number(port);
+  const canSave = Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535 && name.trim().length > 0;
+
+  return <div className="byom-detail">
+    <section className="sam-model-hero">
+      <div>
+        <span className="family byom">BYOM</span>
+        <span className={model.ready ? "byom-state up" : "byom-state down"}>{model.ready ? "contêiner no ar" : "contêiner parado"}</span>
+      </div>
+      <h3>{model.name}</h3>
+      <p>{model.model_id} · {model.endpoint}{model.image ? ` · imagem ${model.image}` : ""}</p>
+    </section>
+
+    {!model.ready && model.unavailable_reason && <p className="byom-reason">{model.unavailable_reason}</p>}
+
+    {/* Explicação montada a partir do que o contêiner declara ou já devolveu. */}
+    <p className="byom-summary">{describeByomModel(model)}</p>
+
+    {model.metadata?.limitations && <section className="byom-limits">
+      <AlertTriangle size={15} />
+      <div><b>Limitações declaradas pelo modelo</b><p>{model.metadata.limitations}</p></div>
+    </section>}
+
+    {(model.metadata?.categories.length || Object.keys(model.metadata?.parameters ?? {}).length || Object.keys(model.env).length) ? <section className="byom-facts">
+      {model.metadata?.categories.length ? <article><b>Classes exportadas</b><p>{model.metadata.categories.join(", ")}</p></article> : null}
+      {Object.entries(model.metadata?.parameters ?? {}).length ? <article><b>Parâmetros do modelo</b><p>{Object.entries(model.metadata!.parameters).map(([key, value]) => `${key}=${value}`).join(" · ")}</p></article> : null}
+      {Object.entries(model.env).length ? <article><b>Ambiente do contêiner</b><p>{Object.entries(model.env).map(([key, value]) => `${key}=${value}`).join(" · ")}</p></article> : null}
+      {model.last_run ? <article><b>Última execução</b><p>{model.last_run.annotations} {model.last_run.annotations === 1 ? "anotação" : "anotações"}{model.last_run.categories.length ? ` · ${model.last_run.categories.join(", ")}` : ""}</p></article> : null}
+    </section> : null}
+
+    {model.notes && !editing && <p className="byom-note">{model.notes}</p>}
+
+    {editing ? <div className="byom-edit">
+      <label>Nome<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label>Porta<input type="number" min={1} max={65535} value={port} onChange={(event) => setPort(event.target.value)} /></label>
+      <label className="byom-edit-notes">Anotação<textarea rows={3} value={notes} placeholder="Para que serve, em que dados foi treinado, o que revisar com atenção." onChange={(event) => setNotes(event.target.value)} /></label>
+      <div className="byom-edit-actions">
+        <button onClick={() => { setName(model.name); setNotes(model.notes); setEditing(false); }}>Cancelar</button>
+        <button
+          className="primary"
+          disabled={!canSave}
+          onClick={() => { onSave({ modelId: model.model_id, name: name.trim(), port: portNumber, notes: notes.trim() }); setEditing(false); }}
+        >
+          <Check size={13} />Salvar
+        </button>
+      </div>
+    </div> : <div className="byom-entry-actions">
+      <button className="byom-run" disabled={!model.ready || busy} onClick={() => onRun(model.model_id)}>
+        {busy ? <Gauge className="spin" size={14} /> : <Sparkles size={14} />}
+        {busy ? "Anotando…" : "Anotar a imagem atual"}
+      </button>
+      <button className="byom-icon" title="Editar nome, porta e anotação" onClick={() => setEditing(true)}>
+        <Pencil size={14} />
+      </button>
+      <button className="byom-icon danger" title="Remover o registro; a imagem e o contêiner continuam no Docker" onClick={() => onRemove(model.model_id)}>
+        <Trash2 size={14} />
+      </button>
+    </div>}
+  </div>;
+}
+
+function ByomPanel({
+  models,
+  onRegister,
+}: {
+  models: readonly ByomModel[];
+  onRegister: (entry: { modelId: string; name: string; port: number; notes?: string }) => void;
+}) {
+  const [draftId, setDraftId] = useState("byom-");
+  const [draftName, setDraftName] = useState("");
+  const [draftPort, setDraftPort] = useState("8080");
+  const portNumber = Number(draftPort);
+  const canRegister =
+    BYOM_MODEL_ID_PATTERN.test(draftId.trim().toLowerCase())
+    && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+
+  return <div className="byom-panel">
+    <section className="sam-model-hero">
+      <div><span className="family byom">BYOM</span><span className="experimental">Contêiner local</span></div>
+      <h3>Traga o seu próprio modelo</h3>
+      <p>
+        Diferente do SAM, aqui não se clica em nada: o contêiner recebe a imagem inteira e devolve um documento
+        COCO já rotulado, com máscaras, caixas e pontos. O editor desenha tudo com as classes que o próprio modelo
+        indicou, prontas para revisão.
+      </p>
+      <p>
+        O empacotamento imita o do SageMaker, então um contêiner preparado para lá roda aqui com pouca ou nenhuma
+        mudança: a imagem sobe com <code>serve</code>, escuta na porta 8080, responde <code>GET /ping</code> quando
+        está pronta e recebe a inferência em <code>POST /invocations</code>. Os pesos ficam em{" "}
+        <code>/opt/ml/model</code> e nunca passam pelo Poligome.
+      </p>
+    </section>
+
+    <section className="byom-contract">
+      <h4>Contrato</h4>
+      <table>
+        <tbody>
+          <tr><th>Porta</th><td><code>8080</code> dentro do contêiner</td></tr>
+          <tr><th>Comando</th><td><code>docker run &lt;imagem&gt; serve</code></td></tr>
+          <tr><th>Saúde</th><td><code>GET /ping</code> devolve 200 quando o modelo está carregado</td></tr>
+          <tr><th>Inferência</th><td><code>POST /invocations</code> recebe a imagem, devolve COCO</td></tr>
+          <tr><th>Pesos</th><td><code>/opt/ml/model</code>, igual ao SageMaker</td></tr>
+        </tbody>
+      </table>
+      <p className="byom-io">
+        <b>Entrada:</b> <code>{"{ image, file_name, width, height }"}</code>
+        <br />
+        <b>Saída:</b> COCO com <code>images</code>, <code>categories</code> e <code>annotations</code>. Cada anotação
+        precisa de <code>segmentation</code>, <code>bbox</code> ou <code>keypoints</code>, e o <code>category_id</code>{" "}
+        vira a classe da anotação no editor.
+      </p>
+    </section>
+
+    <section className="byom-steps">
+      <h4>Passo a passo</h4>
+      {BYOM_STEPS.map((step) => <article key={step.title}>
+        <b>{step.title}</b>
+        <p>{step.body}</p>
+        <code>{step.command}</code>
+      </article>)}
+    </section>
+
+    <section className="sam-install-panel">
+      <div><b>Arquivos do BYOM</b><p>O exemplo detecta regiões por limiar de Otsu, sem GPU, e devolve COCO com polígono, caixa e ponto central. Serve de molde: troque a função predict().</p></div>
+      <div className="sam-install-actions">
+        <a className="primary" href="/poligome-byom-macos-linux.sh" download><Download size={15} /><span><strong>CLI do BYOM</strong><small>register · start · status · logs</small></span></a>
+        <a href="/byom/Dockerfile" download><Download size={15} /><span><strong>Dockerfile de exemplo</strong><small>python:3.12-slim, porta 8080</small></span></a>
+        <a href="/byom/serve.py" download><Download size={15} /><span><strong>serve.py de exemplo</strong><small>/ping e /invocations prontos</small></span></a>
+      </div>
+      <code>bash poligome-byom-macos-linux.sh --help</code>
+    </section>
+
+    <section className="byom-registered">
+      <h4>Importar um contêiner já em execução</h4>
+      <p className="byom-import-hint">
+        O contêiner precisa estar no ar antes — pela CLI acima ou com <code>docker run</code>. Importar aqui só
+        declara onde ele está; o Poligome não executa Docker por conta própria.
+      </p>
+      <div className="byom-import">
+        <label>Identificador<input value={draftId} onChange={(event) => setDraftId(event.target.value)} placeholder="byom-meu-modelo" spellCheck={false} /></label>
+        <label>Nome<input value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="Meu modelo" /></label>
+        <label>Porta<input type="number" min={1} max={65535} value={draftPort} onChange={(event) => setDraftPort(event.target.value)} /></label>
+        <button
+          className="byom-add"
+          disabled={!canRegister}
+          onClick={() => {
+            onRegister({ modelId: draftId.trim().toLowerCase(), name: draftName.trim(), port: portNumber });
+            setDraftId("byom-"); setDraftName("");
+          }}
+        >
+          <Plus size={14} />Importar
+        </button>
+      </div>
+      {!canRegister && draftId.trim() !== "byom-" && <p className="byom-reason">O identificador precisa começar com <code>byom-</code> e usar apenas letras minúsculas, números, ponto, hífen ou sublinhado.</p>}
+
+      {models.length === 0
+        ? <p className="byom-import-hint">Nenhum contêiner registrado ainda. Assim que o <code>/ping</code> responder, o modelo aparece na lista à esquerda.</p>
+        : <p className="byom-import-hint">{models.length === 1 ? "1 modelo registrado" : `${models.length} modelos registrados`} — a lista fica à esquerda, e clicar em um deles abre a ficha com o que ele exporta.</p>}
+    </section>
+
+    <section className="sam-privacy"><ShieldCheck size={16} /><div><b>Inferência local</b><p>O contêiner só é aceito em <code>127.0.0.1</code> ou <code>localhost</code>: um endereço remoto sairia da sua máquina, que é justamente o que o Poligome evita. A licença do modelo que você empacota é responsabilidade sua.</p></div></section>
+  </div>;
+}
+
 export default function SamSetupModal({
   selectedModelId,
   loadedModelId,
   connectionState,
   runtimeLabel,
   endpoint,
+  byomModels,
+  byomModelId,
+  byomBusy,
   onSelectModel,
+  onSelectByomModel,
+  onRunByomModel,
+  onRegisterByomModel,
+  onRemoveByomModel,
   onEndpointChange,
   onConnect,
   onClose,
 }: Props) {
+  // O painel BYOM ocupa a área de detalhe no lugar da ficha do modelo, porque o
+  // que interessa ali é a documentação do contrato e não um card comparável.
+  const [byomView, setByomView] = useState<"docs" | "model" | null>(null);
+  const selectedByomModel = byomModels.find((candidate) => candidate.model_id === byomModelId) ?? null;
+  // A área do BYOM não conecta nada: o tutorial é só texto, e a ficha do modelo
+  // já tem o próprio botão de rodar. Conectar é um conceito do SAM.
+  const byomArea = byomView !== null;
   const model = getSamModel(selectedModelId) ?? SAM_MODELS[0];
   const benchmark = benchmarkSummary(model);
   const modelMatches = connectionState === "ready" && loadedModelId === model.id;
@@ -110,17 +343,46 @@ export default function SamSetupModal({
             <h3>{family === "sam2" ? "SAM 2.1 · recomendado" : family === "medsam2" ? "Domínio · imagem médica" : "SAM 3 · conceitos"}</h3>
             {SAM_MODELS.filter((candidate) => candidate.family === family).map((candidate) => <button
               key={candidate.id}
-              className={candidate.id === model.id ? "active" : ""}
-              aria-pressed={candidate.id === model.id}
-              onClick={() => onSelectModel(candidate.id)}
+              className={candidate.id === model.id && !byomArea ? "active" : ""}
+              aria-pressed={candidate.id === model.id && !byomArea}
+              onClick={() => { setByomView(null); onSelectModel(candidate.id); }}
             >
               <span><b>{candidate.name}</b><small>{candidate.parameters.label} · {candidate.checkpoint.approximateSizeLabel}</small></span>
               <em>{candidate.recommended ? "Recomendado" : candidate.experimental ? "Experimental" : candidate.version}</em>
             </button>)}
           </section>)}
+
+          <section>
+            <h3>BYOM · seu modelo</h3>
+            {byomModels.map((candidate) => <button
+              key={candidate.model_id}
+              className={byomView === "model" && candidate.model_id === byomModelId ? "active" : ""}
+              aria-pressed={byomView === "model" && candidate.model_id === byomModelId}
+              onClick={() => { setByomView("model"); onSelectByomModel(candidate.model_id); }}
+            >
+              <span><b>{candidate.name}</b><small>{candidate.model_id}</small></span>
+              <em className={candidate.ready ? "byom-up" : "byom-down"}>{candidate.ready ? "no ar" : "parado"}</em>
+            </button>)}
+            <button
+              className={byomView === "docs" ? "active" : ""}
+              aria-pressed={byomView === "docs"}
+              onClick={() => setByomView("docs")}
+            >
+              <span><b>Trazer meu modelo</b><small>Contêiner Docker · contrato e passo a passo</small></span>
+              <em><Boxes size={13} /></em>
+            </button>
+          </section>
         </aside>
 
         <div className="sam-model-detail">
+          {byomView === "docs" ? <ByomPanel models={byomModels} onRegister={onRegisterByomModel} />
+          : byomView === "model" && selectedByomModel ? <ByomEntry
+            model={selectedByomModel}
+            busy={byomBusy}
+            onRun={onRunByomModel}
+            onRemove={(modelId) => { setByomView(null); onRemoveByomModel(modelId); }}
+            onSave={onRegisterByomModel}
+          /> : <>
           <section className="sam-model-hero">
             <div><span className={`family ${model.family}`}>{model.family === "sam2" ? "SAM 2.1" : model.family === "medsam2" ? "MedSAM2" : model.family.toUpperCase()}</span>{model.experimental && <span className="experimental">Experimental</span>}</div>
             <h3>{model.name}</h3>
@@ -139,11 +401,11 @@ export default function SamSetupModal({
             {model.capabilities.videoSegmentation && <p>O modelo suporta vídeo, mas esta versão do editor integra apenas imagens. Timeline e tracking entrarão em uma etapa própria.</p>}
           </section>
 
-          <section className="sam-citation">
+          {model.citation && <section className="sam-citation">
             <h4>Referência</h4>
             <p>{model.citation.authors} <b>{model.citation.title}</b>. {model.citation.venue}, {model.citation.year}.</p>
             <a href={model.citation.url} target="_blank" rel="noreferrer"><ExternalLink size={12} />Ler o artigo</a>
-          </section>
+          </section>}
 
           {model.futureCapabilities.map((future) => <section className="sam-future-note" key={future.name}>
             <Sparkles size={16} />
@@ -190,12 +452,13 @@ export default function SamSetupModal({
           </details>
 
           <section className="sam-privacy"><ShieldCheck size={16} /><div><b>Inferência local</b><p>Imagens e prompts ficam no computador. No SAM 3, a autenticação Hugging Face é usada somente pelo instalador local para obter o checkpoint.</p></div></section>
+          </>}
         </div>
       </div>
 
       <footer>
         <button onClick={onClose}>Fechar</button>
-        <button className="connect" disabled={connectionState === "checking" || connectionState === "loading"} onClick={onConnect}>
+        {!byomArea && <button className="connect" disabled={connectionState === "checking" || connectionState === "loading"} onClick={onConnect}>
           {connectionState === "checking" || connectionState === "loading" ? <Gauge className="spin" size={15} /> : <Link2 size={15} />}
           {connectionState === "loading"
             ? "Carregando modelo…"
@@ -204,7 +467,7 @@ export default function SamSetupModal({
               : connectionState === "ready"
                 ? "Carregar este modelo"
                 : "Verificar e usar"}
-        </button>
+        </button>}
       </footer>
     </section>
   </div>;

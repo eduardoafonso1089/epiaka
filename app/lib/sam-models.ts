@@ -811,6 +811,101 @@ export const SAM_MODELS = [
   },
 ] as const satisfies readonly SamModelDefinition[];
 
+// ---------------------------------------------------------------------------
+// BYOM: modelos em contêiner trazidos pelo usuário
+//
+// O propósito é diferente do SAM. Não há prompt: o contêiner recebe a imagem
+// inteira e devolve um documento COCO já rotulado, que o editor renderiza como
+// anotações prontas para revisão. Por isso um BYOM não entra no catálogo
+// estático nem na troca de modelos — ele é anunciado pelo conector em
+// GET /byom/models, e só existe depois que alguém registra um contêiner.
+// ---------------------------------------------------------------------------
+
+export const BYOM_MODEL_ID_PATTERN = /^byom-[a-z0-9][a-z0-9._-]{0,62}$/;
+
+export function isByomModelId(value: unknown): value is string {
+  return typeof value === "string" && BYOM_MODEL_ID_PATTERN.test(value);
+}
+
+/** O que um contêiner declara sobre si em GET /metadata, que é opcional. */
+export type ByomMetadata = {
+  task: string | null;
+  description: string | null;
+  limitations: string | null;
+  categories: string[];
+  geometry: string[];
+  parameters: Record<string, string>;
+};
+
+/** O que a última execução devolveu, observado pelo conector. */
+export type ByomLastRun = {
+  annotations: number;
+  categories: string[];
+  geometry: string[];
+};
+
+/** Um modelo BYOM como o conector local o anuncia. */
+export type ByomModel = {
+  model_id: string;
+  name: string;
+  image: string;
+  endpoint: string;
+  notes: string;
+  env: Record<string, string>;
+  last_run: ByomLastRun | null;
+  metadata: ByomMetadata | null;
+  ready: boolean;
+  unavailable_reason: string | null;
+};
+
+const GEOMETRY_LABELS: Record<string, string> = {
+  polygon: "máscaras",
+  bbox: "caixas",
+  keypoints: "pontos",
+};
+
+function describeList(items: readonly string[]): string {
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(", ")} e ${items[items.length - 1]}`;
+}
+
+/** Monta uma explicação legível do que o modelo faz.
+ *
+ * Prefere o que o contêiner declara em /metadata, porque vale antes da primeira
+ * execução; sem isso, cai no que a última execução realmente devolveu. Quando
+ * não há nem um nem outro, diz isso em vez de inventar.
+ */
+export function describeByomModel(model: ByomModel): string {
+  const parts: string[] = [];
+  if (model.metadata?.task) parts.push(`${model.metadata.task}.`);
+  if (model.metadata?.description) parts.push(model.metadata.description);
+
+  const declared = model.metadata?.categories ?? [];
+  const observed = model.last_run?.categories ?? [];
+  const categories = declared.length ? declared : observed;
+  const source = declared.length ? "declara" : "na última execução devolveu";
+  if (categories.length) {
+    const plural = categories.length === 1 ? "classe" : "classes";
+    parts.push(`Segundo o COCO, ${source} ${categories.length} ${plural}: ${describeList(categories)}.`);
+  }
+
+  const geometry = (model.metadata?.geometry ?? model.last_run?.geometry ?? [])
+    .map((item) => GEOMETRY_LABELS[item] ?? item);
+  if (geometry.length) parts.push(`Exporta ${describeList(geometry)}.`);
+
+  if (model.last_run) {
+    const count = model.last_run.annotations;
+    parts.push(`Na última imagem produziu ${count} ${count === 1 ? "anotação" : "anotações"}.`);
+  }
+
+  if (!parts.length) {
+    return model.ready
+      ? "Este contêiner não implementa GET /metadata e ainda não foi executado, então não há o que descrever. Rode-o uma vez sobre uma imagem."
+      : "O contêiner está parado, então não dá para descrevê-lo. Suba-o para ver as classes que ele exporta.";
+  }
+  return parts.join(" ");
+}
+
 export type SamModel = (typeof SAM_MODELS)[number];
 export type SamModelId = SamModel["id"];
 

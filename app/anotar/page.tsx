@@ -288,6 +288,7 @@ export default function Home() {
   const copy = getCopy(language);
   const selectedSamModel = getSamModel(samModelId) ?? getSamModel(DEFAULT_SAM_MODEL_ID)!;
   const activeByomModel = byomModels.find((candidate) => candidate.model_id === byomModelId) ?? null;
+  const byomHasRun = activeByomModel?.last_run != null;
   // SAM e BYOM podem estar ativos ao mesmo tempo: um segmenta por clique, o
   // outro anota a imagem inteira, e as máscaras de um não tocam nas do outro.
   const activeAiModels = [
@@ -1871,33 +1872,19 @@ export default function Home() {
           {tool === "transform" && <div className="tip">{copy.transformTip}</div>}
           {tool === "reshape" && <div className="tip">{reshapeDrawing ? (reshapeStartInside ? copy.reshapeAdd : copy.reshapeDelete) : copy.reshapeStart}</div>}
           {activeAnnotation?.type === "polygon" && tool === "select" && <div className="polygon-tip">{copy.middlePan} · {copy.polygonTipDetail}</div>}
-          {activeByomModel && <div className="byom-run-bar">
-            <span className="byom-run-model"><Boxes size={14} /><b>{activeByomModel.name}</b><small>{activeByomModel.model_id}</small></span>
-            {!activeByomModel.ready && <em>contêiner parado</em>}
-            <button
-              className="byom-run-now"
-              disabled={!activeByomModel.ready || byomBusy || !asset}
-              onClick={() => void runByomModel(activeByomModel.model_id)}
-            >
-              {byomBusy ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />}
-              {byomBusy ? "Anotando…" : "Rodar nesta imagem"}
-            </button>
-            <button className="byom-run-clear" title="Desativar este BYOM" onClick={() => setByomModelId(null)}><X size={14} /></button>
-          </div>}
-
-          {tool === "sam" && <div className="sam-controls sam-controls-capability">
-            <div className="sam-mode-tabs" role="tablist" aria-label="Tipo de prompt SAM">
+          {(tool === "sam" || activeByomModel) && <div className="sam-controls sam-controls-capability">
+            {tool === "sam" && <div className="sam-mode-tabs" role="tablist" aria-label="Tipo de prompt SAM">
               <button className={samInteractionMode === "points" ? "active" : ""} onClick={() => chooseSamInteractionMode("points")}>Pontos</button>
               {selectedSamModel.capabilities.boxPrompts && <button className={samInteractionMode === "box" ? "active" : ""} onClick={() => chooseSamInteractionMode("box")}><Box size={13} />Caixa</button>}
               {selectedSamModel.capabilities.textPrompts && <button className={samInteractionMode === "text" ? "active" : ""} onClick={() => chooseSamInteractionMode("text")}><Sparkles size={13} />Texto</button>}
-            </div>
-            <div className="sam-mode-input">
+            </div>}
+            {tool === "sam" && <div className="sam-mode-input">
               {samInteractionMode === "points" && <><button className={samPromptMode === 1 ? "active positive" : ""} onClick={() => setSamPromptMode(1)}><CirclePlus size={15} />{copy.samInclude}</button><button className={samPromptMode === 0 ? "active negative" : ""} onClick={() => setSamPromptMode(0)}><CircleMinus size={15} />{copy.samExclude}</button></>}
               {samInteractionMode === "box" && <small>Arraste uma caixa ao redor do objeto.</small>}
               {samInteractionMode === "text" && <form onSubmit={(event) => { event.preventDefault(); runSamText(); }}><input aria-label="Conceito para segmentar" placeholder="Ex.: todas as pessoas" value={samText} onChange={(event) => { invalidateSamPrediction(); setSamText(event.target.value); }} /><button type="submit" disabled={!samText.trim() || samLoading}>Segmentar</button><label title="Limiar de confiança">Conf. {Math.round(samThreshold * 100)}%<input aria-label="Limiar de confiança" type="range" min="0.1" max="0.95" step="0.05" value={samThreshold} onChange={(event) => { invalidateSamPrediction(); setSamThreshold(Number(event.target.value)); }} /></label></form>}
-            </div>
-            <span>{samLoading ? <><LoaderCircle className="spin" size={14} />{copy.samSegmenting}</> : samPredictions.length ? `${samPredictions.length} resultado(s) · ${samPreviewPolygons.length} contorno(s)` : samInteractionMode === "points" ? `${samPrompts.length} ${copy.samPoints}` : selectedSamModel.name}</span>
-            <div className="sam-actions"><button disabled={!samPrompts.length && !samBox && !samText && !samPreviewPolygons.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={!samPreviewPolygons.length || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}{samPreviewPolygons.length > 1 ? ` (${samPreviewPolygons.length})` : ""}</button><button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div>
+            </div>}
+            {tool === "sam" && <span>{samLoading ? <><LoaderCircle className="spin" size={14} />{copy.samSegmenting}</> : samPredictions.length ? `${samPredictions.length} resultado(s) · ${samPreviewPolygons.length} contorno(s)` : samInteractionMode === "points" ? `${samPrompts.length} ${copy.samPoints}` : selectedSamModel.name}</span>}
+            <div className="sam-actions">{activeByomModel && <button className="sam-byom-run" disabled={!activeByomModel.ready || byomBusy || !asset} title={activeByomModel.ready ? `${activeByomModel.name} · ${activeByomModel.model_id}` : "O contêiner deste BYOM está parado."} onClick={() => void runByomModel(activeByomModel.model_id)}>{byomBusy ? <LoaderCircle className="spin" size={14} /> : <Boxes size={14} />}{byomBusy ? "Anotando…" : byomHasRun ? "Rodar de novo" : "Rodar BYOM"}</button>}{tool === "sam" && <><button disabled={!samPrompts.length && !samBox && !samText && !samPreviewPolygons.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={!samPreviewPolygons.length || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}{samPreviewPolygons.length > 1 ? ` (${samPreviewPolygons.length})` : ""}</button></>}<button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div>
           </div>}
         </div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button className="primary" onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
         <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p><Sparkles size={14} />{annotationDrag ? `${copy.moving} (${annotationDrag.originals.length})` : selectionMarquee ? copy.selecting : transformDrag ? copy.transforming : reshapeDrawing ? copy.reshaping : selectedVertex ? fill(copy.statusVertexSelected, { status: snapping ? copy.snapStateOn : copy.snapStateOff }) : polygonDraft.length || lineDraft.length ? fill(copy.statusDraftPoints, { n: (polygonDraft.length + lineDraft.length) / 2 }) : multiSelected.length > 1 ? `${multiSelected.length} ${copy.selectedObjects}` : currentAnnotations.length ? `${currentAnnotations.length} ${copy.imageAnnotations}` : asset ? copy.ready : copy.emptyProjectTitle}</p><button><Keyboard size={15} /> {copy.shortcuts}</button></div>

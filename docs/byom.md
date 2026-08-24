@@ -207,10 +207,11 @@ linhas do log aparecem na saída.
 ### 5. Use no editor
 
 Os modelos registrados aparecem na barra lateral do botão do modelo de IA, sob
-**BYOM · seu modelo**, com o estado de cada contêiner. Ao escolher um, aparece
-sobre a imagem uma barra própria do BYOM, com o nome do modelo e o botão
-**Rodar nesta imagem** — o BYOM não tem a barra de pontos e caixas do SAM porque
-não recebe prompt.
+**BYOM · seu modelo**, com o estado de cada contêiner. Ao escolher um, a barra
+sobre a imagem ganha o botão **Rodar BYOM** — que vira **Rodar de novo** depois
+da primeira execução. É a mesma barra do SAM: as abas de pontos e caixas só
+aparecem com a ferramenta SAM ativa, porque o BYOM não recebe prompt, e o botão
+de rodar aparece sempre que houver um contêiner selecionado.
 
 SAM e BYOM podem ficar ativos ao mesmo tempo, e o botão do topo mostra os dois.
 São caminhos independentes: o SAM segmenta o que você clica, o BYOM anota a

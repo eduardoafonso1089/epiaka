@@ -218,8 +218,14 @@ São caminhos independentes: o SAM segmenta o que você clica, o BYOM anota a
 imagem inteira, e as máscaras de um não alteram nem substituem as do outro — as
 anotações do BYOM entram somadas às que já existem.
 
-Reexecutar um modelo **substitui** o resultado anterior dele naquela imagem, em
-vez de empilhar máscaras idênticas. Cada anotação criada guarda a origem
+O resultado não entra direto na lista de anotações: ele aparece como
+**proposta**, desenhada em tracejado sobre a imagem, e a barra oferece
+**Salvar** e **Descartar**. É o mesmo contrato do SAM, em que a máscara só vira
+anotação no salvar. Trocar de imagem esconde os botões, mas a proposta continua
+guardada e reaparece ao voltar.
+
+Salvar uma reexecução **substitui** o resultado anterior daquele modelo naquela
+imagem, em vez de empilhar máscaras idênticas. Cada anotação criada guarda a origem
 (`byom:<model-id>`), então anotações feitas à mão, as de outro modelo e as da
 mesma origem em outras imagens ficam intactas. O aviso na tela diz quantas foram
 substituídas.

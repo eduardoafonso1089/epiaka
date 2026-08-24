@@ -312,9 +312,9 @@ export default function SamSetupModal({
   // que interessa ali é a documentação do contrato e não um card comparável.
   const [byomView, setByomView] = useState<"docs" | "model" | null>(null);
   const selectedByomModel = byomModels.find((candidate) => candidate.model_id === byomModelId) ?? null;
-  // A área do BYOM não conecta nada: o tutorial é só texto, e a ficha do modelo
-  // já tem o próprio botão de rodar. Conectar é um conceito do SAM.
-  const byomArea = byomView !== null;
+  // Só o tutorial não tem o que confirmar: é texto. Um modelo, BYOM ou SAM,
+  // sempre oferece o botão de usar no canto do rodapé.
+  const showFooterAction = byomView !== "docs";
   const model = getSamModel(selectedModelId) ?? SAM_MODELS[0];
   const benchmark = benchmarkSummary(model);
   const modelMatches = connectionState === "ready" && loadedModelId === model.id;
@@ -343,8 +343,8 @@ export default function SamSetupModal({
             <h3>{family === "sam2" ? "SAM 2.1 · recomendado" : family === "medsam2" ? "Domínio · imagem médica" : "SAM 3 · conceitos"}</h3>
             {SAM_MODELS.filter((candidate) => candidate.family === family).map((candidate) => <button
               key={candidate.id}
-              className={candidate.id === model.id && !byomArea ? "active" : ""}
-              aria-pressed={candidate.id === model.id && !byomArea}
+              className={candidate.id === model.id && byomView === null ? "active" : ""}
+              aria-pressed={candidate.id === model.id && byomView === null}
               onClick={() => { setByomView(null); onSelectModel(candidate.id); }}
             >
               <span><b>{candidate.name}</b><small>{candidate.parameters.label} · {candidate.checkpoint.approximateSizeLabel}</small></span>
@@ -458,7 +458,17 @@ export default function SamSetupModal({
 
       <footer>
         <button onClick={onClose}>Fechar</button>
-        {!byomArea && <button className="connect" disabled={connectionState === "checking" || connectionState === "loading"} onClick={onConnect}>
+        {showFooterAction && (byomView === "model" && selectedByomModel
+          ? <button
+              className="connect"
+              disabled={!selectedByomModel.ready}
+              title={selectedByomModel.ready ? undefined : "O contêiner deste BYOM está parado."}
+              onClick={() => { onSelectByomModel(selectedByomModel.model_id); onClose(); }}
+            >
+              <Boxes size={15} />
+              {byomModelId === selectedByomModel.model_id ? "Usar este modelo" : "Selecionar este modelo"}
+            </button>
+          : <button className="connect" disabled={connectionState === "checking" || connectionState === "loading"} onClick={onConnect}>
           {connectionState === "checking" || connectionState === "loading" ? <Gauge className="spin" size={15} /> : <Link2 size={15} />}
           {connectionState === "loading"
             ? "Carregando modelo…"
@@ -467,7 +477,7 @@ export default function SamSetupModal({
               : connectionState === "ready"
                 ? "Carregar este modelo"
                 : "Verificar e usar"}
-        </button>}
+        </button>)}
       </footer>
     </section>
   </div>;

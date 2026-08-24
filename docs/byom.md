@@ -218,6 +218,12 @@ São caminhos independentes: o SAM segmenta o que você clica, o BYOM anota a
 imagem inteira, e as máscaras de um não alteram nem substituem as do outro — as
 anotações do BYOM entram somadas às que já existem.
 
+Reexecutar um modelo **substitui** o resultado anterior dele naquela imagem, em
+vez de empilhar máscaras idênticas. Cada anotação criada guarda a origem
+(`byom:<model-id>`), então anotações feitas à mão, as de outro modelo e as da
+mesma origem em outras imagens ficam intactas. O aviso na tela diz quantas foram
+substituídas.
+
 Clicar num modelo abre a ficha dele: explicação automática do que exporta,
 limitações que o próprio modelo declara, classes, parâmetros, variáveis do
 contêiner e o resumo da última execução. A ficha também traz um campo de

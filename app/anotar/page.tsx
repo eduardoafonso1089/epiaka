@@ -237,6 +237,7 @@ export default function Home() {
   const [byomModels, setByomModels] = useState<readonly ByomModel[]>([]);
   const [byomModelId, setByomModelId] = useState<string | null>(null);
   const [byomBusy, setByomBusy] = useState(false);
+  const [samSelected, setSamSelected] = useState(false);
   // O resultado do BYOM fica como proposta até o usuário salvar, do mesmo jeito
   // que a máscara do SAM só vira anotação no "salvar e editar".
   const [byomPreview, setByomPreview] = useState<{
@@ -307,7 +308,7 @@ export default function Home() {
   // Ter endpoint salvo não quer dizer que o SAM esteja carregado: o conector
   // pode estar fora do ar ou com outro modelo. Anunciar sem conferir dava um
   // SAM "ativo" que só existia na tela.
-  const samIsLive = samConnectionState === "ready" && samLoadedModelId === samModelId;
+  const samIsLive = samSelected && samConnectionState === "ready" && samLoadedModelId === samModelId;
   const activeAiModels = [
     ...(samIsLive ? [{
       family: selectedSamModel.family === "medsam2" ? "MedSAM2" : selectedSamModel.family === "sam3" ? "SAM 3" : "SAM 2.1",
@@ -540,6 +541,7 @@ export default function Home() {
         if (nextTool === "sam" && (!samEndpoint || samConnectionState !== "ready" || samLoadedModelId !== samModelId)) {
           setSamEndpointDraft(samEndpoint || "http://127.0.0.1:7860/predict"); setSamOpen(true);
         } else if (nextTool === "sam") {
+          setSamSelected(true);
           samAbortRef.current?.abort(); samRequestRef.current += 1; setSamPrompts([]); setSamBoxStart(null); setSamBox(null); setSamPredictions([]); setSamLoading(false);
           setSamPromptMode(1); setTool(tool === "sam" ? "select" : "sam");
         } else setTool(nextTool);
@@ -1603,6 +1605,19 @@ export default function Home() {
       setByomModels([]);
     }
   }
+  // Solta o pincel dos dois caminhos de IA. Não desconecta o conector, não
+  // descarrega o modelo e não tira nada das listas: apenas deixa de usá-los
+  // para anotar. Anotações salvas e uma proposta pendente também continuam.
+  function unselectAllModels() {
+    clearSam();
+    setSamPredictions([]);
+    setSamSelected(false);
+    setByomModelId(null);
+    if (tool === "sam") setTool("select");
+    setSamOpen(false);
+    showToast("Nenhum modelo de IA em uso. Os modelos continuam instalados.");
+  }
+
   function saveByomPreview() {
     if (!byomPreview) return;
     const { origin, assetId, annotations: proposed, labels: proposedLabels, dimensions } = byomPreview;
@@ -1745,6 +1760,7 @@ export default function Home() {
       if (!switched) return;
     }
     setSamEndpoint(endpoint); localStorage.setItem("poligome-sam-endpoint", endpoint);
+    setSamSelected(true);
     clearSam(); setSamPromptMode(1); setSamOpen(false); setTool("sam"); showToast(fill(copy.samConnectedModel, { model: selectedSamModel.name }));
   }
 
@@ -2006,6 +2022,8 @@ export default function Home() {
       onRunByomModel={(modelId) => void runByomModel(modelId)}
       onRegisterByomModel={(entry) => void registerByomModel(entry)}
       onRemoveByomModel={(modelId) => void removeByomModel(modelId)}
+      onUnselectAll={unselectAllModels}
+      anyModelSelected={samIsLive || activeByomModel !== null}
       loadedModelId={samLoadedModelId}
       connectionState={samConnectionState}
       runtimeLabel={samRuntime}

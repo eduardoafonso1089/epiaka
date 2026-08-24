@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   AlertTriangle, Boxes, Check, Cpu, Download, ExternalLink, Gauge, HardDrive,
-  KeyRound, Laptop, Link2, Pencil, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, X,
+  KeyRound, Laptop, Link2, Pencil, Plus, PowerOff, Server, ShieldCheck, Sparkles, Terminal, Trash2, X,
 } from "lucide-react";
 import { SAM_MODELS, getSamModel } from "../lib/sam-models";
 import { BYOM_MODEL_ID_PATTERN, describeByomModel } from "../lib/sam-models";
@@ -27,6 +27,9 @@ type Props = {
   onRunByomModel: (modelId: string) => void;
   onRegisterByomModel: (entry: { modelId: string; name: string; port: number; notes?: string }) => void;
   onRemoveByomModel: (modelId: string) => void;
+  /** Desliga SAM e BYOM de uma vez, para voltar às ferramentas manuais. */
+  onUnselectAll: () => void;
+  anyModelSelected: boolean;
   onEndpointChange: (endpoint: string) => void;
   onConnect: () => void;
   onClose: () => void;
@@ -304,6 +307,8 @@ export default function SamSetupModal({
   onRunByomModel,
   onRegisterByomModel,
   onRemoveByomModel,
+  onUnselectAll,
+  anyModelSelected,
   onEndpointChange,
   onConnect,
   onClose,
@@ -458,6 +463,13 @@ export default function SamSetupModal({
 
       <footer>
         <button onClick={onClose}>Fechar</button>
+        {anyModelSelected && <button
+          className="unselect-all"
+          title="Deixa de usar SAM e BYOM para anotar. Nada é desinstalado nem sai da lista."
+          onClick={() => { setByomView(null); onUnselectAll(); }}
+        >
+          <PowerOff size={14} />Desselecionar todos
+        </button>}
         {showFooterAction && (byomView === "model" && selectedByomModel
           ? <button
               className="connect"

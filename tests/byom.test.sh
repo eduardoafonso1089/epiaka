@@ -70,7 +70,14 @@ test_dockerfile_contract() {
   assert_contains "$content" "EXPOSE 8080" "porta do contrato no Dockerfile"
   assert_contains "$content" 'CMD ["serve"]' "comando serve no Dockerfile"
   assert_contains "$content" "/opt/ml/model" "diretório de pesos do SageMaker no Dockerfile"
-  pass "Dockerfile de exemplo declara porta, comando serve e /opt/ml/model"
+  # Sem digest, a tag 3.12-slim é reescrita e uma reconstrução futura daria outra
+  # imagem. É o digest que faz o exemplo continuar existindo igual sem versionar
+  # centenas de megabytes de tarball.
+  case "$content" in
+    *"FROM python:3.12-slim@sha256:"*) ;;
+    *) fail "a imagem base do exemplo precisa estar fixada por digest, não só pela tag" ;;
+  esac
+  pass "Dockerfile de exemplo declara porta, comando serve, /opt/ml/model e base fixada por digest"
 }
 
 # Sobe o serve.py de exemplo direto, sem contêiner: o contrato é o mesmo.
@@ -222,6 +229,50 @@ METODO
   pass "METHOD=watershed separa objetos encostados e /metadata descreve as classes"
 }
 
+test_shipped_examples() {
+  local dir="${PROJECT_ROOT}/public/byom/examples"
+  [[ -d "$dir" ]] || fail "os exemplos oficiais sumiram de public/byom/examples."
+
+  local expected=(byom-otsu byom-watershed)
+  local name
+  for name in "${expected[@]}"; do
+    [[ -f "${dir}/${name}.json" ]] || fail "o exemplo ${name}.json não está versionado."
+  done
+
+  # Os registros versionados precisam obedecer às mesmas regras do conector, ou
+  # instalá-los deixaria a lista com entradas que ele recusa em silêncio.
+  "$PYTHON" - "$dir" "$CLI" <<'EXEMPLOS'
+import json, pathlib, re, sys
+
+directory = pathlib.Path(sys.argv[1])
+cli = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+pattern = re.compile(r"^byom-[a-z0-9][a-z0-9._-]{0,62}$")
+
+ports = {}
+for path in sorted(directory.glob("*.json")):
+    document = json.loads(path.read_text(encoding="utf-8"))
+    model_id = document["model_id"]
+    assert pattern.fullmatch(model_id), f"id invalido: {model_id}"
+    assert path.stem == model_id, f"{path.name} nao casa com o model_id {model_id}"
+    endpoint = document["endpoint"]
+    assert re.fullmatch(r"http://127\.0\.0\.1:\d{1,5}", endpoint), f"endpoint invalido: {endpoint}"
+    port = endpoint.rsplit(":", 1)[1]
+    assert port not in ports, f"porta {port} repetida entre {ports[port]} e {model_id}"
+    ports[port] = model_id
+    assert document.get("notes"), f"{model_id} sem anotacao explicando o exemplo"
+    assert document.get("env"), f"{model_id} sem env; os dois exemplos saem da mesma imagem"
+    assert document["image"] in cli, f"a imagem {document['image']} nao e a que a CLI constroi"
+
+assert len(ports) >= 2, "os exemplos precisam de portas distintas para rodarem juntos"
+EXEMPLOS
+
+  # O comando examples precisa continuar existindo, senão os arquivos versionados
+  # viram documentação morta.
+  assert_contains "$(cat "$CLI")" "cmd_examples()" "comando examples na CLI"
+  assert_contains "$(cat "$CLI")" "examples) cmd_examples" "roteamento do comando examples"
+  pass "exemplos oficiais versionados, com portas distintas e instaláveis pela CLI"
+}
+
 # Dublê de docker: aceita inspect e build, para exercitar register sem Docker.
 install_docker_stub() {
   local bin_dir="${TEMP_ROOT}/bin"
@@ -346,6 +397,7 @@ test_syntax
 test_dockerfile_contract
 test_contract_roundtrip
 test_methods_and_metadata
+test_shipped_examples
 test_registration
 test_connector_registry
 test_catalog_alignment

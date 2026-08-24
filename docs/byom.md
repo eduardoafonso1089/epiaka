@@ -121,6 +121,31 @@ Sem `/metadata`, a explicação é montada a partir do que a última execução
 devolveu — o Poligome guarda esse resumo no registro. Sem nenhum dos dois, a
 tela diz que não há o que descrever, em vez de inventar.
 
+## Os dois exemplos oficiais
+
+O repositório traz dois modelos prontos, versionados em `public/byom/examples`,
+para que a lista nunca dependa do que existe na máquina de quem escreveu o
+contrato. Um comando constrói a imagem e registra os dois:
+
+```bash
+bash poligome-byom-macos-linux.sh examples
+```
+
+| modelo | porta | o que faz |
+| --- | --- | --- |
+| `byom-otsu` | 8080 | limiar de Otsu; objetos encostados viram uma região só |
+| `byom-watershed` | 8081 | watershed na transformada de distância; separa objetos que se tocam |
+
+Os dois saem da **mesma imagem**, mudando só a variável `METHOD` — é o exemplo
+prático de por que `register` aceita `--env`. Reexecutar `examples` não
+sobrescreve um registro que você já tenha ajustado: se o arquivo existe, ele é
+mantido.
+
+A imagem não é versionada no repositório: o tarball tem cerca de 347 MB, contra
+menos de 4 MB de todo o histórico. Em vez disso, a **base do Dockerfile é fixada
+por digest**, de modo que reconstruir meses depois produz a mesma imagem, byte a
+byte, a partir de uma receita de poucos kilobytes.
+
 ## Passo a passo
 
 ### 1. Escreva o servidor de inferência
@@ -214,6 +239,9 @@ aparecem com a ferramenta SAM ativa, porque o BYOM não recebe prompt, e o botã
 de rodar aparece sempre que houver um contêiner selecionado.
 
 SAM e BYOM podem ficar ativos ao mesmo tempo, e o botão do topo mostra os dois.
+**Desselecionar todos**, no rodapé da janela, apenas deixa de usá-los para
+anotar: nada é desinstalado, o conector segue conectado e as listas continuam
+iguais.
 São caminhos independentes: o SAM segmenta o que você clica, o BYOM anota a
 imagem inteira, e as máscaras de um não alteram nem substituem as do outro — as
 anotações do BYOM entram somadas às que já existem.
@@ -253,6 +281,7 @@ e exportar como qualquer outra anotação feita à mão.
 ## Comandos da CLI
 
 ```
+examples  [--path DIR]                   constrói e registra os dois exemplos oficiais
 build     --path DIR --image NOME        constrói a imagem a partir de um Dockerfile
 register  --model-id ID --image NOME     registra o modelo (aceita --env CHAVE=VALOR)
 start     --model-id ID                  sobe o contêiner e espera o /ping

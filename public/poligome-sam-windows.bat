@@ -7,7 +7,7 @@ set "POLIGOME_SAM_WINDOWS_INSTALLER_API=2"
 set "DEFAULT_SITE_URL=https://www.poligome.com"
 set "DEFAULT_ASSET_BASE_URL=https://raw.githubusercontent.com/eduardoafonso1089/epiaka/main/public"
 set "DEFAULT_CONNECTOR_URL=https://raw.githubusercontent.com/eduardoafonso1089/epiaka/4603525db08be5e86fb95ea58b43d606d731f99f/public/poligome-sam-local.py"
-set "DEFAULT_CONNECTOR_SHA256=8cb33322f738e4405f4b15f9e2815363dadcfb17f2e51587652aae5e160eb301"
+set "DEFAULT_CONNECTOR_SHA256=31c80c1541a7058b97ab7ab7b9972499d2e0d201468d67b79c572b7f450fbd76"
 set "SITE_URL=%POLIGOME_SITE_URL%"
 if not defined SITE_URL set "SITE_URL=%DEFAULT_SITE_URL%"
 if "!SITE_URL:~-1!"=="/" set "SITE_URL=!SITE_URL:~0,-1!"
@@ -65,10 +65,14 @@ echo   1^) SAM 2.1 Hiera Tiny   ^(instalação automática no WSL2^)
 echo   2^) SAM 2.1 Hiera Small  ^(WSL2; recomendado^)
 echo   3^) SAM 2.1 Hiera Base+  ^(instalação automática no WSL2^)
 echo   4^) SAM 2.1 Hiera Large  ^(instalação automática no WSL2^)
-echo   5^) MedSAM2              ^(imagem medica; WSL2^)
-echo   6^) SAM 3 Concepts       ^(WSL2 + GPU NVIDIA^)
+echo   5^) MedSAM2              ^(imagem medica geral; WSL2^)
+echo   6^) MedSAM2 lesao em TC  ^(tomografia; WSL2^)
+echo   7^) MedSAM2 lesao em RM  ^(figado; WSL2^)
+echo   8^) MedSAM2 ecocardio    ^(ultrassom; WSL2^)
+echo   9^) MedSAM2 2411         ^(versao anterior; WSL2^)
+echo  10^) SAM 3 Concepts       ^(WSL2 + GPU NVIDIA^)
 echo.
-set /p "MODEL_CHOICE=Digite 1-6 ou o ID completo: "
+set /p "MODEL_CHOICE=Digite 1-10 ou o ID completo: "
 if "!MODEL_CHOICE!"=="1" (
   set "MODEL_ID=sam2.1-hiera-tiny"
   exit /b 0
@@ -90,6 +94,22 @@ if "!MODEL_CHOICE!"=="5" (
   exit /b 0
 )
 if "!MODEL_CHOICE!"=="6" (
+  set "MODEL_ID=medsam2-ct-lesion"
+  exit /b 0
+)
+if "!MODEL_CHOICE!"=="7" (
+  set "MODEL_ID=medsam2-mri-liver-lesion"
+  exit /b 0
+)
+if "!MODEL_CHOICE!"=="8" (
+  set "MODEL_ID=medsam2-us-heart"
+  exit /b 0
+)
+if "!MODEL_CHOICE!"=="9" (
+  set "MODEL_ID=medsam2-2411"
+  exit /b 0
+)
+if "!MODEL_CHOICE!"=="10" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
 )
@@ -126,6 +146,34 @@ if /I "!MODEL_ID!"=="medsam2" (
   set "MODEL_ID=medsam2-latest"
   exit /b 0
 )
+if /I "!MODEL_ID!"=="medsam2-ct-lesion" (
+  set "MODEL_ID=medsam2-ct-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-ct" (
+  set "MODEL_ID=medsam2-ct-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-mri-liver-lesion" (
+  set "MODEL_ID=medsam2-mri-liver-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-mri" (
+  set "MODEL_ID=medsam2-mri-liver-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-us-heart" (
+  set "MODEL_ID=medsam2-us-heart"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-us" (
+  set "MODEL_ID=medsam2-us-heart"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-2411" (
+  set "MODEL_ID=medsam2-2411"
+  exit /b 0
+)
 if /I "!MODEL_ID!"=="sam3-concepts" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
@@ -139,6 +187,10 @@ if /I "!MODEL_ID!"=="sam2.1-hiera-small" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-base-plus" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-large" exit /b 0
 if /I "!MODEL_ID!"=="medsam2-latest" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-ct-lesion" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-mri-liver-lesion" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-us-heart" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-2411" exit /b 0
 if /I "!MODEL_ID!"=="sam3-concepts" exit /b 0
 exit /b 1
 

@@ -362,7 +362,8 @@ const SAM3_REQUIREMENTS = {
     type: "gated",
     requiresAccount: true,
     requiresTermsAcceptance: true,
-    notes: "Exige solicitar acesso no Hugging Face, aceitar os termos e autenticar com `hf auth login`.",
+    notes:
+      "Aprovação manual da Meta. Preencha o formulário em huggingface.co/facebook/sam3 — nome, data de nascimento, país, afiliação e cargo — e espere alguém revisar; não é liberação automática. O status fica em huggingface.co/settings/gated-repos. Aprovado, o instalador chama o `hf auth login` oficial, que guarda o token; o Poligome não o lê nem o armazena.",
   },
 } as const satisfies SamRequirements;
 
@@ -786,12 +787,14 @@ export const SAM_MODELS = [
     parameters: { count: 848_000_000, label: "848M" },
     checkpoint: {
       fileName: "sam3.pt",
-      approximateSizeBytes: 3_450_000_000,
+      // Tamanho exato do arquivo, conferido no download com a conta aprovada.
+      approximateSizeBytes: 3_450_062_241,
       approximateSizeLabel: "~3.45 GB",
       format: "PyTorch .pt",
       downloadUrl: "https://huggingface.co/facebook/sam3",
       gated: true,
-      notes: "Checkpoint oficial único, sujeito a aprovação e autenticação no Hugging Face.",
+      notes:
+        "Checkpoint oficial único, com 3.450.062.241 bytes. Sem a aprovação da Meta o download responde HTTP 401 e a instalação para; não há espelho alternativo.",
     },
     license: SAM_LICENSE,
     description:

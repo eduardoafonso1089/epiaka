@@ -237,6 +237,16 @@ export default function Home() {
   const [byomModels, setByomModels] = useState<readonly ByomModel[]>([]);
   const [byomModelId, setByomModelId] = useState<string | null>(null);
   const [byomBusy, setByomBusy] = useState(false);
+  // O resultado do BYOM fica como proposta até o usuário salvar, do mesmo jeito
+  // que a máscara do SAM só vira anotação no "salvar e editar".
+  const [byomPreview, setByomPreview] = useState<{
+    origin: string;
+    assetId: string;
+    modelName: string;
+    annotations: Annotation[];
+    labels: Label[];
+    dimensions: [string, { width: number; height: number }][];
+  } | null>(null);
   const [samModelId, setSamModelId] = useState<string>(() => {
     if (typeof window === "undefined") return DEFAULT_SAM_MODEL_ID;
     const stored = localStorage.getItem("visionlabel-sam-model");
@@ -289,10 +299,17 @@ export default function Home() {
   const selectedSamModel = getSamModel(samModelId) ?? getSamModel(DEFAULT_SAM_MODEL_ID)!;
   const activeByomModel = byomModels.find((candidate) => candidate.model_id === byomModelId) ?? null;
   const byomHasRun = activeByomModel?.last_run != null;
+  // A proposta pertence a uma imagem: trocar de foto não deve mostrar botões que
+  // agiriam sobre outra. Ela continua guardada e reaparece ao voltar.
+  const pendingByomPreview = byomPreview && byomPreview.assetId === current ? byomPreview : null;
   // SAM e BYOM podem estar ativos ao mesmo tempo: um segmenta por clique, o
   // outro anota a imagem inteira, e as máscaras de um não tocam nas do outro.
+  // Ter endpoint salvo não quer dizer que o SAM esteja carregado: o conector
+  // pode estar fora do ar ou com outro modelo. Anunciar sem conferir dava um
+  // SAM "ativo" que só existia na tela.
+  const samIsLive = samConnectionState === "ready" && samLoadedModelId === samModelId;
   const activeAiModels = [
-    ...(samEndpoint ? [{
+    ...(samIsLive ? [{
       family: selectedSamModel.family === "medsam2" ? "MedSAM2" : selectedSamModel.family === "sam3" ? "SAM 3" : "SAM 2.1",
       name: selectedSamModel.name,
       title: selectedSamModel.id,
@@ -1220,7 +1237,18 @@ export default function Home() {
    * no segundo caso `forcedAsset` aponta a imagem que acabou de ser analisada,
    * porque o contêiner não conhece os nomes dos arquivos carregados aqui.
    */
-  function ingestCocoDocument(data: CocoDocument, forcedAsset?: Asset, origin?: string): { imported: number; replaced: number } {
+  type CocoIngestResult = {
+    imported: number;
+    replaced: number;
+    pending?: { annotations: Annotation[]; labels: Label[]; dimensions: [string, { width: number; height: number }][] };
+  };
+
+  function ingestCocoDocument(
+    data: CocoDocument,
+    forcedAsset?: Asset,
+    origin?: string,
+    commit = true,
+  ): CocoIngestResult {
     if (!Array.isArray(data.annotations)) return { imported: 0, replaced: 0 };
     const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
     const images = new Map((data.images ?? []).filter((item) => typeof item.id === "number")
@@ -1290,6 +1318,15 @@ export default function Home() {
       }
     });
     if (!imported.length) return { imported: 0, replaced: 0 };
+    if (!commit) {
+      // Nada de estado ainda: as classes novas já vêm com id e cor definidos,
+      // para que o desenho da proposta use exatamente a cor que será salva.
+      return {
+        imported: imported.length,
+        replaced: 0,
+        pending: { annotations: imported, labels: nextLabels, dimensions: [...dimensionsByAsset] },
+      };
+    }
     setAssets((items) => items.map((item) => {
       const dimensions = dimensionsByAsset.get(item.id);
       return dimensions ? { ...item, ...dimensions } : item;
@@ -1566,6 +1603,36 @@ export default function Home() {
       setByomModels([]);
     }
   }
+  function saveByomPreview() {
+    if (!byomPreview) return;
+    const { origin, assetId, annotations: proposed, labels: proposedLabels, dimensions } = byomPreview;
+    const byId = new Map(dimensions);
+    setAssets((items) => items.map((item) => {
+      const size = byId.get(item.id);
+      return size ? { ...item, ...size } : item;
+    }));
+    labelsRef.current = proposedLabels;
+    setLabels(proposedLabels);
+    let replaced = 0;
+    setAnnotations((items) => {
+      // Reexecutar troca o resultado anterior do mesmo modelo nesta imagem, em
+      // vez de sobrepor máscaras idênticas.
+      const kept = items.filter((item) => !(item.origin === origin && item.asset === assetId));
+      replaced = items.length - kept.length;
+      return [...kept, ...proposed];
+    });
+    setSaved(false);
+    setByomPreview(null);
+    showToast(replaced
+      ? `${proposed.length} anotações salvas; ${replaced} da execução anterior substituídas.`
+      : `${proposed.length} anotações salvas.`);
+  }
+
+  function discardByomPreview() {
+    setByomPreview(null);
+    showToast("Proposta do modelo descartada.");
+  }
+
   function byomBaseUrl() {
     return samBaseUrl(samEndpoint || samEndpointDraft || "http://127.0.0.1:7860/predict");
   }
@@ -1638,15 +1705,22 @@ export default function Home() {
         return;
       }
       const body = await response.json() as { name?: string; coco?: Parameters<typeof ingestCocoDocument>[0] };
-      const { imported, replaced } = body.coco
-        ? ingestCocoDocument(body.coco, asset, `byom:${modelId}`)
-        : { imported: 0, replaced: 0 };
-      if (!imported) { showToast("O modelo não devolveu nenhuma anotação para esta imagem."); return; }
+      const result = body.coco
+        ? ingestCocoDocument(body.coco, asset, `byom:${modelId}`, false)
+        : { imported: 0, pending: undefined };
+      if (!result.imported || !result.pending) {
+        showToast("O modelo não devolveu nenhuma anotação para esta imagem.");
+        return;
+      }
       setByomModelId(modelId);
+      setByomPreview({
+        origin: `byom:${modelId}`,
+        assetId: asset.id,
+        modelName: body.name ?? modelId,
+        ...result.pending,
+      });
       setSamOpen(false);
-      showToast(replaced
-        ? `${imported} anotações de ${body.name ?? modelId}; ${replaced} da execução anterior substituídas.`
-        : `${imported} anotações de ${body.name ?? modelId}.`);
+      showToast(`${result.imported} anotações propostas por ${body.name ?? modelId}. Revise e salve.`);
     } catch {
       showToast("Não foi possível falar com o conector local.");
     } finally {
@@ -1789,7 +1863,7 @@ export default function Home() {
       </div>
       {/* Abrir, salvar, exportar e preferências vivem no menu Arquivo; aqui ficam apenas o
           estado da sessão, a conexão do SAM e o selo de execução local. */}
-      <div className="head-actions"><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${activeAiModels.length ? "connected" : ""}`} onClick={openSamSettings} title={activeAiModels.map((entry) => `${entry.family}: ${entry.title}`).join(" · ") || copy.aiModelNone}><Link2 size={14} />{activeAiModels.length ? `${copy.aiModel}: ${activeAiModels.map((entry) => `${entry.family} · ${entry.name}`).join(" + ")}` : copy.aiModelNone}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
+      <div className="head-actions"><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${activeAiModels.length ? "connected" : ""}`} onClick={openSamSettings} title={activeAiModels.map((entry) => `${entry.family}: ${entry.title}`).join(" · ") || copy.aiModelNone}><Link2 size={14} />{activeAiModels.length ? `${copy.aiModel}: ${activeAiModels.map((entry) => entry.name.startsWith(entry.family) ? entry.name : `${entry.family} · ${entry.name}`).join(" + ")}` : copy.aiModelNone}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
       </div>
       <nav className="menubar" aria-label={copy.fileMenu}>
         <div className="menu" ref={projectSwitcherRef}>
@@ -1876,6 +1950,7 @@ export default function Home() {
             {reshapeDraft.length > 1 && <g><polyline className="reshape-line" points={pointsToSvg(reshapeDraft)} />{reshapeDraft.length >= 4 && <><circle className="reshape-endpoint" cx={reshapeDraft[0]} cy={reshapeDraft[1]} r={markerRadius * 1.25} strokeWidth={markerRadius * .42} /><circle className="reshape-endpoint" cx={reshapeDraft.at(-2)} cy={reshapeDraft.at(-1)} r={markerRadius * 1.25} strokeWidth={markerRadius * .42} /></>}</g>}
             {splitStart && splitEnd && <line className="split-line" x1={splitStart.x} y1={splitStart.y} x2={splitEnd.x} y2={splitEnd.y} />}
             {snapGuide && <g className="snap-guide"><circle cx={snapGuide.x} cy={snapGuide.y} r={markerRadius * 2.2} strokeWidth={markerRadius * .3} /><line x1={snapGuide.x - markerRadius * 1.3} y1={snapGuide.y} x2={snapGuide.x + markerRadius * 1.3} y2={snapGuide.y} strokeWidth={markerRadius * .26} /><line x1={snapGuide.x} y1={snapGuide.y - markerRadius * 1.3} x2={snapGuide.x} y2={snapGuide.y + markerRadius * 1.3} strokeWidth={markerRadius * .26} /></g>}
+            {pendingByomPreview && pendingByomPreview.annotations.map((proposal) => { const color = pendingByomPreview.labels.find((item) => item.id === proposal.label)?.color ?? "#8a5326"; if (proposal.type === "polygon" && proposal.pts) return <polygon key={`byom-${proposal.id}`} className="byom-preview" points={pointsToSvg(proposal.pts)} fill={`${color}26`} stroke={color} />; if (proposal.type === "box") return <rect key={`byom-${proposal.id}`} className="byom-preview" x={proposal.x} y={proposal.y} width={proposal.w} height={proposal.h} fill={`${color}1c`} stroke={color} />; if (proposal.type === "point") return <circle key={`byom-${proposal.id}`} className="byom-preview-point" cx={proposal.x} cy={proposal.y} r={markerRadius * 1.4} fill={color} />; return null; })}
             {tool === "sam" && samPreviewPolygons.map((polygon, index) => <polygon key={`sam-preview-${index}`} className="sam-mask-preview" points={pointsToSvg(polygon)} fill={`${getLabel(activeLabel).color}52`} stroke={getLabel(activeLabel).color} strokeWidth={lineThickness} strokeDasharray="10 6" />)}
             {tool === "sam" && samBox && <rect className="sam-box-prompt" x={samBox.x} y={samBox.y} width={samBox.w} height={samBox.h} fill={`${getLabel(activeLabel).color}16`} stroke={getLabel(activeLabel).color} strokeWidth={lineThickness} strokeDasharray="9 6" />}
             {tool === "sam" && samPrompts.map((prompt, index) => <g key={index} className={`sam-prompt ${prompt.label ? "positive" : "negative"}`}><circle cx={prompt.x} cy={prompt.y} r="13" /><line x1={prompt.x - 6} y1={prompt.y} x2={prompt.x + 6} y2={prompt.y} />{prompt.label === 1 && <line x1={prompt.x} y1={prompt.y - 6} x2={prompt.x} y2={prompt.y + 6} />}</g>)}
@@ -1887,7 +1962,7 @@ export default function Home() {
           {tool === "transform" && <div className="tip">{copy.transformTip}</div>}
           {tool === "reshape" && <div className="tip">{reshapeDrawing ? (reshapeStartInside ? copy.reshapeAdd : copy.reshapeDelete) : copy.reshapeStart}</div>}
           {activeAnnotation?.type === "polygon" && tool === "select" && <div className="polygon-tip">{copy.middlePan} · {copy.polygonTipDetail}</div>}
-          {(tool === "sam" || activeByomModel) && <div className="sam-controls sam-controls-capability">
+          {(tool === "sam" || activeByomModel || pendingByomPreview) && <div className="sam-controls sam-controls-capability">
             {tool === "sam" && <div className="sam-mode-tabs" role="tablist" aria-label="Tipo de prompt SAM">
               <button className={samInteractionMode === "points" ? "active" : ""} onClick={() => chooseSamInteractionMode("points")}>Pontos</button>
               {selectedSamModel.capabilities.boxPrompts && <button className={samInteractionMode === "box" ? "active" : ""} onClick={() => chooseSamInteractionMode("box")}><Box size={13} />Caixa</button>}
@@ -1898,8 +1973,9 @@ export default function Home() {
               {samInteractionMode === "box" && <small>Arraste uma caixa ao redor do objeto.</small>}
               {samInteractionMode === "text" && <form onSubmit={(event) => { event.preventDefault(); runSamText(); }}><input aria-label="Conceito para segmentar" placeholder="Ex.: todas as pessoas" value={samText} onChange={(event) => { invalidateSamPrediction(); setSamText(event.target.value); }} /><button type="submit" disabled={!samText.trim() || samLoading}>Segmentar</button><label title="Limiar de confiança">Conf. {Math.round(samThreshold * 100)}%<input aria-label="Limiar de confiança" type="range" min="0.1" max="0.95" step="0.05" value={samThreshold} onChange={(event) => { invalidateSamPrediction(); setSamThreshold(Number(event.target.value)); }} /></label></form>}
             </div>}
+            {pendingByomPreview && <span className="byom-preview-count">{pendingByomPreview.annotations.length} propostas de {pendingByomPreview.modelName}</span>}
             {tool === "sam" && <span>{samLoading ? <><LoaderCircle className="spin" size={14} />{copy.samSegmenting}</> : samPredictions.length ? `${samPredictions.length} resultado(s) · ${samPreviewPolygons.length} contorno(s)` : samInteractionMode === "points" ? `${samPrompts.length} ${copy.samPoints}` : selectedSamModel.name}</span>}
-            <div className="sam-actions">{activeByomModel && <button className="sam-byom-run" disabled={!activeByomModel.ready || byomBusy || !asset} title={activeByomModel.ready ? `${activeByomModel.name} · ${activeByomModel.model_id}` : "O contêiner deste BYOM está parado."} onClick={() => void runByomModel(activeByomModel.model_id)}>{byomBusy ? <LoaderCircle className="spin" size={14} /> : <Boxes size={14} />}{byomBusy ? "Anotando…" : byomHasRun ? "Rodar de novo" : "Rodar BYOM"}</button>}{tool === "sam" && <><button disabled={!samPrompts.length && !samBox && !samText && !samPreviewPolygons.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={!samPreviewPolygons.length || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}{samPreviewPolygons.length > 1 ? ` (${samPreviewPolygons.length})` : ""}</button></>}<button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div>
+            <div className="sam-actions">{activeByomModel && <button className="sam-byom-run" disabled={!activeByomModel.ready || byomBusy || !asset} title={activeByomModel.ready ? `${activeByomModel.name} · ${activeByomModel.model_id}` : "O contêiner deste BYOM está parado."} onClick={() => void runByomModel(activeByomModel.model_id)}>{byomBusy ? <LoaderCircle className="spin" size={14} /> : <Boxes size={14} />}{byomBusy ? "Anotando…" : byomHasRun ? "Rodar de novo" : "Rodar BYOM"}</button>}{pendingByomPreview && <><button onClick={discardByomPreview}><ListRestart size={14} />Descartar</button><button className="accept" onClick={saveByomPreview}><Check size={14} />Salvar ({pendingByomPreview.annotations.length})</button></>}{tool === "sam" && <><button disabled={!samPrompts.length && !samBox && !samText && !samPreviewPolygons.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={!samPreviewPolygons.length || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}{samPreviewPolygons.length > 1 ? ` (${samPreviewPolygons.length})` : ""}</button></>}<button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div>
           </div>}
         </div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button className="primary" onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
         <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p><Sparkles size={14} />{annotationDrag ? `${copy.moving} (${annotationDrag.originals.length})` : selectionMarquee ? copy.selecting : transformDrag ? copy.transforming : reshapeDrawing ? copy.reshaping : selectedVertex ? fill(copy.statusVertexSelected, { status: snapping ? copy.snapStateOn : copy.snapStateOff }) : polygonDraft.length || lineDraft.length ? fill(copy.statusDraftPoints, { n: (polygonDraft.length + lineDraft.length) / 2 }) : multiSelected.length > 1 ? `${multiSelected.length} ${copy.selectedObjects}` : currentAnnotations.length ? `${currentAnnotations.length} ${copy.imageAnnotations}` : asset ? copy.ready : copy.emptyProjectTitle}</p><button><Keyboard size={15} /> {copy.shortcuts}</button></div>

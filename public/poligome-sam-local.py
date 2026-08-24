@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import base64
 import binascii
+import contextlib
 import hashlib
 import io
 import json
@@ -796,8 +797,22 @@ class Sam3Adapter:
         self._state: dict[str, Any] | None = None
         self._image_size: tuple[int, int] | None = None
 
+    def _autocast(self):
+        """Fixa o dtype das ativações do SAM 3.
+
+        O modelo produz ativações em bfloat16 internamente, mas não declara um
+        autocast próprio: o dtype acaba dependendo do estado ambiente da thread.
+        Como o conector constrói o modelo na thread do carregador e atende as
+        requisições em outra, a inferência quebrava com "mat1 and mat2 must have
+        the same dtype, but got BFloat16 and Float". Declarar o autocast aqui
+        torna o resultado igual em qualquer thread.
+        """
+        if self.device == "cuda":
+            return self._torch.autocast("cuda", dtype=self._torch.bfloat16)
+        return contextlib.nullcontext()
+
     def set_image(self, image: np.ndarray) -> None:
-        with self._torch.inference_mode():
+        with self._torch.inference_mode(), self._autocast():
             self._state = self._processor.set_image(Image.fromarray(image))
         self._image_size = (int(image.shape[1]), int(image.shape[0]))
 
@@ -854,7 +869,7 @@ class Sam3Adapter:
             raise ValueError(
                 "SAM 3 não combina texto e pontos nesta API; use texto com uma caixa exemplar."
             )
-        with self._torch.inference_mode():
+        with self._torch.inference_mode(), self._autocast():
             if text is not None:
                 return self._predict_concept(text, box, box_label, threshold)
 

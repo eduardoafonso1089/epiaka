@@ -49,7 +49,8 @@ normalize_model() {
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   case "$normalized" in
     sam2.1-hiera-tiny|sam2.1-hiera-small|sam2.1-hiera-base-plus|sam2.1-hiera-large|\
-    medsam2-latest|sam3-concepts)
+    medsam2-latest|medsam2-ct-lesion|medsam2-mri-liver-lesion|medsam2-us-heart|\
+    medsam2-2411|sam3-concepts)
       printf '%s\n' "$normalized"
       ;;
     sam3)
@@ -57,6 +58,15 @@ normalize_model() {
       ;;
     medsam2)
       printf '%s\n' "medsam2-latest"
+      ;;
+    medsam2-ct)
+      printf '%s\n' "medsam2-ct-lesion"
+      ;;
+    medsam2-mri)
+      printf '%s\n' "medsam2-mri-liver-lesion"
+      ;;
+    medsam2-us)
+      printf '%s\n' "medsam2-us-heart"
       ;;
     *)
       return 1
@@ -235,6 +245,30 @@ set_model_metadata() {
       FAMILY="sam2"
       CHECKPOINT_NAME="MedSAM2_latest.pt"
       CHECKPOINT_SIZE=156040129
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-ct-lesion)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_CTLesion.pt"
+      CHECKPOINT_SIZE=156041079
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-mri-liver-lesion)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_MRI_LiverLesion.pt"
+      CHECKPOINT_SIZE=156044532
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-us-heart)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_US_Heart.pt"
+      CHECKPOINT_SIZE=156041079
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-2411)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_2411.pt"
+      CHECKPOINT_SIZE=156039179
       MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
       ;;
     sam3-concepts)

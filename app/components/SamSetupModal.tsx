@@ -139,6 +139,12 @@ export default function SamSetupModal({
             {model.capabilities.videoSegmentation && <p>O modelo suporta vídeo, mas esta versão do editor integra apenas imagens. Timeline e tracking entrarão em uma etapa própria.</p>}
           </section>
 
+          <section className="sam-citation">
+            <h4>Referência</h4>
+            <p>{model.citation.authors} <b>{model.citation.title}</b>. {model.citation.venue}, {model.citation.year}.</p>
+            <a href={model.citation.url} target="_blank" rel="noreferrer"><ExternalLink size={12} />Ler o artigo</a>
+          </section>
+
           {model.futureCapabilities.map((future) => <section className="sam-future-note" key={future.name}>
             <Sparkles size={16} />
             <div><b>{future.name} · disponível upstream</b><p>{future.description}</p><small>Ainda não integrado nem instalável por este editor. Referência oficial: {future.benchmark.speedupAt128Objects} em {future.benchmark.hardware}; o ganho depende da quantidade de objetos.</small></div>

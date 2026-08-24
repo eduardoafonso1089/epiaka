@@ -6,7 +6,7 @@ POLIGOME_SAM_INSTALLER_API=2
 DEFAULT_SITE_URL="https://www.poligome.com"
 DEFAULT_ASSET_BASE_URL="https://raw.githubusercontent.com/eduardoafonso1089/epiaka/main/public"
 DEFAULT_CONNECTOR_URL="https://raw.githubusercontent.com/eduardoafonso1089/epiaka/4603525db08be5e86fb95ea58b43d606d731f99f/public/poligome-sam-local.py"
-DEFAULT_CONNECTOR_SHA256="8cb33322f738e4405f4b15f9e2815363dadcfb17f2e51587652aae5e160eb301"
+DEFAULT_CONNECTOR_SHA256="31c80c1541a7058b97ab7ab7b9972499d2e0d201468d67b79c572b7f450fbd76"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_URL="${POLIGOME_SITE_URL:-${DEFAULT_SITE_URL}}"
 SITE_URL="${SITE_URL%/}"
@@ -37,8 +37,12 @@ Modelos aceitos:
   sam2.1-hiera-small
   sam2.1-hiera-base-plus
   sam2.1-hiera-large
-  medsam2-latest         (alias aceito: medsam2)
-  sam3-concepts          (alias aceito: sam3)
+  medsam2-latest             (alias aceito: medsam2)
+  medsam2-ct-lesion          (alias aceito: medsam2-ct)
+  medsam2-mri-liver-lesion   (alias aceito: medsam2-mri)
+  medsam2-us-heart           (alias aceito: medsam2-us)
+  medsam2-2411
+  sam3-concepts              (alias aceito: sam3)
 
 Sem MODELO, o instalador abre um menu. SAM 3 exige Linux, GPU NVIDIA,
 Python 3.12+ e acesso aprovado ao checkpoint gated da Meta no Hugging Face.
@@ -61,7 +65,8 @@ normalize_model() {
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   case "$normalized" in
     sam2.1-hiera-tiny|sam2.1-hiera-small|sam2.1-hiera-base-plus|sam2.1-hiera-large|\
-    medsam2-latest|sam3-concepts)
+    medsam2-latest|medsam2-ct-lesion|medsam2-mri-liver-lesion|medsam2-us-heart|\
+    medsam2-2411|sam3-concepts)
       printf '%s\n' "$normalized"
       ;;
     sam3)
@@ -69,6 +74,15 @@ normalize_model() {
       ;;
     medsam2)
       printf '%s\n' "medsam2-latest"
+      ;;
+    medsam2-ct)
+      printf '%s\n' "medsam2-ct-lesion"
+      ;;
+    medsam2-mri)
+      printf '%s\n' "medsam2-mri-liver-lesion"
+      ;;
+    medsam2-us)
+      printf '%s\n' "medsam2-us-heart"
       ;;
     *)
       return 1
@@ -83,9 +97,13 @@ choose_model() {
   printf '  2) SAM 2.1 Hiera Small     (~184 MB; recomendado)\n' >&2
   printf '  3) SAM 2.1 Hiera Base+     (~324 MB; imagem/vídeo)\n' >&2
   printf '  4) SAM 2.1 Hiera Large     (~898 MB; imagem/vídeo)\n' >&2
-  printf '  5) MedSAM2                 (~156 MB; imagem médica)\n' >&2
-  printf '  6) SAM 3 Concepts          (~3,45 GB; Linux + NVIDIA)\n\n' >&2
-  printf 'Digite 1–6 ou o ID completo: ' >&2
+  printf '  5) MedSAM2                 (~156 MB; imagem médica geral)\n' >&2
+  printf '  6) MedSAM2 lesão em TC     (~156 MB; tomografia)\n' >&2
+  printf '  7) MedSAM2 lesão em RM     (~156 MB; fígado)\n' >&2
+  printf '  8) MedSAM2 ecocardiograma  (~156 MB; ultrassom)\n' >&2
+  printf '  9) MedSAM2 2411            (~156 MB; versão anterior)\n' >&2
+  printf ' 10) SAM 3 Concepts          (~3,45 GB; Linux + NVIDIA)\n\n' >&2
+  printf 'Digite 1–10 ou o ID completo: ' >&2
   IFS= read -r choice || fail "não foi possível ler a escolha. Informe o ID como primeiro argumento."
   case "$choice" in
     1) printf '%s\n' "sam2.1-hiera-tiny" ;;
@@ -93,7 +111,11 @@ choose_model() {
     3) printf '%s\n' "sam2.1-hiera-base-plus" ;;
     4) printf '%s\n' "sam2.1-hiera-large" ;;
     5) printf '%s\n' "medsam2-latest" ;;
-    6) printf '%s\n' "sam3-concepts" ;;
+    6) printf '%s\n' "medsam2-ct-lesion" ;;
+    7) printf '%s\n' "medsam2-mri-liver-lesion" ;;
+    8) printf '%s\n' "medsam2-us-heart" ;;
+    9) printf '%s\n' "medsam2-2411" ;;
+    10) printf '%s\n' "sam3-concepts" ;;
     *) normalize_model "$choice" || fail "modelo inválido: ${choice}" ;;
   esac
 }
@@ -386,6 +408,34 @@ set_model_metadata() {
       CHECKPOINT_NAME="MedSAM2_latest.pt"
       CHECKPOINT_URL="https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt"
       CHECKPOINT_SIZE=156040129
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-ct-lesion)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_CTLesion.pt"
+      CHECKPOINT_URL="https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_CTLesion.pt"
+      CHECKPOINT_SIZE=156041079
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-mri-liver-lesion)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_MRI_LiverLesion.pt"
+      CHECKPOINT_URL="https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_MRI_LiverLesion.pt"
+      CHECKPOINT_SIZE=156044532
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-us-heart)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_US_Heart.pt"
+      CHECKPOINT_URL="https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_US_Heart.pt"
+      CHECKPOINT_SIZE=156041079
+      MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
+      ;;
+    medsam2-2411)
+      FAMILY="sam2"
+      CHECKPOINT_NAME="MedSAM2_2411.pt"
+      CHECKPOINT_URL="https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_2411.pt"
+      CHECKPOINT_SIZE=156039179
       MODEL_CONFIG="configs/sam2.1/sam2.1_hiera_t.yaml"
       ;;
     sam3-concepts)

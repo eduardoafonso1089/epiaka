@@ -175,6 +175,40 @@ MODEL_SPECS = {
         COMMON_CAPABILITIES,
         "configs/sam2.1/sam2.1_hiera_t.yaml",
     ),
+    # Os ajustes finos por modalidade partem do mesmo SAM 2.1 Hiera Tiny, então
+    # mudam apenas o arquivo de pesos e reaproveitam o config oficial.
+    "medsam2-ct-lesion": ModelSpec(
+        "medsam2-ct-lesion",
+        "sam2",
+        "hiera_tiny",
+        "MedSAM2_CTLesion.pt",
+        COMMON_CAPABILITIES,
+        "configs/sam2.1/sam2.1_hiera_t.yaml",
+    ),
+    "medsam2-mri-liver-lesion": ModelSpec(
+        "medsam2-mri-liver-lesion",
+        "sam2",
+        "hiera_tiny",
+        "MedSAM2_MRI_LiverLesion.pt",
+        COMMON_CAPABILITIES,
+        "configs/sam2.1/sam2.1_hiera_t.yaml",
+    ),
+    "medsam2-us-heart": ModelSpec(
+        "medsam2-us-heart",
+        "sam2",
+        "hiera_tiny",
+        "MedSAM2_US_Heart.pt",
+        COMMON_CAPABILITIES,
+        "configs/sam2.1/sam2.1_hiera_t.yaml",
+    ),
+    "medsam2-2411": ModelSpec(
+        "medsam2-2411",
+        "sam2",
+        "hiera_tiny",
+        "MedSAM2_2411.pt",
+        COMMON_CAPABILITIES,
+        "configs/sam2.1/sam2.1_hiera_t.yaml",
+    ),
     "sam3-concepts": ModelSpec(
         "sam3-concepts",
         "sam3",
@@ -183,7 +217,13 @@ MODEL_SPECS = {
         (*COMMON_CAPABILITIES, "text", "box_exemplar"),
     ),
 }
-MODEL_ALIASES = {"sam3": "sam3-concepts", "medsam2": "medsam2-latest"}
+MODEL_ALIASES = {
+    "sam3": "sam3-concepts",
+    "medsam2": "medsam2-latest",
+    "medsam2-ct": "medsam2-ct-lesion",
+    "medsam2-mri": "medsam2-mri-liver-lesion",
+    "medsam2-us": "medsam2-us-heart",
+}
 
 
 class PointPrompt(BaseModel):

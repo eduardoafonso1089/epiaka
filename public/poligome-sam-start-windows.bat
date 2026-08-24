@@ -115,6 +115,34 @@ if /I "!MODEL_ID!"=="medsam2" (
   set "MODEL_ID=medsam2-latest"
   exit /b 0
 )
+if /I "!MODEL_ID!"=="medsam2-ct-lesion" (
+  set "MODEL_ID=medsam2-ct-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-ct" (
+  set "MODEL_ID=medsam2-ct-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-mri-liver-lesion" (
+  set "MODEL_ID=medsam2-mri-liver-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-mri" (
+  set "MODEL_ID=medsam2-mri-liver-lesion"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-us-heart" (
+  set "MODEL_ID=medsam2-us-heart"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-us" (
+  set "MODEL_ID=medsam2-us-heart"
+  exit /b 0
+)
+if /I "!MODEL_ID!"=="medsam2-2411" (
+  set "MODEL_ID=medsam2-2411"
+  exit /b 0
+)
 if /I "!MODEL_ID!"=="sam3-concepts" (
   set "MODEL_ID=sam3-concepts"
   exit /b 0
@@ -128,6 +156,10 @@ if /I "!MODEL_ID!"=="sam2.1-hiera-small" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-base-plus" exit /b 0
 if /I "!MODEL_ID!"=="sam2.1-hiera-large" exit /b 0
 if /I "!MODEL_ID!"=="medsam2-latest" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-ct-lesion" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-mri-liver-lesion" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-us-heart" exit /b 0
+if /I "!MODEL_ID!"=="medsam2-2411" exit /b 0
 if /I "!MODEL_ID!"=="sam3-concepts" exit /b 0
 exit /b 1
 

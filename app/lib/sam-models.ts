@@ -87,6 +87,16 @@ export type SamOfficialBenchmark = {
   sourceUrl: string;
 };
 
+// Todo modelo do catálogo vem de um artigo publicado, então a referência é
+// obrigatória e fica visível na tela, não escondida atrás de um link solto.
+export type SamCitation = {
+  authors: string;
+  title: string;
+  venue: string;
+  year: number;
+  url: string;
+};
+
 export type SamFutureCapability = {
   name: string;
   version: string;
@@ -139,6 +149,7 @@ export type SamModelDefinition = {
   capabilityNotes: readonly string[];
   requirements: SamRequirements;
   benchmark: SamOfficialBenchmark;
+  citation: SamCitation;
   platformSupport: {
     linux: SamPlatformSupport;
     windows: SamPlatformSupport;
@@ -177,21 +188,57 @@ const MEDSAM2_WEIGHTS_LICENSE = {
     "O código do MedSAM2 é Apache 2.0, mas o card oficial dos pesos declara que eles podem ser usados apenas para pesquisa e educação. Uso comercial não está autorizado; valide juridicamente antes de habilitar este modelo em produção.",
 } as const;
 
-const MEDSAM2_BENCHMARK = {
-  kind: "domain-not-comparable",
-  hardware: "não publicado em tabela equivalente",
-  software: null,
-  fps: null,
-  latencyMs: null,
-  saVJAndF: null,
-  moseJAndF: null,
-  lvosV2JAndF: null,
-  notes: [
-    "Os autores publicam DSC por modalidade, não FPS de vídeo; não há tabela comparável à do SAM 2.1.",
-    "Em imagem natural o desempenho cai, porque os pesos foram especializados em imagem médica.",
-  ],
-  sourceUrl: "https://github.com/bowang-lab/MedSAM2",
-} as const satisfies SamOfficialBenchmark;
+function medsam2Benchmark(...extraNotes: readonly string[]): SamOfficialBenchmark {
+  return {
+    kind: "domain-not-comparable",
+    hardware: "não publicado em tabela equivalente",
+    software: null,
+    fps: null,
+    latencyMs: null,
+    saVJAndF: null,
+    moseJAndF: null,
+    lvosV2JAndF: null,
+    notes: [
+      "Os autores publicam DSC por modalidade, não FPS de vídeo; não há tabela comparável à do SAM 2.1.",
+      "Em imagem natural o desempenho cai, porque os pesos foram especializados em imagem médica.",
+      ...extraNotes,
+    ],
+    sourceUrl: "https://github.com/bowang-lab/MedSAM2",
+  };
+}
+
+const MEDSAM2_CITATION = {
+  authors: "Ma, J., Yang, Z., Kim, S., Chen, B., Baharoon, M., Fallahpour, A., Asakereh, R., Lyu, H., Wang, B.",
+  title: "MedSAM2: Segment Anything in 3D Medical Images and Videos",
+  venue: "arXiv:2504.03600",
+  year: 2025,
+  url: "https://arxiv.org/abs/2504.03600",
+} as const satisfies SamCitation;
+
+const MEDSAM2_SOURCES = {
+  repository: "https://github.com/bowang-lab/MedSAM2",
+  documentation: "https://github.com/bowang-lab/MedSAM2#readme",
+  paper: "https://arxiv.org/abs/2504.03600",
+  checkpoint: "https://huggingface.co/wanglab/MedSAM2",
+} as const satisfies SamModelDefinition["officialSources"];
+
+// Todos os pesos do MedSAM2 partem do mesmo SAM 2.1 Hiera Tiny, então mudam de
+// nome e de tamanho exato mas não de arquitetura: os quatro ajustes finos
+// carregam com o sam2.1_hiera_t.yaml oficial e reaproveitam a venv já criada.
+function medsam2Checkpoint(fileName: string, approximateSizeBytes: number, notes: string) {
+  return {
+    fileName,
+    approximateSizeBytes,
+    approximateSizeLabel: "~156 MB",
+    format: "PyTorch .pt",
+    downloadUrl: `https://huggingface.co/wanglab/MedSAM2/resolve/main/${fileName}`,
+    gated: false,
+    notes,
+  } as const satisfies SamModelDefinition["checkpoint"];
+}
+
+const MEDSAM2_SPECIALIZED_CHECKPOINT_NOTE =
+  "Download público no Hugging Face, sem aprovação prévia. Verificamos que o checkpoint carrega com a configuração oficial sam2.1_hiera_t.yaml, a mesma do MedSAM2 generalista.";
 
 const MEDSAM2_PLATFORM_SUPPORT = {
   linux: { level: "recommended", notes: "Usa o mesmo runtime do SAM 2.1; nenhum ambiente adicional é criado." },
@@ -429,6 +476,22 @@ export const SAM_3_1_VIDEO_CAPABILITY_NOTE = {
   sourceUrl: "https://github.com/facebookresearch/sam3/blob/main/RELEASE_SAM3p1.md",
 } as const satisfies SamFutureCapability;
 
+const SAM2_CITATION = {
+  authors: "Ravi, N., Gabeur, V., Hu, Y.-T., Hu, R., Ryali, C., et al.",
+  title: "SAM 2: Segment Anything in Images and Videos",
+  venue: "arXiv:2408.00714",
+  year: 2024,
+  url: "https://arxiv.org/abs/2408.00714",
+} as const satisfies SamCitation;
+
+const SAM3_CITATION = {
+  authors: "Carion, N., Gustafson, L., Hu, Y.-T., Debnath, S., Hu, R., et al.",
+  title: "SAM 3: Segment Anything with Concepts",
+  venue: "Meta AI Research",
+  year: 2025,
+  url: "https://ai.meta.com/research/publications/sam-3-segment-anything-with-concepts/",
+} as const satisfies SamCitation;
+
 const SAM2_SOURCES = {
   repository: "https://github.com/facebookresearch/sam2",
   documentation: "https://github.com/facebookresearch/sam2#readme",
@@ -472,6 +535,7 @@ export const SAM_MODELS = [
     ],
     requirements: SAM2_REQUIREMENTS,
     benchmark: sam2Benchmark(91.2, 76.5, 71.8, 77.3),
+    citation: SAM2_CITATION,
     platformSupport: SAM2_PLATFORM_SUPPORT,
     futureCapabilities: [],
     officialSources: SAM2_SOURCES,
@@ -504,6 +568,7 @@ export const SAM_MODELS = [
     ],
     requirements: SAM2_REQUIREMENTS,
     benchmark: sam2Benchmark(84.8, 76.6, 73.5, 78.3),
+    citation: SAM2_CITATION,
     platformSupport: SAM2_PLATFORM_SUPPORT,
     futureCapabilities: [],
     officialSources: SAM2_SOURCES,
@@ -536,6 +601,7 @@ export const SAM_MODELS = [
     ],
     requirements: SAM2_REQUIREMENTS,
     benchmark: sam2Benchmark(64.1, 78.2, 73.7, 78.2),
+    citation: SAM2_CITATION,
     platformSupport: SAM2_PLATFORM_SUPPORT,
     futureCapabilities: [],
     officialSources: SAM2_SOURCES,
@@ -568,6 +634,7 @@ export const SAM_MODELS = [
     ],
     requirements: SAM2_REQUIREMENTS,
     benchmark: sam2Benchmark(39.5, 79.5, 74.6, 80.6),
+    citation: SAM2_CITATION,
     platformSupport: SAM2_PLATFORM_SUPPORT,
     futureCapabilities: [],
     officialSources: SAM2_SOURCES,
@@ -581,16 +648,11 @@ export const SAM_MODELS = [
     experimental: true,
     installable: true,
     parameters: { count: 38_900_000, label: "38.9M" },
-    checkpoint: {
-      fileName: "MedSAM2_latest.pt",
-      approximateSizeBytes: 156_040_129,
-      approximateSizeLabel: "~156 MB",
-      format: "PyTorch .pt",
-      downloadUrl: "https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt",
-      gated: false,
-      notes:
-        "Download público no Hugging Face, sem aprovação prévia, diferente do SAM 3. Verificamos que o checkpoint carrega com a configuração oficial sam2.1_hiera_t.yaml.",
-    },
+    checkpoint: medsam2Checkpoint(
+      "MedSAM2_latest.pt",
+      156_040_129,
+      "Download público no Hugging Face, sem aprovação prévia, diferente do SAM 3. Verificamos que o checkpoint carrega com a configuração oficial sam2.1_hiera_t.yaml.",
+    ),
     license: MEDSAM2_WEIGHTS_LICENSE,
     description:
       "Ajuste fino do SAM 2.1 Hiera Tiny para imagem médica, treinado pelo grupo de Bo Wang sobre TC, RM e ultrassom. Reaproveita o runtime do SAM 2.1 já instalado, sem criar ambiente novo.",
@@ -599,17 +661,119 @@ export const SAM_MODELS = [
       "Aceita os mesmos prompts do SAM 2.1: pontos positivos e negativos, além de caixas.",
       "Especializado em TC, RM e ultrassom; em fotografia comum o resultado é pior que o do SAM 2.1 padrão.",
       "Não cobre radiografia odontológica, que não faz parte do treino publicado.",
+      "É o generalista médico do grupo: prefira-o quando a modalidade não coincidir com um dos ajustes finos por modalidade.",
     ],
     requirements: SAM2_REQUIREMENTS,
-    benchmark: MEDSAM2_BENCHMARK,
+    benchmark: medsam2Benchmark(),
+    citation: MEDSAM2_CITATION,
     platformSupport: MEDSAM2_PLATFORM_SUPPORT,
     futureCapabilities: [],
-    officialSources: {
-      repository: "https://github.com/bowang-lab/MedSAM2",
-      documentation: "https://github.com/bowang-lab/MedSAM2#readme",
-      paper: "https://arxiv.org/abs/2504.03600",
-      checkpoint: "https://huggingface.co/wanglab/MedSAM2",
-    },
+    officialSources: MEDSAM2_SOURCES,
+  },
+  {
+    id: "medsam2-ct-lesion",
+    family: "medsam2",
+    version: "2.1-med",
+    name: "MedSAM2 · lesão em TC",
+    recommended: false,
+    experimental: true,
+    installable: true,
+    parameters: { count: 38_900_000, label: "38.9M" },
+    checkpoint: medsam2Checkpoint("MedSAM2_CTLesion.pt", 156_041_079, MEDSAM2_SPECIALIZED_CHECKPOINT_NOTE),
+    license: MEDSAM2_WEIGHTS_LICENSE,
+    description:
+      "Ajuste fino do MedSAM2 para segmentação de lesões em tomografia computadorizada. Mesmo runtime e mesmo tamanho do MedSAM2 generalista, com os pesos especializados em TC.",
+    capabilities: SAM2_CAPABILITIES,
+    capabilityNotes: [
+      "Aceita os mesmos prompts do SAM 2.1: pontos positivos e negativos, além de caixas.",
+      "Treinado para lesão em TC; fora dessa modalidade o generalista MedSAM2 tende a ser a escolha melhor.",
+      "Os autores não publicam avaliação em radiografia odontológica, então o uso em CBCT dental é uma extrapolação a validar caso a caso.",
+    ],
+    requirements: SAM2_REQUIREMENTS,
+    benchmark: medsam2Benchmark("Os autores descrevem este peso como ajuste fino para lesão em TC, sem tabela própria de latência."),
+    citation: MEDSAM2_CITATION,
+    platformSupport: MEDSAM2_PLATFORM_SUPPORT,
+    futureCapabilities: [],
+    officialSources: MEDSAM2_SOURCES,
+  },
+  {
+    id: "medsam2-mri-liver-lesion",
+    family: "medsam2",
+    version: "2.1-med",
+    name: "MedSAM2 · lesão hepática em RM",
+    recommended: false,
+    experimental: true,
+    installable: true,
+    parameters: { count: 38_900_000, label: "38.9M" },
+    checkpoint: medsam2Checkpoint("MedSAM2_MRI_LiverLesion.pt", 156_044_532, MEDSAM2_SPECIALIZED_CHECKPOINT_NOTE),
+    license: MEDSAM2_WEIGHTS_LICENSE,
+    description:
+      "Ajuste fino do MedSAM2 para lesão hepática em ressonância magnética. É o mais estreito dos pesos publicados: um órgão e uma modalidade.",
+    capabilities: SAM2_CAPABILITIES,
+    capabilityNotes: [
+      "Aceita os mesmos prompts do SAM 2.1: pontos positivos e negativos, além de caixas.",
+      "Escopo publicado é lesão hepática em RM; para outros órgãos na mesma modalidade, comece pelo generalista MedSAM2.",
+    ],
+    requirements: SAM2_REQUIREMENTS,
+    benchmark: medsam2Benchmark("Os autores descrevem este peso como ajuste fino para lesão hepática em RM, sem tabela própria de latência."),
+    citation: MEDSAM2_CITATION,
+    platformSupport: MEDSAM2_PLATFORM_SUPPORT,
+    futureCapabilities: [],
+    officialSources: MEDSAM2_SOURCES,
+  },
+  {
+    id: "medsam2-us-heart",
+    family: "medsam2",
+    version: "2.1-med",
+    name: "MedSAM2 · ecocardiograma",
+    recommended: false,
+    experimental: true,
+    installable: true,
+    parameters: { count: 38_900_000, label: "38.9M" },
+    checkpoint: medsam2Checkpoint("MedSAM2_US_Heart.pt", 156_041_079, MEDSAM2_SPECIALIZED_CHECKPOINT_NOTE),
+    license: MEDSAM2_WEIGHTS_LICENSE,
+    description:
+      "Ajuste fino do MedSAM2 para ultrassom cardíaco. O treino do upstream é em vídeo de ecocardiograma; este editor usa os pesos quadro a quadro, porque ainda integra apenas imagem.",
+    capabilities: SAM2_CAPABILITIES,
+    capabilityNotes: [
+      "Aceita os mesmos prompts do SAM 2.1: pontos positivos e negativos, além de caixas.",
+      "O ajuste fino oficial é para vídeo de ultrassom cardíaco; sem a timeline integrada, cada quadro é anotado isoladamente e o ganho temporal do modelo fica sem uso.",
+    ],
+    requirements: SAM2_REQUIREMENTS,
+    benchmark: medsam2Benchmark("Os autores descrevem este peso como ajuste fino para vídeo de ultrassom cardíaco, sem tabela própria de latência."),
+    citation: MEDSAM2_CITATION,
+    platformSupport: MEDSAM2_PLATFORM_SUPPORT,
+    futureCapabilities: [],
+    officialSources: MEDSAM2_SOURCES,
+  },
+  {
+    id: "medsam2-2411",
+    family: "medsam2",
+    version: "2.1-med",
+    name: "MedSAM2 2411 (versão anterior)",
+    recommended: false,
+    experimental: true,
+    installable: true,
+    parameters: { count: 38_900_000, label: "38.9M" },
+    checkpoint: medsam2Checkpoint(
+      "MedSAM2_2411.pt",
+      156_039_179,
+      "Download público no Hugging Face. Peso base de novembro de 2024, mantido no repositório oficial para reprodutibilidade; carrega com o mesmo sam2.1_hiera_t.yaml.",
+    ),
+    license: MEDSAM2_WEIGHTS_LICENSE,
+    description:
+      "Peso base do MedSAM2 de novembro de 2024, anterior ao generalista atual. Existe para reproduzir resultados publicados sobre ele; para uso novo, prefira o MedSAM2 (imagem médica).",
+    capabilities: SAM2_CAPABILITIES,
+    capabilityNotes: [
+      "Aceita os mesmos prompts do SAM 2.1: pontos positivos e negativos, além de caixas.",
+      "Os próprios autores marcam o generalista atual como recomendado e mantêm este apenas como versão anterior.",
+    ],
+    requirements: SAM2_REQUIREMENTS,
+    benchmark: medsam2Benchmark("Peso anterior ao generalista atual; os autores não publicam comparação direta entre os dois."),
+    citation: MEDSAM2_CITATION,
+    platformSupport: MEDSAM2_PLATFORM_SUPPORT,
+    futureCapabilities: [],
+    officialSources: MEDSAM2_SOURCES,
   },
   {
     id: "sam3-concepts",
@@ -640,6 +804,7 @@ export const SAM_MODELS = [
     ],
     requirements: SAM3_REQUIREMENTS,
     benchmark: SAM3_IMAGE_BENCHMARK,
+    citation: SAM3_CITATION,
     platformSupport: SAM3_PLATFORM_SUPPORT,
     futureCapabilities: [SAM_3_1_VIDEO_CAPABILITY_NOTE],
     officialSources: SAM3_SOURCES,

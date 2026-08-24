@@ -1220,8 +1220,8 @@ export default function Home() {
    * no segundo caso `forcedAsset` aponta a imagem que acabou de ser analisada,
    * porque o contêiner não conhece os nomes dos arquivos carregados aqui.
    */
-  function ingestCocoDocument(data: CocoDocument, forcedAsset?: Asset): number {
-    if (!Array.isArray(data.annotations)) return 0;
+  function ingestCocoDocument(data: CocoDocument, forcedAsset?: Asset, origin?: string): { imported: number; replaced: number } {
+    if (!Array.isArray(data.annotations)) return { imported: 0, replaced: 0 };
     const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
     const images = new Map((data.images ?? []).filter((item) => typeof item.id === "number")
       .map((item) => [item.id!, {
@@ -1268,13 +1268,13 @@ export default function Home() {
         : [];
       if (polygons.length) {
         polygons.forEach((polygon) => imported.push({
-          id: makeId("coco"), asset: targetAsset.id, label, type: "polygon",
+          id: makeId("coco"), asset: targetAsset.id, label, type: "polygon", origin,
           pts: polygon.map((value, index) => value * (index % 2 ? sy : sx)),
         }));
       } else if (Array.isArray(item.bbox) && item.bbox.length >= 4) {
         const [x, y, width, height] = item.bbox.map(Number);
         if ([x, y, width, height].every(Number.isFinite)) {
-          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "box", x: x * sx, y: y * sy, w: width * sx, h: height * sy });
+          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "box", origin, x: x * sx, y: y * sy, w: width * sx, h: height * sy });
         }
       }
       // keypoints vem no formato do COCO: trios x, y e visibilidade. Só entram os
@@ -1285,18 +1285,29 @@ export default function Home() {
           const y = Number(item.keypoints[index + 1]);
           const visibility = Number(item.keypoints[index + 2]);
           if (!Number.isFinite(x) || !Number.isFinite(y) || visibility === 0) continue;
-          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "point", x: x * sx, y: y * sy });
+          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "point", origin, x: x * sx, y: y * sy });
         }
       }
     });
-    if (!imported.length) return 0;
+    if (!imported.length) return { imported: 0, replaced: 0 };
     setAssets((items) => items.map((item) => {
       const dimensions = dimensionsByAsset.get(item.id);
       return dimensions ? { ...item, ...dimensions } : item;
     }));
     labelsRef.current = nextLabels;
-    setLabels(nextLabels); setAnnotations((items) => [...items, ...imported]); setSaved(false);
-    return imported.length;
+    setLabels(nextLabels);
+    let replaced = 0;
+    setAnnotations((items) => {
+      // Reexecutar um modelo troca o resultado anterior dele nesta imagem, em
+      // vez de sobrepor máscaras idênticas. Anotações feitas à mão e as de
+      // outros modelos não têm origem igual, então ficam intactas.
+      if (!origin || !forcedAsset) return [...items, ...imported];
+      const kept = items.filter((item) => !(item.origin === origin && item.asset === forcedAsset.id));
+      replaced = items.length - kept.length;
+      return [...kept, ...imported];
+    });
+    setSaved(false);
+    return { imported: imported.length, replaced };
   }
 
   async function importCocoAnnotations(file: File | File[]) {
@@ -1311,9 +1322,9 @@ export default function Home() {
         return;
       }
       if (!Array.isArray(data.images) || !Array.isArray(data.annotations)) throw new Error();
-      const count = ingestCocoDocument(data);
-      if (!count) { showToast("Nenhuma anotação COCO corresponde às imagens carregadas."); return; }
-      showToast(`${count} anotações COCO carregadas.`);
+      const { imported } = ingestCocoDocument(data);
+      if (!imported) { showToast("Nenhuma anotação COCO corresponde às imagens carregadas."); return; }
+      showToast(`${imported} anotações COCO carregadas.`);
     } catch { showToast("Não foi possível ler o arquivo COCO JSON."); }
   }
 
@@ -1627,11 +1638,15 @@ export default function Home() {
         return;
       }
       const body = await response.json() as { name?: string; coco?: Parameters<typeof ingestCocoDocument>[0] };
-      const count = body.coco ? ingestCocoDocument(body.coco, asset) : 0;
-      if (!count) { showToast("O modelo não devolveu nenhuma anotação para esta imagem."); return; }
+      const { imported, replaced } = body.coco
+        ? ingestCocoDocument(body.coco, asset, `byom:${modelId}`)
+        : { imported: 0, replaced: 0 };
+      if (!imported) { showToast("O modelo não devolveu nenhuma anotação para esta imagem."); return; }
       setByomModelId(modelId);
       setSamOpen(false);
-      showToast(`${count} anotações de ${body.name ?? modelId}.`);
+      showToast(replaced
+        ? `${imported} anotações de ${body.name ?? modelId}; ${replaced} da execução anterior substituídas.`
+        : `${imported} anotações de ${body.name ?? modelId}.`);
     } catch {
       showToast("Não foi possível falar com o conector local.");
     } finally {

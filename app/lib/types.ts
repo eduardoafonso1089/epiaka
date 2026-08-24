@@ -36,6 +36,10 @@ export type Annotation = {
   label: string;
   // "line" é uma polilinha aberta: usa `pts` como o polígono, mas sem fechar o contorno.
   type: "box" | "polygon" | "line" | "point";
+  // Quem produziu a anotação, quando não foi a mão do usuário. Hoje só o BYOM
+  // preenche, no formato `byom:<model-id>`, para que reexecutar um modelo
+  // substitua o resultado anterior em vez de empilhar máscaras iguais.
+  origin?: string;
   x?: number;
   y?: number;
   w?: number;

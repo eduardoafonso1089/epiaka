@@ -18,11 +18,14 @@ import base64
 import binascii
 import hashlib
 import io
+import json
 import math
 import os
 import re
 import sys
 import threading
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -224,6 +227,370 @@ MODEL_ALIASES = {
     "medsam2-mri": "medsam2-mri-liver-lesion",
     "medsam2-us": "medsam2-us-heart",
 }
+
+# ---------------------------------------------------------------------------
+# BYOM: modelos em contêiner trazidos pelo usuário
+#
+# O propósito é diferente do SAM. Aqui não há prompt: o contêiner recebe a
+# imagem inteira e devolve um documento COCO já rotulado, com máscaras, caixas
+# ou pontos, que o editor renderiza como anotações prontas para revisão.
+#
+# O empacotamento imita o do SageMaker para reaproveitar contêineres existentes:
+# a imagem sobe com `serve`, escuta na porta 8080, responde GET /ping quando está
+# pronta e recebe a inferência em POST /invocations. Os pesos ficam em
+# /opt/ml/model.
+#
+# Cada modelo registrado vira um arquivo JSON em ~/.poligome-sam/byom/<id>.json,
+# então o conjunto cresce sem recompilar o conector. O conector nunca carrega o
+# modelo: ele apenas encaminha para o contêiner e valida a resposta, de modo que
+# BYOM não participa da troca de modelos do SAM.
+# ---------------------------------------------------------------------------
+
+BYOM_FAMILY = "byom"
+BYOM_ID_PATTERN = re.compile(r"^byom-[a-z0-9][a-z0-9._-]{0,62}$")
+BYOM_CONTAINER_PORT = 8080
+BYOM_PING_TIMEOUT_SECONDS = _bounded_env_float(
+    "POLIGOME_BYOM_PING_TIMEOUT",
+    5.0,
+    minimum=0.5,
+    maximum=60.0,
+)
+BYOM_INVOCATION_TIMEOUT_SECONDS = _bounded_env_float(
+    "POLIGOME_BYOM_INVOCATION_TIMEOUT",
+    300.0,
+    minimum=1.0,
+    maximum=3600.0,
+)
+BYOM_MAX_ANNOTATIONS = _bounded_env_int(
+    "POLIGOME_BYOM_MAX_ANNOTATIONS",
+    5_000,
+    minimum=1,
+    maximum=100_000,
+)
+BYOM_MAX_RESPONSE_BYTES = 128 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class ByomRegistration:
+    """Um modelo em contêiner declarado pelo usuário."""
+
+    model_id: str
+    name: str
+    endpoint: str
+    image: str
+    # Comentário livre de quem registrou: para que serve, em que dataset foi
+    # treinado, o que revisar com atenção.
+    notes: str
+    # O que a última execução devolveu, guardado para explicar o modelo sem
+    # precisar rodá-lo de novo.
+    last_run: dict[str, Any] | None
+    env: dict[str, str]
+
+
+def _byom_registry_dir() -> Path:
+    return _app_dir / "byom"
+
+
+def _parse_byom_registration(path: Path) -> ByomRegistration:
+    """Lê um registro do disco, recusando o que não dá para usar."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"registro ilegível: {error}") from error
+    if not isinstance(raw, dict):
+        raise ValueError("o registro precisa ser um objeto JSON")
+
+    model_id = str(raw.get("model_id") or path.stem).strip().lower()
+    if not BYOM_ID_PATTERN.fullmatch(model_id):
+        raise ValueError(
+            f"model_id inválido: {model_id!r}. Use o prefixo byom- seguido de letras, "
+            "números, ponto, hífen ou sublinhado."
+        )
+    if model_id in MODEL_SPECS or model_id in MODEL_ALIASES:
+        raise ValueError(f"model_id {model_id!r} colide com um modelo oficial")
+
+    endpoint = str(raw.get("endpoint") or "").strip().rstrip("/")
+    if not endpoint:
+        endpoint = f"http://127.0.0.1:{BYOM_CONTAINER_PORT}"
+    # O conector só fala com contêineres locais: um endpoint remoto tiraria as
+    # imagens da máquina do usuário, que é justamente o que o Poligome promete
+    # não fazer.
+    if not re.fullmatch(r"http://(127\.0\.0\.1|localhost)(:\d{1,5})?", endpoint):
+        raise ValueError(
+            f"endpoint inválido: {endpoint!r}. Só é aceito http://127.0.0.1:<porta> "
+            "ou http://localhost:<porta>, porque a inferência precisa ficar local."
+        )
+
+    raw_env = raw.get("env")
+    env = (
+        {str(key): str(value) for key, value in raw_env.items()}
+        if isinstance(raw_env, dict)
+        else {}
+    )
+    last_run = raw.get("last_run") if isinstance(raw.get("last_run"), dict) else None
+    return ByomRegistration(
+        model_id=model_id,
+        name=str(raw.get("name") or model_id).strip()[:120],
+        endpoint=endpoint,
+        image=str(raw.get("image") or "").strip()[:200],
+        notes=str(raw.get("notes") or "").strip()[:2000],
+        last_run=last_run,
+        env=env,
+    )
+
+
+def byom_registrations() -> dict[str, ByomRegistration]:
+    """Registros válidos, em ordem estável. Um arquivo quebrado não derruba os outros."""
+    registry = _byom_registry_dir()
+    found: dict[str, ByomRegistration] = {}
+    try:
+        paths = sorted(registry.glob("*.json"))
+    except OSError:
+        return found
+    for path in paths:
+        try:
+            registration = _parse_byom_registration(path)
+        except ValueError as error:
+            # Diagnóstico vai para stderr: stdout do conector é lido por
+            # scripts que esperam apenas as mensagens de estado.
+            print(f"Aviso: ignorando {path.name}: {error}", file=sys.stderr, flush=True)
+            continue
+        found[registration.model_id] = registration
+    return found
+
+
+def _byom_container_ready(registration: ByomRegistration) -> tuple[bool, str | None]:
+    request = urllib.request.Request(f"{registration.endpoint}/ping", method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=BYOM_PING_TIMEOUT_SECONDS) as response:
+            if response.status != 200:
+                return False, f"o contêiner respondeu HTTP {response.status} em /ping"
+    except urllib.error.HTTPError as error:
+        return False, f"o contêiner respondeu HTTP {error.code} em /ping"
+    except (urllib.error.URLError, OSError, TimeoutError) as error:
+        return False, f"o contêiner não respondeu em {registration.endpoint}: {error}"
+    return True, None
+
+
+def _byom_metadata(registration: ByomRegistration) -> dict[str, Any] | None:
+    """Lê GET /metadata, que é opcional no contrato.
+
+    Um contêiner que o implementa consegue explicar suas classes sem ser
+    executado; um que não implementa simplesmente não descreve nada, e a
+    interface cai no resumo da última execução.
+    """
+    request = urllib.request.Request(f"{registration.endpoint}/metadata", method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=BYOM_PING_TIMEOUT_SECONDS) as response:
+            if response.status != 200:
+                return None
+            raw = response.read(1024 * 1024)
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError, ValueError):
+        return None
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(document, dict):
+        return None
+
+    categories = document.get("categories")
+    named = []
+    if isinstance(categories, list):
+        for entry in categories[:200]:
+            if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+                named.append(entry["name"].strip()[:120])
+            elif isinstance(entry, str):
+                named.append(entry.strip()[:120])
+    geometry = document.get("geometry")
+    parameters = document.get("parameters")
+    return {
+        "task": str(document.get("task") or "").strip()[:200] or None,
+        "description": str(document.get("description") or "").strip()[:1000] or None,
+        "limitations": str(document.get("limitations") or "").strip()[:1000] or None,
+        "categories": named,
+        "geometry": [str(item)[:32] for item in geometry[:8]] if isinstance(geometry, list) else [],
+        "parameters": (
+            {str(key)[:64]: str(value)[:120] for key, value in list(parameters.items())[:20]}
+            if isinstance(parameters, dict)
+            else {}
+        ),
+    }
+
+
+def _byom_invoke(registration: ByomRegistration, payload: dict[str, Any]) -> Any:
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        f"{registration.endpoint}/invocations",
+        data=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=BYOM_INVOCATION_TIMEOUT_SECONDS) as response:
+            raw = response.read(BYOM_MAX_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError(f"/invocations respondeu HTTP {error.code}: {detail}") from error
+    except (urllib.error.URLError, OSError, TimeoutError) as error:
+        raise RuntimeError(f"/invocations falhou: {error}") from error
+    if len(raw) > BYOM_MAX_RESPONSE_BYTES:
+        raise RuntimeError("a resposta do contêiner excedeu o tamanho máximo aceito.")
+    try:
+        return json.loads(raw)
+    except ValueError as error:
+        raise RuntimeError("/invocations não devolveu JSON válido.") from error
+
+
+def _summarize_run(document: dict[str, Any]) -> dict[str, Any]:
+    """Resume o que o modelo devolveu, para explicá-lo sem rodá-lo de novo."""
+    annotations = document.get("annotations") or []
+    names = []
+    for category in document.get("categories") or []:
+        if isinstance(category, dict) and isinstance(category.get("name"), str):
+            name = category["name"].strip()
+            if name and name not in names:
+                names.append(name)
+    geometry = []
+    for key, kind in (("segmentation", "polygon"), ("bbox", "bbox"), ("keypoints", "keypoints")):
+        if any(isinstance(item, dict) and isinstance(item.get(key), list) for item in annotations):
+            geometry.append(kind)
+    return {
+        "annotations": len(annotations),
+        "categories": names[:200],
+        "geometry": geometry,
+    }
+
+
+def _record_byom_run(registration: ByomRegistration, summary: dict[str, Any]) -> None:
+    target = _byom_registry_dir() / f"{registration.model_id}.json"
+    try:
+        document = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            return
+        document["last_run"] = summary
+        partial = target.with_suffix(".json.part")
+        partial.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        partial.replace(target)
+    except (OSError, ValueError) as error:
+        # Não conseguir gravar o resumo não invalida a anotação já produzida.
+        print(f"Aviso: não foi possível registrar o resumo de {registration.model_id}: {error}",
+              file=sys.stderr, flush=True)
+
+
+def _validate_coco_document(document: Any, width: int, height: int, file_name: str) -> dict[str, Any]:
+    """Confere o COCO devolvido antes de repassá-lo ao editor.
+
+    Um modelo pode devolver quase qualquer coisa, e uma anotação malformada
+    apareceria na tela como um polígono torto sem explicação. Validar aqui
+    transforma isso numa mensagem que diz o que o contêiner errou.
+    """
+    if not isinstance(document, dict):
+        raise RuntimeError("a resposta precisa ser um objeto COCO com images, categories e annotations.")
+
+    annotations = document.get("annotations")
+    if not isinstance(annotations, list):
+        raise RuntimeError("a chave annotations precisa ser uma lista.")
+    if len(annotations) > BYOM_MAX_ANNOTATIONS:
+        raise RuntimeError(
+            f"o contêiner devolveu {len(annotations)} anotações; o limite aceito é {BYOM_MAX_ANNOTATIONS}."
+        )
+
+    categories = document.get("categories")
+    if categories is not None and not isinstance(categories, list):
+        raise RuntimeError("a chave categories precisa ser uma lista quando presente.")
+
+    # images é opcional: quando o contêiner não a devolve, o conector preenche
+    # com a imagem que ele mesmo enviou, para o editor casar a anotação.
+    images = document.get("images")
+    if not isinstance(images, list) or not images:
+        images = [{"id": 1, "file_name": file_name, "width": width, "height": height}]
+        for annotation in annotations:
+            if isinstance(annotation, dict):
+                annotation.setdefault("image_id", 1)
+
+    for index, annotation in enumerate(annotations):
+        if not isinstance(annotation, dict):
+            raise RuntimeError(f"a anotação {index} não é um objeto JSON.")
+        has_geometry = (
+            isinstance(annotation.get("segmentation"), list)
+            or isinstance(annotation.get("bbox"), list)
+            or isinstance(annotation.get("keypoints"), list)
+        )
+        if not has_geometry:
+            raise RuntimeError(
+                f"a anotação {index} não traz segmentation, bbox nem keypoints; "
+                "sem geometria não há o que desenhar."
+            )
+
+    return {
+        "images": images,
+        "categories": categories if isinstance(categories, list) else [],
+        "annotations": annotations,
+    }
+
+
+class ByomRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model_id: str = Field(max_length=128)
+    name: str = Field(default="", max_length=120)
+    port: int = Field(default=BYOM_CONTAINER_PORT, ge=1, le=65_535)
+    image: str = Field(default="", max_length=200)
+    notes: str = Field(default="", max_length=2000)
+
+
+def _write_byom_registration(request: ByomRegisterRequest) -> ByomRegistration:
+    """Grava o registro pedido pela interface, sem executar nada no sistema.
+
+    O conector não sobe contêiner: quem faz isso é a CLI ou o próprio usuário
+    com docker run. Aqui só se declara onde o contêiner está, e o padrão de id
+    impede que o nome escape do diretório de registros.
+    """
+    model_id = request.model_id.strip().lower()
+    if not BYOM_ID_PATTERN.fullmatch(model_id):
+        raise ValueError(
+            f"model_id inválido: {model_id!r}. Use o prefixo byom- seguido de letras minúsculas, "
+            "números, ponto, hífen ou sublinhado."
+        )
+    if model_id in MODEL_SPECS or model_id in MODEL_ALIASES:
+        raise ValueError(f"model_id {model_id!r} colide com um modelo oficial")
+
+    registry = _byom_registry_dir()
+    registry.mkdir(parents=True, exist_ok=True)
+    target = registry / f"{model_id}.json"
+    # Editar é registrar de novo: o que a interface não envia — variáveis de
+    # ambiente e o resumo da última execução — precisa sobreviver à edição.
+    existing: dict[str, Any] = {}
+    if target.is_file():
+        try:
+            loaded = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except (OSError, ValueError):
+            existing = {}
+
+    document = {
+        "model_id": model_id,
+        "name": request.name.strip() or str(existing.get("name") or model_id),
+        "image": request.image.strip() or str(existing.get("image") or ""),
+        "endpoint": f"http://127.0.0.1:{request.port}",
+        "notes": request.notes.strip(),
+        "env": existing.get("env") if isinstance(existing.get("env"), dict) else {},
+        "last_run": existing.get("last_run") if isinstance(existing.get("last_run"), dict) else None,
+    }
+    partial = target.with_suffix(".json.part")
+    partial.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    partial.replace(target)
+    return _parse_byom_registration(target)
+
+
+class ByomAnnotateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model_id: str = Field(max_length=128)
+    image: str = Field(max_length=MAX_DATA_URL_LENGTH)
+    file_name: str = Field(default="imagem.png", max_length=256)
 
 
 class PointPrompt(BaseModel):
@@ -543,10 +910,12 @@ class PredictionRequestGuard:
         await response(scope, receive, send)
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        # /byom/annotate carrega a mesma imagem inteira que /predict, então
+        # precisa do mesmo teto de corpo e do mesmo limite de concorrência.
         is_prediction = (
             scope.get("type") == "http"
             and scope.get("method") == "POST"
-            and str(scope.get("path", "")).rstrip("/") == "/predict"
+            and str(scope.get("path", "")).rstrip("/") in ("/predict", "/byom/annotate")
         )
         if not is_prediction:
             await self.app(scope, receive, send)
@@ -617,7 +986,8 @@ app.add_middleware(
     allow_origins=list(ALLOWED_ORIGINS),
     allow_origin_regex=LOOPBACK_ORIGIN_PATTERN,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    # DELETE existe para remover um registro BYOM pela interface.
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Accept", "Content-Type"],
 )
 
@@ -821,6 +1191,117 @@ def _model_availability(spec: ModelSpec) -> dict[str, Any]:
         "installed": not reasons,
         "loaded": spec.model_id == runtime.get("model_id"),
         "unavailable_reason": "; ".join(reasons) or None,
+    }
+
+
+@app.get("/byom/models")
+def byom_models():
+    """Modelos BYOM registrados nesta máquina, com o estado do contêiner.
+
+    Separado de /models de propósito: BYOM não é um modelo que o conector
+    carrega, e sim um serviço externo para o qual ele encaminha.
+    """
+    entries = []
+    for registration in byom_registrations().values():
+        ready, reason = _byom_container_ready(registration)
+        entries.append({
+            "model_id": registration.model_id,
+            "name": registration.name,
+            "image": registration.image,
+            "endpoint": registration.endpoint,
+            "notes": registration.notes,
+            "env": registration.env,
+            "last_run": registration.last_run,
+            "metadata": _byom_metadata(registration) if ready else None,
+            "ready": ready,
+            "unavailable_reason": reason,
+        })
+    return {
+        "service": SERVICE_NAME,
+        "api_version": API_VERSION,
+        "models": entries,
+    }
+
+
+@app.post("/byom/register")
+def byom_register(payload: ByomRegisterRequest):
+    """Registra um contêiner já em execução, para importar sem usar o terminal."""
+    try:
+        registration = _write_byom_registration(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except OSError as error:
+        raise HTTPException(status_code=500, detail=f"não foi possível gravar o registro: {error}") from error
+
+    ready, reason = _byom_container_ready(registration)
+    return {
+        "model_id": registration.model_id,
+        "name": registration.name,
+        "image": registration.image,
+        "endpoint": registration.endpoint,
+        "notes": registration.notes,
+        "env": registration.env,
+        "last_run": registration.last_run,
+        "metadata": _byom_metadata(registration) if ready else None,
+        "ready": ready,
+        "unavailable_reason": reason,
+    }
+
+
+@app.delete("/byom/models/{model_id}")
+def byom_unregister(model_id: str):
+    """Remove um registro. O contêiner e a imagem continuam intactos no Docker."""
+    normalized = model_id.strip().lower()
+    if not BYOM_ID_PATTERN.fullmatch(normalized):
+        raise HTTPException(status_code=400, detail=f"model_id inválido: {model_id}")
+    target = _byom_registry_dir() / f"{normalized}.json"
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail=f"modelo BYOM não registrado: {normalized}")
+    try:
+        target.unlink()
+    except OSError as error:
+        raise HTTPException(status_code=500, detail=f"não foi possível remover o registro: {error}") from error
+    return {"model_id": normalized, "removed": True}
+
+
+@app.post("/byom/annotate")
+def byom_annotate(payload: ByomAnnotateRequest):
+    """Roda um modelo BYOM na imagem inteira e devolve o COCO já validado."""
+    registration = byom_registrations().get(payload.model_id)
+    if registration is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"modelo BYOM não registrado: {payload.model_id}",
+        )
+    ready, reason = _byom_container_ready(registration)
+    if not ready:
+        raise HTTPException(status_code=409, detail=f"{reason}. Suba o contêiner antes de anotar.")
+
+    decoded = decode_image(payload.image)
+    height, width = decoded.pixels.shape[:2]
+    try:
+        response = _byom_invoke(
+            registration,
+            {
+                "image": payload.image,
+                "file_name": payload.file_name,
+                "width": int(width),
+                "height": int(height),
+            },
+        )
+        document = _validate_coco_document(response, int(width), int(height), payload.file_name)
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+    summary = _summarize_run(document)
+    _record_byom_run(registration, summary)
+    return {
+        "summary": summary,
+        "model_id": registration.model_id,
+        "name": registration.name,
+        "width": int(width),
+        "height": int(height),
+        "coco": document,
     }
 
 
@@ -1351,12 +1832,10 @@ def main() -> None:
     parser.add_argument(
         "--model",
         required=True,
-        choices=sorted((*MODEL_SPECS, *MODEL_ALIASES)),
-        help="Engine/modelo a carregar.",
+        help="Engine/modelo SAM a carregar.",
     )
     parser.add_argument(
         "--checkpoint",
-        required=True,
         help="Caminho para o checkpoint local; nenhum arquivo é baixado pelo conector.",
     )
     parser.add_argument(
@@ -1380,7 +1859,14 @@ def main() -> None:
 
     requested_model_id = args.model
     model_id = MODEL_ALIASES.get(requested_model_id, requested_model_id)
-    spec = MODEL_SPECS[model_id]
+    spec = MODEL_SPECS.get(model_id)
+    if spec is None:
+        parser.error(
+            f"--model inválido: {requested_model_id}. "
+            f"Disponíveis: {', '.join(sorted((*MODEL_SPECS, *MODEL_ALIASES)))}"
+        )
+    if not args.checkpoint:
+        parser.error(f"--checkpoint é obrigatório para {spec.model_id}.")
     _startup_config = LoadConfig(
         spec=spec,
         checkpoint=args.checkpoint,

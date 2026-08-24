@@ -914,6 +914,24 @@ test_windows_static_matrix() {
   pass "BATs preservam matriz, transação, roteamento WSL2, health e cache"
 }
 
+test_sam3_autocast() {
+  local connector
+  connector="$(cat "$CONNECTOR_SOURCE")"
+  # O SAM 3 gera ativações em bfloat16 sem declarar autocast próprio, então o
+  # dtype passa a depender do estado ambiente da thread. Como o conector carrega
+  # o modelo na thread do carregador e atende em outra, sem este autocast toda
+  # inferência morre com "mat1 and mat2 must have the same dtype". O checkpoint
+  # é gated e não dá para exercitar isso em CI, então a garantia é de código.
+  assert_contains "$connector" 'def _autocast(self):' "helper de autocast no adaptador do SAM 3"
+  assert_contains "$connector" 'self._torch.autocast("cuda", dtype=self._torch.bfloat16)' "autocast bfloat16 declarado"
+  assert_contains "$connector" 'with self._torch.inference_mode(), self._autocast():' "autocast aplicado na inferência"
+  local applied
+  applied="$(grep -c 'with self._torch.inference_mode(), self._autocast():' "$CONNECTOR_SOURCE")"
+  [[ "$applied" -ge 2 ]] ||
+    fail "o autocast do SAM 3 precisa cobrir set_image e predict; encontrado em ${applied} lugar(es)"
+  pass "SAM 3 declara autocast bfloat16 em set_image e predict"
+}
+
 test_cross_artifact_matrix() {
   local app_models=()
   local connector_models=()
@@ -963,6 +981,7 @@ test_health_requires_matching_model
 test_connector_must_be_ready_before_commit
 test_connector_exit_is_propagated
 test_windows_static_matrix
+test_sam3_autocast
 test_cross_artifact_matrix
 test_pinned_default_connector
 

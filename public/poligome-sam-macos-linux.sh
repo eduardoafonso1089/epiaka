@@ -6,7 +6,7 @@ POLIGOME_SAM_INSTALLER_API=2
 DEFAULT_SITE_URL="https://www.poligome.com"
 DEFAULT_ASSET_BASE_URL="https://raw.githubusercontent.com/eduardoafonso1089/epiaka/main/public"
 DEFAULT_CONNECTOR_URL="https://raw.githubusercontent.com/eduardoafonso1089/epiaka/4603525db08be5e86fb95ea58b43d606d731f99f/public/poligome-sam-local.py"
-DEFAULT_CONNECTOR_SHA256="c0bd03d6c43db0a2cfdada98f41a7119bd843e17285cc1c9f58cf1c5447f17dd"
+DEFAULT_CONNECTOR_SHA256="d58d8d6ddf92d2e2378eab50ea39e27217d8a7ddb94106c6e237ae0716165b33"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_URL="${POLIGOME_SITE_URL:-${DEFAULT_SITE_URL}}"
 SITE_URL="${SITE_URL%/}"
@@ -524,7 +524,7 @@ install_runtime() {
   esac
 
   if [[ "$FAMILY" == "sam3" && -f "$ready_file" ]] &&
-    { [[ ! -x "${VENV_DIR}/bin/hf" ]] ||
+    { ! hf_available ||
       ! "$PYTHON" -c 'import einops, huggingface_hub, pkg_resources, psutil, pycocotools' >/dev/null 2>&1; }; then
     printf 'Completando dependências de runtime omitidas pelo pacote oficial do SAM 3...\n'
     "$PYTHON" -m pip install --upgrade "setuptools<81" einops huggingface_hub psutil pycocotools
@@ -580,20 +580,68 @@ checkpoint_is_valid() {
   file_has_size "$CHECKPOINT" "$CHECKPOINT_SIZE"
 }
 
+# O console script `hf` grava o caminho absoluto do interpretador no shebang, de
+# modo que ele para de funcionar se a pasta do app for renomeada ou movida —
+# aconteceu na renomeação de visionlabel para poligome, e o erro que aparecia era
+# "arquivo requerido não encontrado", que não diz nada sobre a causa.
+hf_available() {
+  "$PYTHON" -c 'import huggingface_hub' >/dev/null 2>&1
+}
+
+# Confere o shebang sem executar nada: invocar o script só para testá-lo teria
+# efeito colateral, e um interpretador ausente é exatamente o sintoma a detectar.
+hf_console_usable() {
+  local script="$1"
+  local shebang interpreter
+  [[ -x "$script" ]] || return 1
+  IFS= read -r shebang <"$script" || return 1
+  case "$shebang" in
+    '#!'*) interpreter="${shebang#\#!}" ;;
+    *) return 0 ;;
+  esac
+  interpreter="${interpreter%% *}"
+  [[ -x "$interpreter" ]]
+}
+
+run_hf() {
+  local script="${VENV_DIR}/bin/hf"
+  if hf_console_usable "$script"; then
+    "$script" "$@"
+    return
+  fi
+  # Sem o console script utilizável, o entry point resolvido pelo próprio pacote
+  # continua valendo e não depende de caminho gravado em disco.
+  "$PYTHON" - "$@" <<'PYTHON_HF'
+import sys
+from importlib.metadata import distribution
+
+try:
+    entry = next(
+        candidate
+        for candidate in distribution("huggingface_hub").entry_points
+        if candidate.group == "console_scripts" and candidate.name == "hf"
+    )
+except Exception as error:  # pacote antigo ou instalação quebrada
+    raise SystemExit(f"não foi possível localizar o CLI do Hugging Face: {error}")
+
+sys.argv = ["hf", *sys.argv[1:]]
+entry.load()()
+PYTHON_HF
+}
+
 download_sam3_checkpoint() {
-  local hf_cli="${VENV_DIR}/bin/hf"
   local staging_dir="${APP_DIR}/downloads/${MODEL_ID}"
   local staged_checkpoint="${staging_dir}/${CHECKPOINT_NAME}"
-  [[ -x "$hf_cli" ]] || fail "o comando hf não foi instalado no ambiente do SAM 3."
+  hf_available || fail "o pacote huggingface_hub não está instalado no ambiente do SAM 3."
   printf '\nSAM 3 usa um checkpoint gated da Meta.\n'
   printf 'Solicite acesso em https://huggingface.co/facebook/sam3 e aceite a licença antes de continuar.\n'
-  if ! "$hf_cli" auth whoami >/dev/null 2>&1; then
+  if ! run_hf auth whoami >/dev/null 2>&1; then
     printf 'A autenticação será feita pelo CLI oficial do Hugging Face; o Poligome não lê nem armazena seu token.\n'
-    "$hf_cli" auth login || fail "autenticação no Hugging Face não concluída."
+    run_hf auth login || fail "autenticação no Hugging Face não concluída."
   fi
   mkdir -p "$(dirname "$CHECKPOINT")" "$staging_dir"
   rm -f "$staged_checkpoint" "${CHECKPOINT}.part"
-  if ! "$hf_cli" download facebook/sam3 "$CHECKPOINT_NAME" --local-dir "$staging_dir"; then
+  if ! run_hf download facebook/sam3 "$CHECKPOINT_NAME" --local-dir "$staging_dir"; then
     fail "não foi possível baixar o checkpoint gated. Confirme a aprovação de acesso à conta no Hugging Face."
   fi
   if ! file_has_size "$staged_checkpoint" "$CHECKPOINT_SIZE"; then

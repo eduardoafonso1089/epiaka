@@ -23,6 +23,7 @@ Uso:
   bash poligome-byom-macos-linux.sh <comando> [opções]
 
 Comandos:
+  examples  [--path DIR]                   constrói e registra os dois exemplos oficiais
   build     --path DIR --image NOME        constrói a imagem a partir de um Dockerfile
   register  --model-id ID --image NOME     registra o modelo e o deixa visível no Poligome
             [--name "Rótulo"] [--port N] [--env CHAVE=VALOR]...
@@ -95,6 +96,62 @@ port_from_endpoint() {
 ping_ok() {
   local endpoint="$1"
   [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "${endpoint}/ping" 2>/dev/null)" == "200" ]]
+}
+
+# Os exemplos oficiais são versionados junto do código, em byom/examples, para
+# que a lista não dependa do que existe na máquina de quem escreveu o contrato.
+EXAMPLE_IMAGE="poligome-byom-exemplo"
+
+cmd_examples() {
+  local path=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path) path="${2:-}"; shift 2 ;;
+      *) fail "opção desconhecida para examples: $1" ;;
+    esac
+  done
+  if [[ -z "$path" ]]; then
+    path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/byom"
+  fi
+  [[ -f "${path}/Dockerfile" ]] ||
+    fail "não há Dockerfile em ${path}. Aponte --path para o diretório byom do repositório."
+  local registry_source="${path}/examples"
+  [[ -d "$registry_source" ]] ||
+    fail "não há exemplos em ${registry_source}."
+  require_docker
+
+  printf 'Construindo a imagem dos exemplos (%s)...\n' "$EXAMPLE_IMAGE"
+  # O docker build escreve o progresso em stderr; guardar e só mostrar em caso
+  # de falha mantém a saída legível sem esconder o erro.
+  local build_log="${TMPDIR:-/tmp}/poligome-byom-build.$$.log"
+  if ! docker build -t "$EXAMPLE_IMAGE" "$path" >"$build_log" 2>&1; then
+    printf '\n' >&2
+    tail -20 "$build_log" >&2
+    rm -f "$build_log"
+    fail "docker build falhou."
+  fi
+  rm -f "$build_log"
+
+  mkdir -p "$REGISTRY_DIR"
+  local file base
+  for file in "${registry_source}"/*.json; do
+    [[ -e "$file" ]] || fail "nenhum exemplo encontrado em ${registry_source}."
+    base="$(basename "$file")"
+    # O registro do usuário manda: reinstalar os exemplos não apaga uma
+    # anotação nem uma porta que alguém já tenha ajustado à mão.
+    if [[ -f "${REGISTRY_DIR}/${base}" ]]; then
+      printf '  %s já registrado; mantendo o seu registro.\n' "${base%.json}"
+    else
+      cp "$file" "${REGISTRY_DIR}/${base}"
+      printf '  %s registrado.\n' "${base%.json}"
+    fi
+  done
+
+  printf '\nSubindo os exemplos...\n'
+  for file in "${registry_source}"/*.json; do
+    base="$(basename "$file" .json)"
+    cmd_start --model-id "$base" || printf '  %s não subiu; use logs --model-id %s para ver o motivo.\n' "$base" "$base"
+  done
 }
 
 cmd_build() {
@@ -344,6 +401,7 @@ main() {
   local command="$1"
   shift
   case "$command" in
+    examples) cmd_examples "$@" ;;
     build) cmd_build "$@" ;;
     register) cmd_register "$@" ;;
     start) cmd_start "$@" ;;

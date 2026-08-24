@@ -6,7 +6,11 @@
 #
 # Construir:  docker build -t poligome-byom-exemplo public/byom
 # Executar:   docker run --rm -p 8080:8080 poligome-byom-exemplo serve
-FROM python:3.12-slim
+# A base é fixada por digest, e não pela tag: a tag 3.12-slim é reescrita a cada
+# atualização do Debian, e sem o digest uma reconstrução meses depois produziria
+# outra imagem. É isso que garante que o exemplo continue existindo igual, sem
+# precisar versionar os 347 MB do tarball.
+FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a
 
 # O OpenCV headless evita as bibliotecas de interface gráfica, que não existem
 # na imagem slim e não servem para nada dentro de um contêiner de inferência.

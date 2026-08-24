@@ -23,6 +23,8 @@ Scripts that need writable project-scoped home, npm, XDG, and temporary paths us
 
 O Poligome usa um conector FastAPI executado no computador do usuário; imagens e prompts não são enviados ao Site. A tela **Ativar SAM local** contém um catálogo com requisitos, licença, tamanho do checkpoint, plataforma e benchmark oficial — sempre acompanhado do hardware em que o número foi medido.
 
+O passo a passo completo, incluindo a aprovação da Meta para o SAM 3, está em [docs/sam.md](docs/sam.md).
+
 Modelos disponíveis:
 
 | Família | Variantes | Uso nesta versão | Requisitos principais |

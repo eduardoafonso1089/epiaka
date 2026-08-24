@@ -38,7 +38,7 @@ function readDataUrl(blob: Blob, signal?: AbortSignal) {
   });
 }
 
-async function assetAsDataUrl(asset: Asset, signal?: AbortSignal) {
+export async function assetAsDataUrl(asset: Asset, signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException("Cancelado", "AbortError");
   if (asset.src.startsWith("data:")) return asset.src;
   let response: Response;

@@ -4,7 +4,7 @@ import {
   Check, ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
   Combine, Copy, Download, Eye, EyeOff, FileText, FolderOpen, FolderUp, Hand, HardDriveDownload, ImagePlus, Images, Keyboard, Languages, Link2,
   Focus, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
-  Box, Monitor, Moon, Palette, Pencil, Pentagon, Plus, Redo2, Scissors, Search, Settings2, Sparkles,
+  Box, Boxes, Monitor, Moon, Palette, Pencil, Pentagon, Plus, Redo2, Scissors, Search, Settings2, Sparkles,
   Spline, Square, Sun, Tags, Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut, PenTool,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -19,9 +19,9 @@ import { exportCoco, exportYoloZip } from "../lib/exporters";
 import { fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
 import { openPoligomeProject, savePoligomeProject } from "../lib/project";
 import type { ProjectSaveMode } from "../lib/project";
-import { requestSamPredictions } from "../lib/sam";
+import { assetAsDataUrl, requestSamPredictions } from "../lib/sam";
 import { DEFAULT_SAM_MODEL_ID, getSamModel, isSamModelId } from "../lib/sam-models";
-import type { SamModelId } from "../lib/sam-models";
+import type { ByomModel } from "../lib/sam-models";
 import type { Language, ThemeMode } from "../lib/i18n";
 import type { Annotation, Asset, Label, SamBoxPrompt, SamMaskPrediction, SamPrompt, Tool } from "../lib/types";
 
@@ -232,7 +232,12 @@ export default function Home() {
   const [samConnectionState, setSamConnectionState] = useState<SamConnectionState>("idle");
   const [samRuntime, setSamRuntime] = useState("");
   const [samLoadedModelId, setSamLoadedModelId] = useState<string | null>(null);
-  const [samModelId, setSamModelId] = useState<SamModelId>(() => {
+  // BYOM não entra no catálogo do SAM: são contêineres registrados na máquina do
+  // usuário, descobertos pelo conector, que anotam a imagem inteira de uma vez.
+  const [byomModels, setByomModels] = useState<readonly ByomModel[]>([]);
+  const [byomModelId, setByomModelId] = useState<string | null>(null);
+  const [byomBusy, setByomBusy] = useState(false);
+  const [samModelId, setSamModelId] = useState<string>(() => {
     if (typeof window === "undefined") return DEFAULT_SAM_MODEL_ID;
     const stored = localStorage.getItem("visionlabel-sam-model");
     return isSamModelId(stored) ? stored : DEFAULT_SAM_MODEL_ID;
@@ -282,6 +287,21 @@ export default function Home() {
   const currentImageAnnotationsHidden = currentAnnotations.length > 0 && currentAnnotations.every((annotation) => hiddenAnnotations.includes(annotation.id));
   const copy = getCopy(language);
   const selectedSamModel = getSamModel(samModelId) ?? getSamModel(DEFAULT_SAM_MODEL_ID)!;
+  const activeByomModel = byomModels.find((candidate) => candidate.model_id === byomModelId) ?? null;
+  // SAM e BYOM podem estar ativos ao mesmo tempo: um segmenta por clique, o
+  // outro anota a imagem inteira, e as máscaras de um não tocam nas do outro.
+  const activeAiModels = [
+    ...(samEndpoint ? [{
+      family: selectedSamModel.family === "medsam2" ? "MedSAM2" : selectedSamModel.family === "sam3" ? "SAM 3" : "SAM 2.1",
+      name: selectedSamModel.name,
+      title: selectedSamModel.id,
+    }] : []),
+    ...(activeByomModel ? [{
+      family: "BYOM",
+      name: activeByomModel.name,
+      title: `${activeByomModel.model_id} · ${activeByomModel.endpoint}`,
+    }] : []),
+  ];
   const samPreviewPolygons = samPredictions.flatMap((prediction) => prediction.polygons);
   const activeAnnotation = annotations.find((annotation) => annotation.id === selected);
   const activePolygonBounds = activeAnnotation?.type === "polygon" && (activeAnnotation.pts?.length ?? 0) >= 6
@@ -1181,80 +1201,118 @@ export default function Home() {
     showToast(`${imported.length} landmarks carregados: ${file.name}`);
   }
 
+  type CocoDocument = {
+    images?: { id?: number; file_name?: string; width?: number; height?: number }[];
+    categories?: { id?: number; name?: string }[];
+    annotations?: {
+      image_id?: number;
+      category_id?: number;
+      bbox?: number[];
+      segmentation?: unknown;
+      keypoints?: number[];
+    }[];
+  };
+
+  /** Converte um documento COCO em anotações do editor.
+   *
+   * Serve tanto ao arquivo importado à mão quanto ao que um modelo BYOM devolve;
+   * no segundo caso `forcedAsset` aponta a imagem que acabou de ser analisada,
+   * porque o contêiner não conhece os nomes dos arquivos carregados aqui.
+   */
+  function ingestCocoDocument(data: CocoDocument, forcedAsset?: Asset): number {
+    if (!Array.isArray(data.annotations)) return 0;
+    const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
+    const images = new Map((data.images ?? []).filter((item) => typeof item.id === "number")
+      .map((item) => [item.id!, {
+        ...item,
+        asset: forcedAsset
+          ?? (typeof item.file_name === "string" ? assetByName.get(item.file_name.split(/[\\/]/).at(-1)!.toLocaleLowerCase()) : undefined),
+      }]));
+    // Registra as dimensões reais antes de inserir as máscaras. Sem isso, a troca de uma
+    // imagem ainda não visitada começava no aspect ratio padrão 1000×650 e deformava o
+    // SVG por um quadro até o onLoad da foto informar seu tamanho.
+    const dimensionsByAsset = new Map<string, { width: number; height: number }>();
+    images.forEach((image) => {
+      if (!image.asset) return;
+      const width = Number(image.width); const height = Number(image.height);
+      if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+        dimensionsByAsset.set(image.asset.id, { width, height });
+      }
+    });
+    const categoryById = new Map((data.categories ?? []).filter((item) => typeof item.id === "number" && typeof item.name === "string")
+      .map((item) => [item.id!, item.name!.trim()]));
+    const nextLabels = [...labelsRef.current];
+    const labelByCategory = new Map<number, string>();
+    categoryById.forEach((name, categoryId) => {
+      const existing = nextLabels.find((label) => label.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+      const label = existing ?? { id: makeId("label"), name, color: nextLabelColor(nextLabels), key: "" };
+      if (!existing) nextLabels.push(label);
+      labelByCategory.set(categoryId, label.id);
+    });
+    const imported: Annotation[] = [];
+    data.annotations.forEach((item) => {
+      const image = typeof item.image_id === "number" ? images.get(item.image_id) : undefined;
+      const targetAsset = image?.asset ?? forcedAsset;
+      if (!targetAsset) return;
+      const sourceWidth = Number(image?.width) || targetAsset.width || 1000;
+      const sourceHeight = Number(image?.height) || targetAsset.height || 650;
+      const sx = 1000 / sourceWidth; const sy = 650 / sourceHeight;
+      const label = typeof item.category_id === "number" ? labelByCategory.get(item.category_id) ?? UNLABELED_ID : UNLABELED_ID;
+      // COCO permite vários anéis em uma annotation. O editor trabalha com um anel
+      // por polígono, então cada contorno válido vira sua própria anotação — assim uma
+      // parte principal no segundo anel não desaparece, como acontecia em 13.jpg.
+      const polygons = Array.isArray(item.segmentation)
+        ? item.segmentation.filter(Array.isArray).map((ring) => ring.map(Number))
+          .filter((ring) => ring.length >= 6 && ring.length % 2 === 0 && ring.every(Number.isFinite))
+        : [];
+      if (polygons.length) {
+        polygons.forEach((polygon) => imported.push({
+          id: makeId("coco"), asset: targetAsset.id, label, type: "polygon",
+          pts: polygon.map((value, index) => value * (index % 2 ? sy : sx)),
+        }));
+      } else if (Array.isArray(item.bbox) && item.bbox.length >= 4) {
+        const [x, y, width, height] = item.bbox.map(Number);
+        if ([x, y, width, height].every(Number.isFinite)) {
+          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "box", x: x * sx, y: y * sy, w: width * sx, h: height * sy });
+        }
+      }
+      // keypoints vem no formato do COCO: trios x, y e visibilidade. Só entram os
+      // visíveis, porque visibilidade 0 significa ponto não anotado.
+      if (Array.isArray(item.keypoints) && item.keypoints.length >= 3) {
+        for (let index = 0; index + 2 < item.keypoints.length; index += 3) {
+          const x = Number(item.keypoints[index]);
+          const y = Number(item.keypoints[index + 1]);
+          const visibility = Number(item.keypoints[index + 2]);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || visibility === 0) continue;
+          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "point", x: x * sx, y: y * sy });
+        }
+      }
+    });
+    if (!imported.length) return 0;
+    setAssets((items) => items.map((item) => {
+      const dimensions = dimensionsByAsset.get(item.id);
+      return dimensions ? { ...item, ...dimensions } : item;
+    }));
+    labelsRef.current = nextLabels;
+    setLabels(nextLabels); setAnnotations((items) => [...items, ...imported]); setSaved(false);
+    return imported.length;
+  }
+
   async function importCocoAnnotations(file: File | File[]) {
     if (Array.isArray(file)) {
       for (const annotationFile of file) await importCocoAnnotations(annotationFile);
       return;
     }
-    type CocoImage = { id?: number; file_name?: string; width?: number; height?: number };
-    type CocoCategory = { id?: number; name?: string };
-    type CocoAnnotation = { image_id?: number; category_id?: number; bbox?: number[]; segmentation?: unknown };
     try {
-      const data = JSON.parse(await file.text()) as { images?: CocoImage[]; categories?: CocoCategory[]; annotations?: CocoAnnotation[]; ceph_id?: unknown; landmarks?: unknown };
+      const data = JSON.parse(await file.text()) as CocoDocument & { ceph_id?: unknown; landmarks?: unknown };
       if (typeof data.ceph_id === "string" && Array.isArray(data.landmarks)) {
         await importCephalometricLandmarks(file, data);
         return;
       }
       if (!Array.isArray(data.images) || !Array.isArray(data.annotations)) throw new Error();
-      const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
-      const images = new Map(data.images.filter((item) => typeof item.id === "number" && typeof item.file_name === "string")
-        .map((item) => [item.id!, { ...item, asset: assetByName.get(item.file_name!.split(/[\\/]/).at(-1)!.toLocaleLowerCase()) }]));
-      // Registra as dimensões reais antes de inserir as máscaras. Sem isso, a troca de uma
-      // imagem ainda não visitada começava no aspect ratio padrão 1000×650 e deformava o
-      // SVG por um quadro até o onLoad da foto informar seu tamanho.
-      const dimensionsByAsset = new Map<string, { width: number; height: number }>();
-      images.forEach((image) => {
-        if (!image.asset) return;
-        const width = Number(image.width); const height = Number(image.height);
-        if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
-          dimensionsByAsset.set(image.asset.id, { width, height });
-        }
-      });
-      const categoryById = new Map((data.categories ?? []).filter((item) => typeof item.id === "number" && typeof item.name === "string")
-        .map((item) => [item.id!, item.name!.trim()]));
-      const nextLabels = [...labelsRef.current];
-      const labelByCategory = new Map<number, string>();
-      categoryById.forEach((name, categoryId) => {
-        const existing = nextLabels.find((label) => label.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-        const label = existing ?? { id: makeId("label"), name, color: nextLabelColor(nextLabels), key: "" };
-        if (!existing) nextLabels.push(label);
-        labelByCategory.set(categoryId, label.id);
-      });
-      const imported: Annotation[] = [];
-      data.annotations.forEach((item) => {
-        const image = typeof item.image_id === "number" ? images.get(item.image_id) : undefined;
-        const targetAsset = image?.asset;
-        if (!targetAsset || !Array.isArray(item.bbox) || item.bbox.length < 4) return;
-        const [x, y, width, height] = item.bbox.map(Number);
-        if (![x, y, width, height].every(Number.isFinite)) return;
-        const sourceWidth = Number(image.width) || targetAsset.width || 1000;
-        const sourceHeight = Number(image.height) || targetAsset.height || 650;
-        const sx = 1000 / sourceWidth; const sy = 650 / sourceHeight;
-        const label = typeof item.category_id === "number" ? labelByCategory.get(item.category_id) ?? UNLABELED_ID : UNLABELED_ID;
-        // COCO permite vários anéis em uma annotation. O editor trabalha com um anel
-        // por polígono, então cada contorno válido vira sua própria anotação — assim uma
-        // parte principal no segundo anel não desaparece, como acontecia em 13.jpg.
-        const polygons = Array.isArray(item.segmentation)
-          ? item.segmentation.filter(Array.isArray).map((ring) => ring.map(Number))
-            .filter((ring) => ring.length >= 6 && ring.length % 2 === 0 && ring.every(Number.isFinite))
-          : [];
-        if (polygons.length) {
-          polygons.forEach((polygon) => imported.push({
-            id: makeId("coco"), asset: targetAsset.id, label, type: "polygon",
-            pts: polygon.map((value, index) => value * (index % 2 ? sy : sx)),
-          }));
-        } else {
-          imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "box", x: x * sx, y: y * sy, w: width * sx, h: height * sy });
-        }
-      });
-      if (!imported.length) { showToast("Nenhuma anotação COCO corresponde às imagens carregadas."); return; }
-      setAssets((items) => items.map((item) => {
-        const dimensions = dimensionsByAsset.get(item.id);
-        return dimensions ? { ...item, ...dimensions } : item;
-      }));
-      labelsRef.current = nextLabels;
-      setLabels(nextLabels); setAnnotations((items) => [...items, ...imported]); setSaved(false);
-      showToast(`${imported.length} anotações COCO carregadas.`);
+      const count = ingestCocoDocument(data);
+      if (!count) { showToast("Nenhuma anotação COCO corresponde às imagens carregadas."); return; }
+      showToast(`${count} anotações COCO carregadas.`);
     } catch { showToast("Não foi possível ler o arquivo COCO JSON."); }
   }
 
@@ -1484,10 +1542,106 @@ export default function Home() {
       return { ready: false, modelId: null, state: "offline" };
     }
   }
+  async function loadByomModels(endpoint: string) {
+    const base = samBaseUrl(endpoint);
+    if (!base) { setByomModels([]); return; }
+    try {
+      const response = await fetch(`${base}/byom/models`, { signal: AbortSignal.timeout(8_000) });
+      if (!response.ok) throw new Error();
+      const body = await response.json() as { models?: ByomModel[] };
+      setByomModels((body.models ?? []).filter((entry) => typeof entry.model_id === "string"));
+    } catch {
+      setByomModels([]);
+    }
+  }
+  function byomBaseUrl() {
+    return samBaseUrl(samEndpoint || samEndpointDraft || "http://127.0.0.1:7860/predict");
+  }
+
+  // Importa um contêiner que já está no ar. O conector apenas grava o registro:
+  // subir o contêiner continua sendo trabalho da CLI ou do próprio docker run.
+  async function registerByomModel(entry: { modelId: string; name: string; port: number; notes?: string }) {
+    const base = byomBaseUrl();
+    if (!base) { showToast(copy.samInvalidEndpoint); return; }
+    try {
+      const response = await fetch(`${base}/byom/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_id: entry.modelId, name: entry.name, port: entry.port, notes: entry.notes ?? "" }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body = await response.json().catch(() => null) as { detail?: unknown; name?: string; ready?: boolean } | null;
+      if (!response.ok) {
+        showToast(typeof body?.detail === "string" ? body.detail : "Não foi possível registrar o modelo.");
+        return;
+      }
+      await loadByomModels(samEndpoint || samEndpointDraft);
+      showToast(body?.ready
+        ? `${body?.name ?? entry.modelId} importado e respondendo.`
+        : `${body?.name ?? entry.modelId} importado, mas o contêiner não respondeu ainda.`);
+    } catch {
+      showToast("Não foi possível falar com o conector local.");
+    }
+  }
+
+  async function removeByomModel(modelId: string) {
+    const base = byomBaseUrl();
+    if (!base) { showToast(copy.samInvalidEndpoint); return; }
+    try {
+      const response = await fetch(`${base}/byom/models/${encodeURIComponent(modelId)}`, {
+        method: "DELETE",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+        showToast(typeof body?.detail === "string" ? body.detail : "Não foi possível remover o registro.");
+        return;
+      }
+      if (byomModelId === modelId) setByomModelId(null);
+      await loadByomModels(samEndpoint || samEndpointDraft);
+      showToast(`${modelId} removido da lista. A imagem continua no Docker.`);
+    } catch {
+      showToast("Não foi possível falar com o conector local.");
+    }
+  }
+
+  // Roda um modelo BYOM sobre a imagem aberta e ingere o COCO devolvido.
+  // Diferente do SAM, não há prompt: o contêiner analisa a imagem inteira.
+  async function runByomModel(modelId: string) {
+    if (!asset) { showToast("Abra uma imagem antes de rodar o modelo."); return; }
+    const base = samBaseUrl(samEndpoint || samEndpointDraft || "http://127.0.0.1:7860/predict");
+    if (!base) { showToast(copy.samInvalidEndpoint); return; }
+    setByomBusy(true);
+    try {
+      const image = await assetAsDataUrl(asset);
+      const response = await fetch(`${base}/byom/annotate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_id: modelId, image, file_name: asset.name }),
+        signal: AbortSignal.timeout(600_000),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+        showToast(typeof body?.detail === "string" ? body.detail : "O modelo BYOM não conseguiu anotar esta imagem.");
+        return;
+      }
+      const body = await response.json() as { name?: string; coco?: Parameters<typeof ingestCocoDocument>[0] };
+      const count = body.coco ? ingestCocoDocument(body.coco, asset) : 0;
+      if (!count) { showToast("O modelo não devolveu nenhuma anotação para esta imagem."); return; }
+      setByomModelId(modelId);
+      setSamOpen(false);
+      showToast(`${count} anotações de ${body.name ?? modelId}.`);
+    } catch {
+      showToast("Não foi possível falar com o conector local.");
+    } finally {
+      setByomBusy(false);
+    }
+  }
   function openSamSettings() {
     const endpoint = samEndpoint || "http://127.0.0.1:7860/predict";
     setSamEndpointDraft(endpoint); setSamOpen(true);
     void probeSam(endpoint);
+    void loadByomModels(endpoint);
   }
   async function connectSam() {
     const endpoint = samEndpointDraft.trim();
@@ -1505,7 +1659,7 @@ export default function Home() {
   }
 
   // Pede ao conector que recarregue outro modelo e acompanha até o /health confirmar.
-  async function switchSamModel(endpoint: string, modelId: SamModelId) {
+  async function switchSamModel(endpoint: string, modelId: string) {
     const base = samBaseUrl(endpoint);
     if (!base) { showToast(copy.samInvalidEndpoint); return false; }
     setSamConnectionState("loading");
@@ -1619,7 +1773,7 @@ export default function Home() {
       </div>
       {/* Abrir, salvar, exportar e preferências vivem no menu Arquivo; aqui ficam apenas o
           estado da sessão, a conexão do SAM e o selo de execução local. */}
-      <div className="head-actions"><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${samEndpoint ? "connected" : ""}`} onClick={openSamSettings}><Link2 size={14} />{samEndpoint ? copy.samActive : copy.activateSam}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
+      <div className="head-actions"><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${activeAiModels.length ? "connected" : ""}`} onClick={openSamSettings} title={activeAiModels.map((entry) => `${entry.family}: ${entry.title}`).join(" · ") || copy.aiModelNone}><Link2 size={14} />{activeAiModels.length ? `${copy.aiModel}: ${activeAiModels.map((entry) => `${entry.family} · ${entry.name}`).join(" + ")}` : copy.aiModelNone}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
       </div>
       <nav className="menubar" aria-label={copy.fileMenu}>
         <div className="menu" ref={projectSwitcherRef}>
@@ -1717,6 +1871,20 @@ export default function Home() {
           {tool === "transform" && <div className="tip">{copy.transformTip}</div>}
           {tool === "reshape" && <div className="tip">{reshapeDrawing ? (reshapeStartInside ? copy.reshapeAdd : copy.reshapeDelete) : copy.reshapeStart}</div>}
           {activeAnnotation?.type === "polygon" && tool === "select" && <div className="polygon-tip">{copy.middlePan} · {copy.polygonTipDetail}</div>}
+          {activeByomModel && <div className="byom-run-bar">
+            <span className="byom-run-model"><Boxes size={14} /><b>{activeByomModel.name}</b><small>{activeByomModel.model_id}</small></span>
+            {!activeByomModel.ready && <em>contêiner parado</em>}
+            <button
+              className="byom-run-now"
+              disabled={!activeByomModel.ready || byomBusy || !asset}
+              onClick={() => void runByomModel(activeByomModel.model_id)}
+            >
+              {byomBusy ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />}
+              {byomBusy ? "Anotando…" : "Rodar nesta imagem"}
+            </button>
+            <button className="byom-run-clear" title="Desativar este BYOM" onClick={() => setByomModelId(null)}><X size={14} /></button>
+          </div>}
+
           {tool === "sam" && <div className="sam-controls sam-controls-capability">
             <div className="sam-mode-tabs" role="tablist" aria-label="Tipo de prompt SAM">
               <button className={samInteractionMode === "points" ? "active" : ""} onClick={() => chooseSamInteractionMode("points")}>Pontos</button>
@@ -1753,6 +1921,13 @@ export default function Home() {
     {preferencesOpen && <div className="modal-backdrop"><section className="sam-modal preferences-modal" role="dialog" aria-modal="true" aria-labelledby="preferences-title"><header><div><span><Settings2 size={18} /></span><div><h2 id="preferences-title">{copy.preferences}</h2><p>poligome.com</p></div></div><button onClick={() => setPreferencesOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="preferences-tabs"><button className={preferencesTab === "appearance" ? "active" : ""} onClick={() => setPreferencesTab("appearance")}><Sun size={14} />{copy.appearance}</button><button className={preferencesTab === "language" ? "active" : ""} onClick={() => setPreferencesTab("language")}><Languages size={14} />{copy.language}</button></div>{preferencesTab === "appearance" ? <div className="preference-options"><button className={themeMode === "system" ? "active" : ""} onClick={() => setThemeMode("system")}><Monitor size={20} /><b>{copy.system}</b></button><button className={themeMode === "light" ? "active" : ""} onClick={() => setThemeMode("light")}><Sun size={20} /><b>{copy.light}</b></button><button className={themeMode === "dark" ? "active" : ""} onClick={() => setThemeMode("dark")}><Moon size={20} /><b>{copy.dark}</b></button></div> : <div className="language-options"><button className={language === "pt" ? "active" : ""} onClick={() => setLanguage("pt")}><b>Português</b><span>PT-BR</span></button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}><b>English</b><span>EN</span></button><button className={language === "fr" ? "active" : ""} onClick={() => setLanguage("fr")}><b>Français</b><span>FR</span></button><button className={language === "es" ? "active" : ""} onClick={() => setLanguage("es")}><b>Español</b><span>ES</span></button></div>}<footer><button className="connect" onClick={() => setPreferencesOpen(false)}><Check size={15} /> {copy.close}</button></footer></section></div>}
     {samOpen && <SamSetupModal
       selectedModelId={samModelId}
+      byomModels={byomModels}
+      byomModelId={byomModelId}
+      byomBusy={byomBusy}
+      onSelectByomModel={setByomModelId}
+      onRunByomModel={(modelId) => void runByomModel(modelId)}
+      onRegisterByomModel={(entry) => void registerByomModel(entry)}
+      onRemoveByomModel={(modelId) => void removeByomModel(modelId)}
       loadedModelId={samLoadedModelId}
       connectionState={samConnectionState}
       runtimeLabel={samRuntime}

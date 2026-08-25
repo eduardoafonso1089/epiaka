@@ -328,6 +328,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .cog-crop-progress{height:3px;background:var(--control-bg);overflow:hidden;flex:none}
 .cog-crop-progress>i{display:block;height:100%;width:34%;background:var(--green);
   animation:cog-desliza 1.1s ease-in-out infinite}
+@keyframes cog-desliza{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
 @media(prefers-reduced-motion:reduce){.cog-crop-progress>i{width:100%;animation:none;opacity:.5}}
 
 .cog-crop-erro,.cog-crop-aviso{margin:12px 18px 0;padding:10px 13px;border-radius:10px;border:1px solid}
@@ -369,6 +370,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .cog-crop-corpo dt{color:var(--muted);white-space:nowrap}
 .cog-crop-corpo dd{margin:0;font-family:var(--mono),monospace;text-align:right;overflow-wrap:anywhere}
 .cog-crop-corpo .cog-warn{color:var(--amber)}
+.cog-bad{color:var(--danger)}
 .cog-crop-vazio{margin:0;font-size:11.5px;color:var(--tool-hint-ink)}
 .cog-crop-nota{margin:16px 0 0;font-size:10.5px;line-height:1.55;color:var(--tool-hint-ink);
   border-top:1px solid var(--line);padding-top:10px}
@@ -393,77 +395,6 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
   .cog-crop-corpo>aside{padding:14px 0 0}
 }
 
-/* ================= COG prototype styles ================= */
-.cog{height:100vh;display:flex;flex-direction:column;background:var(--paper);color:var(--ink);overflow:hidden}
-.cog>header{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--surface);flex:none}
-.cog h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.2px}
-.cog>header>p{margin:5px 0 0;font-size:12px;color:var(--muted)}
-.cog-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:11px}
-.cog-actions button,.cog-file>span{height:32px;padding:0 13px;border:1px solid var(--line);border-radius:8px;
-  background:var(--control-bg);color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;
-  display:inline-flex;align-items:center;font-family:inherit}
-.cog-actions button:hover:not(:disabled),.cog-file:hover>span{background:var(--theme-hover)}
-.cog-actions button:disabled{opacity:.5;cursor:wait}
-.cog-file>input{position:absolute;width:1px;height:1px;opacity:0}
-.cog-modes{display:flex;gap:5px;margin-left:auto}
-.cog-modes button.on{background:var(--tool-active-bg);color:var(--tool-active-ink);border-color:var(--tool-active-border)}
-
-.cog-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 280px}
-.cog-map{min-width:0;background:var(--canvas-bg)}
-.cog-map canvas{display:block}
-.cog-hud{border-left:1px solid var(--line);background:var(--surface);padding:15px;overflow:auto}
-.cog-hud h2{margin:0 0 8px;font-family:var(--mono),monospace;font-size:10px;letter-spacing:.15em;
-  text-transform:uppercase;color:var(--tool-hint-ink);font-weight:700}
-.cog-hud h2+*{margin-bottom:18px}
-.cog-hud dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;margin:0;font-size:11.5px}
-.cog-hud dt{color:var(--muted);white-space:nowrap}
-.cog-hud dd{margin:0;font-family:var(--mono),monospace;text-align:right;overflow-wrap:anywhere}
-.cog-bad{color:var(--danger)}
-.cog-empty{margin:0;font-size:11.5px;color:var(--tool-hint-ink)}
-.cog-note{margin:0;font-size:10.5px;line-height:1.55;color:var(--tool-hint-ink);
-  border-top:1px solid var(--line);padding-top:10px}
-
-/* OpenLayers controls in the app's look, without depending on ol.css */
-.cog .ol-viewport{background:var(--canvas-bg)}
-.cog .ol-zoom{position:absolute;top:10px;left:10px;display:flex;flex-direction:column;gap:3px}
-.cog .ol-zoom button{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;
-  background:var(--surface);color:var(--ink);font-size:15px;font-weight:700;cursor:pointer;line-height:1}
-.cog .ol-attribution{position:absolute;right:6px;bottom:4px;font-size:9.5px;color:var(--tool-hint-ink)}
-.cog .ol-attribution ul{margin:0;padding:0;list-style:none;display:flex;gap:7px}
-.cog .ol-attribution button{display:none}
-@media(max-width:860px){.cog-body{grid-template-columns:minmax(0,1fr)}.cog-hud{display:none}}
-
-/* ---- Progress and diagnostics of the COG prototype ---- */
-.cog-progress{position:relative;height:6px;margin:10px 0 0;border-radius:999px;
-  background:var(--control-bg);overflow:hidden}
-.cog-progress>i{display:block;height:100%;background:var(--green);border-radius:999px;
-  transition:width .18s ease-out}
-.cog-progress>b{position:absolute;right:0;top:9px;font-family:var(--mono),monospace;
-  font-size:10px;font-weight:400;color:var(--tool-hint-ink)}
-/* Reading the header exposes no progress: the bar only indicates activity. */
-.cog-progress.indeterminada>i{width:34%;animation:cog-desliza 1.1s ease-in-out infinite}
-@keyframes cog-desliza{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
-@media(prefers-reduced-motion:reduce){
-  .cog-progress.indeterminada>i{width:100%;animation:none;opacity:.5}
-  .cog-progress>i{transition:none}
-}
-
-.cog-erro,.cog-aviso{display:flex;gap:11px;margin-top:11px;padding:11px 13px;border-radius:10px;
-  border:1px solid;align-items:flex-start}
-.cog-erro{border-color:var(--danger-border);background:var(--danger-bg)}
-.cog-aviso{border-color:var(--amber-border);background:var(--amber-bg)}
-.cog-erro>span,.cog-aviso>span{width:20px;height:20px;flex:none;border-radius:50%;display:grid;
-  place-items:center;font-size:12px;font-weight:700;font-family:var(--mono),monospace}
-.cog-erro>span{background:var(--danger);color:var(--on-brand)}
-.cog-aviso>span{background:var(--amber);color:var(--on-brand)}
-.cog-erro b,.cog-aviso b{display:block;font-size:12.5px;margin-bottom:3px}
-.cog-erro b{color:var(--danger)}
-.cog-aviso b{color:var(--amber)}
-.cog-erro p,.cog-aviso p{margin:0;font-size:11.5px;line-height:1.55;color:var(--muted)}
-.cog-erro-detalhe{font-family:var(--mono),monospace;overflow-wrap:anywhere}
-.cog-erro-dica{margin-top:5px!important;color:var(--ink)!important}
-.cog-erro code,.cog-aviso code{font-family:var(--mono),monospace;background:var(--control-bg);
-  padding:1px 5px;border-radius:4px;font-size:11px}
 /* The main application blocks body scrolling; the text screen has its own scroll. */
 .llm-shell{height:100vh;overflow:auto;overscroll-behavior:contain}
 

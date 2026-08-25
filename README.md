@@ -115,3 +115,21 @@ The timeout defaults can be overridden for a controlled canary with `SITES_INSTA
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+
+## Licença
+
+Poligome — anotação de dados para IA
+Copyright (C) 2026 Eduardo Afonso
+
+Este programa é software livre, distribuído sob a
+[GNU Affero General Public License, versão 3](LICENSE) (`AGPL-3.0-only`).
+Você pode usá-lo, estudá-lo, modificá-lo e redistribuí-lo, desde que
+qualquer versão derivada permaneça sob a mesma licença.
+
+Como o Poligome é uma aplicação web, a **seção 13** da AGPL se aplica: quem
+modificar este programa e oferecê-lo para uso através de uma rede precisa
+disponibilizar o código-fonte correspondente às pessoas que o utilizam — na
+prática, expor um link para o fonte na própria interface da instância.
+
+Sem nenhuma garantia; veja o [LICENSE](LICENSE) para os termos completos e o
+[NOTICE](NOTICE) para titularidade e créditos de contribuição.

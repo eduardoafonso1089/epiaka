@@ -1,0 +1,54 @@
+Poligome
+Copyright (C) 2026 Eduardo Afonso
+
+Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo
+sob os termos da GNU Affero General Public License, conforme publicada pela
+Free Software Foundation, versão 3.
+
+Este programa é distribuído na esperança de que seja útil, mas SEM NENHUMA
+GARANTIA; sem sequer a garantia implícita de COMERCIABILIDADE ou ADEQUAÇÃO A
+UM PROPÓSITO ESPECÍFICO. Consulte a GNU Affero General Public License para
+mais detalhes.
+
+Você deve ter recebido uma cópia da GNU Affero General Public License junto
+com este programa. Se não, veja <https://www.gnu.org/licenses/>.
+
+
+TITULARIDADE
+------------
+
+Titular dos direitos autorais: Eduardo Afonso.
+
+Trabalho independente. O código não foi produzido no âmbito de vínculo
+empregatício, contrato de prestação de serviços ou encomenda de terceiros, e
+nenhuma pessoa jurídica detém direitos sobre ele.
+
+
+IDENTIFICADOR DA LICENÇA
+------------------------
+
+SPDX-License-Identifier: AGPL-3.0-only
+
+A escolha por "only" (e não "or-later") é deliberada: versões futuras da AGPL
+não se aplicam automaticamente a este código. Qualquer mudança de versão
+depende de decisão expressa do titular.
+
+
+CONTRIBUIDORES
+--------------
+
+- Eduardo Afonso <eduardoafonso1089@gmail.com> — autor e titular
+- Lucas Betioli — contribuições na branch `BYOM`, publicadas sob AGPL-3.0-only
+  com a concordância do autor.
+
+
+USO EM REDE (SEÇÃO 13 DA AGPL)
+------------------------------
+
+O Poligome é uma aplicação web. A seção 13 da AGPL-3.0 exige que qualquer
+pessoa que modifique este programa e o disponibilize para uso remoto através
+de uma rede ofereça a essas pessoas o código-fonte correspondente da versão
+modificada. Uma instância pública deve, portanto, expor um link para o
+código-fonte na própria interface.
+
+Código-fonte oficial: https://github.com/eduardoafonso1089/poligome

@@ -417,3 +417,5 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .cog-erro-dica{margin-top:5px!important;color:var(--ink)!important}
 .cog-erro code,.cog-aviso code{font-family:var(--mono),monospace;background:var(--control-bg);
   padding:1px 5px;border-radius:4px;font-size:11px}
+/* A aplicação principal bloqueia a rolagem do body; a tela de texto tem seu próprio scroll. */
+.llm-shell{height:100vh;overflow:auto;overscroll-behavior:contain}

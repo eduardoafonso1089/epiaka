@@ -12,8 +12,8 @@ converter run on your computer, not in the cloud.
 
 | | Route | What it does | Exports |
 |---|---|---|---|
-| **Computer vision** | `/anotar` | Boxes, polygons, masks, polylines, and keypoints, with vector editing, snapping, and per-class visibility | COCO, YOLO, GeoJSON, portable project |
-| **LLM and text** | `/texto` | Classification, rating against criteria, A/B preference with strength, and response correction | JSON, JSONL, CSV |
+| **Computer vision** | `/annotate` | Boxes, polygons, masks, polylines, and keypoints, with vector editing, snapping, and per-class visibility | COCO, YOLO, GeoJSON, portable project |
+| **LLM and text** | `/text` | Classification, rating against criteria, A/B preference with strength, and response correction | JSON, JSONL, CSV |
 
 Both keep a project you can save and reopen later: a single portable file with
 images, labels, and annotations, so work resumes on another machine without a
@@ -73,8 +73,8 @@ path, including the workaround for networks that block the npm registry.
 
 ```
 app/page.tsx          landing
-app/anotar/           image annotator
-app/texto/            LLM and text annotator
+app/annotate/         image annotator
+app/text/             LLM and text annotator
 app/lib/              exporters, geometry, SAM and COG clients, i18n
 public/               local connector installers, favicon and cursors
 docs/PLATFORM.md      hosting platform, bindings, and auth notes
@@ -110,3 +110,14 @@ and the datasets you export are not derivative works of the program.
 
 No warranty; see [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE) for
 ownership and contribution credits.
+
+### Commercial license
+
+The AGPL asks derivative work to stay open, and asks a modified network instance to offer
+its source to the people using it. If that does not fit your case — embedding Poligome in a
+closed product, or running a modified instance without publishing the changes — a separate
+commercial license is available from the copyright holder. Write to
+eduardoafonso1089@gmail.com describing the intended use.
+
+The Poligome name and logos are not covered by the AGPL: the license grants rights over the
+code, not over the identity. See [NOTICE](NOTICE).

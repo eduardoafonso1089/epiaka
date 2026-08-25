@@ -93,12 +93,12 @@ export default function Landing() {
     </section>
 
     <section className="landing-projects" aria-label={copy.landingProjectsLabel}>
-      <a href="/anotar">
+      <a href="/annotate">
         <span className="landing-project-icon"><Box size={22} /></span>
         <div><small>{copy.landingVisionEyebrow}</small><b>{copy.landingVisionTitle}</b><span>{copy.landingVisionText}</span></div>
         <ArrowRight size={18} />
       </a>
-      <a href="/texto">
+      <a href="/text">
         <span className="landing-project-icon"><MessageSquareText size={22} /></span>
         <div><small>{copy.landingLlmEyebrow}</small><b>{copy.landingLlmTitle}</b><span>{copy.landingLlmText}</span></div>
         <ArrowRight size={18} />
@@ -130,8 +130,8 @@ export default function Landing() {
     <section className="landing-closing">
       <BrandLockup height={26} />
       <div className="landing-closing-actions">
-        <a className="landing-cta" href="/anotar">{copy.landingVisionCta}</a>
-        <a className="landing-cta secondary" href="/texto">{copy.landingLlmCta}</a>
+        <a className="landing-cta" href="/annotate">{copy.landingVisionCta}</a>
+        <a className="landing-cta secondary" href="/text">{copy.landingLlmCta}</a>
       </div>
       <p>{copy.landingCtaNote}</p>
     </section>

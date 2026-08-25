@@ -1,19 +1,19 @@
-// Leitura de GeoTIFF/COG e geração de recortes para o anotador.
+// Reading GeoTIFF/COG and generating crops for the annotator.
 //
-// O anotador trabalha sobre um <img> num espaço de 1000 × 650. Um COG de gigapixels não
-// cabe ali por dois motivos independentes: o navegador não decodifica TIFF, e o bitmap
-// não caberia na memória. A saída é não tentar: o COG é lido por tiles só para o usuário
-// escolher a região, e o que entra no anotador é um recorte dessa região, já em PNG e com
-// tamanho limitado. Com isso toda ferramenta existente — inclusive o SAM, que envia a
-// imagem inteira por data URL — continua funcionando sem alteração.
+// The annotator works on an <img> in a 1000 × 650 space. A gigapixel COG does not fit there
+// for two independent reasons: the browser does not decode TIFF, and the bitmap would not
+// fit in memory. The way out is not to try: the COG is read by tiles only so the user can
+// choose the region, and what enters the annotator is a crop of that region, already PNG and
+// size-limited. With that, every existing tool — including SAM, which sends the whole image
+// as a data URL — keeps working unchanged.
 //
-// O preço é guardar a referência: origem, escala e a janela recortada. É ela que devolve
-// a anotação para pixel do arquivo original e para coordenada de terreno.
+// The price is keeping the reference: origin, scale and the cropped window. It is what maps
+// the annotation back to a pixel of the original file and to a ground coordinate.
 
 import type { GeoRef } from "./types";
 
-/** Recorte maior que isso não ajuda: o anotador desenha num espaço de 1000 × 650, e o SAM
- *  recebe a imagem inteira por data URL. Acima disso só cresce memória e latência. */
+/** A crop larger than this does not help: the annotator draws in a 1000 × 650 space, and
+ *  SAM receives the whole image as a data URL. Beyond that only memory and latency grow. */
 export const RECORTE_LADO_MAX = 4096;
 export const RECORTE_MP_MAX = 12;
 
@@ -29,17 +29,17 @@ export type MetadadosCog = {
   larguraTile: number;
   alturaTile: number;
   overviews: number;
-  /** Índices dos IFDs que são imagem de verdade, do mais fino ao mais grosso. */
+  /** Indices of the IFDs that are real images, from finest to coarsest. */
   niveis: number[];
   tiled: boolean;
   semDado: number | null;
-  /** "sim" | "tiled, sem overviews" | "não — por faixas" */
+  /** Possible values: "sim" | "tiled, sem overviews" | "não — por faixas" */
   perfil: string;
 };
 
-/** Só os 4 primeiros bytes. Um File dá slice, uma URL dá range request: é a checagem mais
- *  barata possível e evita entregar HTML de erro ao leitor de TIFF, que trava tentando
- *  interpretar bytes aleatórios. */
+/** Only the first 4 bytes. A File gives slice, a URL gives a range request: it is the
+ *  cheapest possible check and avoids handing error HTML to the TIFF reader, which hangs
+ *  trying to interpret random bytes. */
 export async function primeirosBytes(origem: File | string) {
   if (typeof origem !== "string") {
     return new Uint8Array(await origem.slice(0, 4).arrayBuffer());
@@ -65,7 +65,7 @@ export function ehArquivoTiff(nome: string, tipo?: string) {
 type Geotiff = Awaited<ReturnType<typeof abre>>["tiff"];
 type ImagemTiff = Awaited<ReturnType<Geotiff["getImage"]>>;
 
-/** Abre o arquivo e devolve o handle junto dos metadados que as duas telas precisam. */
+/** Opens the file and returns the handle along with the metadata both screens need. */
 export async function abre(origem: File | string) {
   const { fromBlob, fromUrl } = await import("geotiff");
   const tiff = typeof origem === "string" ? await fromUrl(origem) : await fromBlob(origem);
@@ -73,11 +73,10 @@ export async function abre(origem: File | string) {
 }
 
 /**
- * Um COG guarda mais IFDs do que os níveis da pirâmide: as máscaras internas entram como
- * imagens de resolução reduzida, com as mesmas dimensões de um overview. Escolher uma
- * delas por engano faz o leitor devolver "Invalid or unsupported photometric
- * interpretation", porque máscara é PhotometricInterpretation 4. O bit 4 de
- * NewSubfileType é o que as identifica.
+ * A COG holds more IFDs than the pyramid levels: internal masks come in as reduced
+ * resolution images, with the same dimensions as an overview. Picking one of them by mistake
+ * makes the reader return "Invalid or unsupported photometric interpretation", because a
+ * mask is PhotometricInterpretation 4. Bit 4 of NewSubfileType is what identifies them.
  */
 function ehMascara(imagem: ImagemTiff) {
   const diretorio = (imagem as unknown as {
@@ -99,9 +98,9 @@ export async function leMetadados(origem: File | string): Promise<MetadadosCog &
   for (let indice = 0; indice < total; indice += 1) {
     if (!ehMascara(await tiff.getImage(indice))) niveis.push(indice);
   }
-  // Num TIFF por faixas o geotiff.js devolve a largura da imagem como "tile", então
-  // getTileWidth() não distingue tiled de striped. A flag isTiled vale false quando o
-  // arquivo tem StripOffsets em vez de TileWidth.
+  // In a striped TIFF geotiff.js returns the image width as the "tile", so getTileWidth()
+  // does not distinguish tiled from striped. The isTiled flag is false when the file has
+  // StripOffsets instead of TileWidth.
   const tiled = Boolean((imagem as unknown as { isTiled?: boolean }).isTiled);
   const [escalaX, escalaY] = imagem.getResolution() as number[];
   const origemModelo = imagem.getOrigin() as number[];
@@ -126,23 +125,23 @@ export async function leMetadados(origem: File | string): Promise<MetadadosCog &
 }
 
 function codigoCrs(imagem: ImagemTiff) {
-  // O geotiff.js 3.x expõe as GeoKeys por getGeoKeys(); nas versões 2.x elas eram uma
-  // propriedade `geoKeys` do objeto. Aceita as duas formas.
+  // geotiff.js 3.x exposes the GeoKeys through getGeoKeys(); in the 2.x versions they were
+  // a `geoKeys` property of the object. Both forms are accepted.
   const alvo = imagem as unknown as {
     getGeoKeys?: () => Record<string, unknown> | null;
     geoKeys?: Record<string, unknown>;
   };
   const chaves = (typeof alvo.getGeoKeys === "function" ? alvo.getGeoKeys() : null) ?? alvo.geoKeys;
   const bruto = chaves?.ProjectedCSTypeGeoKey ?? chaves?.GeographicTypeGeoKey;
-  // Algumas tags chegam como array de um elemento.
+  // Some tags arrive as a single-element array.
   const codigo = Array.isArray(bruto) ? bruto[0] : bruto;
   return typeof codigo === "number" && codigo > 0 && codigo < 32767 ? `EPSG:${codigo}` : "sem CRS";
 }
 
 /**
- * Decide o tamanho do recorte. A janela pedida pode ter dezenas de milhares de pixels;
- * o resultado é limitado por lado e por megapixel, preservando a proporção. Nunca
- * aumenta: recortar 300 px não gera uma imagem de 4096.
+ * Decides the crop size. The requested window can have tens of thousands of pixels; the
+ * result is capped per side and per megapixel, preserving the proportion. It never scales
+ * up: cropping 300 px does not produce a 4096 image.
  */
 export function dimensionaRecorte(janelaLargura: number, janelaAltura: number) {
   const porLado = Math.min(1, RECORTE_LADO_MAX / Math.max(janelaLargura, janelaAltura));
@@ -151,15 +150,15 @@ export function dimensionaRecorte(janelaLargura: number, janelaAltura: number) {
   return {
     largura: Math.max(1, Math.round(janelaLargura * fator)),
     altura: Math.max(1, Math.round(janelaAltura * fator)),
-    // Quantos pixels do arquivo cabem em 1 px do recorte. 1 significa resolução nativa.
+    // How many pixels of the file fit in 1 px of the crop. 1 means native resolution.
     reducao: fator ? 1 / fator : 1,
   };
 }
 
 /**
- * Escolhe o nível da pirâmide mais grosso que ainda não force ampliação. Ler a resolução
- * cheia para depois reduzir por software transferiria o arquivo inteiro; é justamente o
- * que os overviews existem para evitar.
+ * Picks the coarsest pyramid level that still does not force upscaling. Reading the full
+ * resolution only to downscale in software would transfer the whole file; that is exactly
+ * what overviews exist to avoid.
  */
 async function nivelPara(tiff: Geotiff, niveis: number[], larguraTotal: number, reducao: number) {
   let escolhido = niveis[0] ?? 0;
@@ -175,8 +174,8 @@ async function nivelPara(tiff: Geotiff, niveis: number[], larguraTotal: number, 
   return { imagem: await tiff.getImage(escolhido), fator: fatorEscolhido, indice: escolhido };
 }
 
-/** Rampa das imagens de uma banda, igual à do visualizador — o recorte precisa sair com a
- *  mesma aparência da prévia, senão o usuário anota uma coisa e vê outra. */
+/** Ramp for single-band images, the same as the viewer's — the crop has to come out looking
+ *  like the preview, otherwise the user annotates one thing and sees another. */
 function rampa(valor: number, min: number, max: number) {
   const t = max > min ? Math.min(1, Math.max(0, (valor - min) / (max - min))) : 0;
   const paradas: Array<[number, number, number]> = [[16, 22, 19], [104, 148, 124], [242, 246, 243]];
@@ -198,10 +197,10 @@ export type Recorte = {
 };
 
 /**
- * Lê a janela pedida e devolve um PNG pronto para virar asset do anotador, junto da
- * referência que liga cada pixel do recorte de volta ao arquivo e ao terreno.
+ * Reads the requested window and returns a PNG ready to become an annotator asset, along
+ * with the reference that ties each pixel of the crop back to the file and to the ground.
  *
- * `janela` está em pixel do arquivo original, com y crescendo para baixo.
+ * `janela` is in pixels of the original file, with y growing downwards.
  */
 export async function geraRecorte(
   origem: File | string,
@@ -212,8 +211,8 @@ export async function geraRecorte(
   const meta = await leMetadados(origem);
   const { tiff } = meta;
 
-  // Recorta contra os limites do arquivo: arrastar a vista para fora da imagem é comum,
-  // e pedir pixel inexistente faz o geotiff.js devolver lixo em vez de erro.
+  // Clips against the file bounds: dragging the view outside the image is common, and
+  // asking for a nonexistent pixel makes geotiff.js return garbage instead of an error.
   const x0 = Math.max(0, Math.floor(janela.x));
   const y0 = Math.max(0, Math.floor(janela.y));
   const x1 = Math.min(meta.largura, Math.ceil(janela.x + janela.w));
@@ -225,7 +224,7 @@ export async function geraRecorte(
   const alvo = dimensionaRecorte(larguraJanela, alturaJanela);
   const nivel = await nivelPara(tiff, meta.niveis, meta.largura, alvo.reducao);
 
-  // A janela precisa ir para a escala do nível escolhido antes da leitura.
+  // The window has to go to the scale of the chosen level before reading.
   const janelaNivel = [
     Math.floor(x0 / nivel.fator), Math.floor(y0 / nivel.fator),
     Math.ceil(x1 / nivel.fator), Math.ceil(y1 / nivel.fator),
@@ -240,10 +239,11 @@ export async function geraRecorte(
 
   const pixels = new Uint8ClampedArray(alvo.largura * alvo.altura * 4);
   if (meta.bandas >= 3) {
-    // readRGB resolve photometric por conta própria — inclusive YCbCr, o formato dominante
-    // em ortofoto de drone, que readRasters entregaria com Y, Cb e Cr crus nos três canais.
-    // `interleave` é false por padrão no readRGB, e sem ele o retorno são três arrays
-    // separados em vez de um só — o laço abaixo leria undefined e o recorte sairia preto.
+    // readRGB resolves photometric on its own — including YCbCr, the dominant format in
+    // drone orthophotos, which readRasters would hand back with raw Y, Cb and Cr in the three
+    // channels. `interleave` defaults to false in readRGB, and without it the return is three
+    // separate arrays instead of one — the loop below would read undefined and the crop would
+    // come out black.
     const dados = await nivel.imagem.readRGB({
       ...opcoes, interleave: true, enableAlpha: false,
     }) as unknown as ArrayLike<number>;

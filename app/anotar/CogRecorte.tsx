@@ -1,14 +1,14 @@
 "use client";
 
-// Passo de recorte para arquivos COG/GeoTIFF dentro do anotador.
+// Crop step for COG/GeoTIFF files inside the annotator.
 //
-// O anotador não consegue — e não deve — abrir um raster de gigapixels: o navegador não
-// decodifica TIFF e o bitmap não caberia na memória. Aqui o arquivo é lido por tiles, só
-// para o usuário escolher onde quer trabalhar; o que sai é um PNG limitado que entra na
-// lista de imagens como qualquer outra. Assim todas as ferramentas já existentes, e o SAM
-// junto, funcionam sem saber que o recorte veio de um COG.
+// The annotator cannot — and should not — open a gigapixel raster: the browser does not
+// decode TIFF and the bitmap would not fit in memory. Here the file is read by tiles, only
+// so the user can pick where to work; what comes out is a size-limited PNG that enters the
+// image list like any other. That way every existing tool, SAM included, works without
+// knowing the crop came from a COG.
 //
-// OpenLayers é browser-only, então entra por import() dentro do efeito.
+// OpenLayers is browser-only, so it comes in through import() inside the effect.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type OlMapa from "ol/Map.js";
@@ -32,15 +32,15 @@ export type CogRecorteProps = {
 
 const LIMITE_MS = 45_000;
 
-/** Porta do helper local de conversão. O do SAM usa a 7860; esta é a vizinha. */
+/** Port of the local conversion helper. SAM uses 7860; this is the one next door. */
 const CONVERSOR_PADRAO = "http://127.0.0.1:7861";
 const CHAVE_CONVERSOR = "poligome-cog-endpoint";
-/** Chave anterior ao rebranding; lida uma vez para não perder o endpoint já salvo. */
+/** Key from before the rebranding; read once so an already saved endpoint is not lost. */
 const CHAVE_CONVERSOR_LEGADA = "epiaka-cog-endpoint";
 
-/** Taxas medidas nesta base com `rio cogeo create`: deflate sustenta 20–25 MP/s e JPEG
- *  cai de 7 para 5 conforme o arquivo cresce. A estimativa é deliberadamente pessimista:
- *  errar para mais irrita menos do que uma barra que estoura o prazo. */
+/** Rates measured on this codebase with `rio cogeo create`: deflate holds 20–25 MP/s and
+ *  JPEG drops from 7 to 5 as the file grows. The estimate is deliberately pessimistic:
+ *  overshooting annoys less than a bar that blows past its own deadline. */
 function estimaMinutos(megapixels: number) {
   return Math.max(1, Math.ceil(megapixels / 5 / 60));
 }
@@ -65,10 +65,10 @@ function comLimite<T>(promessa: Promise<T>, etapa: string) {
   });
 }
 
-/** Matriz BT.601 de faixa cheia. Ortofoto de drone quase sempre chega como JPEG com
- *  photometric=YCbCr, e o decodificador do geotiff.js entrega Y, Cb e Cr crus nos três
- *  canais quando lido por readRasters — que é o caminho do WebGLTile. Sem isto, grama
- *  sai rosa. A conversão custa zero por ir no shader. */
+/** Full-range BT.601 matrix. Drone orthophotos almost always arrive as JPEG with
+ *  photometric=YCbCr, and the geotiff.js decoder hands back raw Y, Cb and Cr in the three
+ *  channels when read through readRasters — which is the WebGLTile path. Without this,
+ *  grass comes out pink. The conversion costs nothing by running in the shader. */
 function corDeYCbCr() {
   const y = ["band", 1];
   const cb = ["-", ["band", 2], 128];
@@ -101,8 +101,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
   const [modo, setModo] = useState<Modo>("visivel");
   const [janela, setJanela] = useState<Janela | null>(null);
   const [gerando, setGerando] = useState(false);
-  // A fonte pode trocar no meio da sessão: converter para COG substitui o File pelo
-  // endereço servido pelo helper, e o visualizador remonta em cima dele.
+  // The source can change mid-session: converting to COG replaces the File with the
+  // address served by the helper, and the viewer remounts on top of it.
   const [fonte, setFonte] = useState<File | string>(origem);
   const [conversor, setConversor] = useState<"desconhecido" | "ativo" | "ausente">("desconhecido");
   const [conversao, setConversao] = useState<Trabalho | null>(null);
@@ -111,8 +111,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
     ? CONVERSOR_PADRAO
     : localStorage.getItem(CHAVE_CONVERSOR) || localStorage.getItem(CHAVE_CONVERSOR_LEGADA) || CONVERSOR_PADRAO;
 
-  // Extent do mapa → janela em pixel do arquivo. É a única conversão que este componente
-  // precisa fazer sozinho; o resto vive em lib/cog.
+  // Map extent → pixel window of the file. It is the only conversion this component has
+  // to do on its own; the rest lives in lib/cog.
   const janelaDe = useCallback((extent: number[]): Janela | null => {
     const m = metaRef.current;
     if (!m) return null;
@@ -140,8 +140,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
 
   useEffect(() => {
     let cancelado = false;
-    // Trocar de fonte remonta o mapa; sem descartar o anterior sobram dois canvas e dois
-    // laços de render disputando a mesma div.
+    // Switching source remounts the map; without discarding the previous one, two canvases
+    // and two render loops would be fighting over the same div.
     limpaRef.current?.();
     limpaRef.current = null;
     (async () => {
@@ -163,14 +163,14 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
         metaRef.current = dados;
         setMeta(dados);
 
-        // Uma banda só (elevação, NDVI, máscara) não tem mapeamento para RGB: sem uma
-        // rampa explícita o WebGLTile pinta tudo preto, porque lê altitude em metros como
-        // componente de cor de 0 a 255. A faixa medida aqui vale para a prévia e para o
-        // recorte, senão o usuário anota uma imagem e recebe outra.
+        // A single band (elevation, NDVI, mask) has no mapping to RGB: without an explicit
+        // ramp WebGLTile paints everything black, because it reads altitude in metres as a
+        // colour component from 0 to 255. The range measured here applies to the preview and
+        // to the crop, otherwise the user annotates one image and receives another.
         let faixa: { min: number; max: number } | null = null;
         if (dados.bandas === 1) {
           setEtapa(copy.cogStepBand);
-          // O último nível é o overview mais grosso; ler dele custa poucos KB.
+          // The last level is the coarsest overview; reading from it costs a few KB.
           const grossa = await dados.tiff.getImage(dados.niveis[dados.niveis.length - 1]);
           const rasters = await comLimite(grossa.readRasters(), copy.cogStepBand) as unknown as Array<ArrayLike<number>>;
           faixa = medeFaixa(rasters[0], dados.semDado);
@@ -189,8 +189,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
         const source = new GeoTIFF({
           sources: [dados.semDado !== null ? { ...base, nodata: dados.semDado } : base],
           interpolate: true,
-          // A normalização padrão reescala tudo para 0–1 e desfaz a relação com a unidade
-          // real, que a rampa e a matriz YCbCr precisam manter.
+          // The default normalisation rescales everything to 0–1 and breaks the relation
+          // to the real unit, which the ramp and the YCbCr matrix need to keep.
           ...(faixa || ycbcr ? { normalize: false } : {}),
         });
 
@@ -224,9 +224,9 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
         });
         mapaRef.current = mapa;
 
-        // Caixa por arrasto. O padrão do OpenLayers pede dois cliques e deixa o arraste
-        // para o pan; aqui é o contrário do que se espera de uma seleção de recorte, e o
-        // usuário já enquadrou a região no modo "área visível" antes de chegar aqui.
+        // Box by dragging. The OpenLayers default asks for two clicks and leaves dragging
+        // to the pan; that is the opposite of what a crop selection suggests, and the user
+        // has already framed the region in "visible area" mode before getting here.
         const desenho = new Draw({
           source: selecao, type: "Circle", geometryFunction: createBox(),
           style: estilo, freehandCondition: always,
@@ -270,8 +270,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
     else atualizaJanela();
   }, [modo, atualizaJanela]);
 
-  // Só procura o helper quando ele resolveria algo: para um COG completo a conversão
-  // não muda nada, e uma sonda inútil só gera erro no console do usuário.
+  // Only look for the helper when it would solve something: for a complete COG the
+  // conversion changes nothing, and a pointless probe just logs an error for the user.
   useEffect(() => {
     if (!meta || meta.perfil === "sim") return;
     let vivo = true;
@@ -284,8 +284,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
     return () => { vivo = false; controle.abort(); };
   }, [meta, endpoint]);
 
-  // Relógio da conversão: sem porcentagem real vinda do GDAL, o tempo decorrido ao lado
-  // da estimativa é a informação honesta.
+  // Conversion clock: with no real percentage coming from GDAL, the elapsed time next to
+  // the estimate is the honest information.
   useEffect(() => {
     if (conversao?.estado !== "convertendo") return;
     const id = window.setInterval(() => setSegundos((valor) => valor + 1), 1000);
@@ -303,8 +303,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
       if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
       let trabalho = await resposta.json() as Trabalho;
       setConversao(trabalho);
-      // Sem porcentagem no GDAL, resta perguntar. Cinco segundos é curto o bastante para
-      // parecer vivo e longo o bastante para não afogar o helper durante 11 minutos.
+      // With no percentage from GDAL, all that is left is asking. Five seconds is short
+      // enough to look alive and long enough not to drown the helper for 11 minutes.
       while (trabalho.estado === "convertendo") {
         await new Promise((resolve) => window.setTimeout(resolve, 5000));
         const atual = await fetch(`${endpoint}/trabalhos/${trabalho.id}`);
@@ -313,7 +313,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
         setConversao(trabalho);
       }
       if (trabalho.estado === "erro") throw new Error(trabalho.detalhe || "falha na conversão");
-      // O helper serve o resultado com Range, então o visualizador volta a ler por tiles.
+      // The helper serves the result with Range, so the viewer reads by tiles again.
       setFase("lendo");
       setJanela(null);
       caixaRef.current = null;

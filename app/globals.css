@@ -13,8 +13,8 @@
 @media(max-width:560px){.topbar{height:58px}.workspace{height:calc(100vh - 58px)}.project{max-width:112px;font-size:12px}.open-project-main,.project-save-main{width:34px;padding:0}.open-project-main span,.project-save-main span{display:none}.export-main{font-size:0;padding:0 10px}.export-main svg:last-child{display:none}.editor{grid-template-rows:48px minmax(0,1fr) 38px}.canvas{min-width:430px}.status p{display:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
-/* Painéis laterais redimensionáveis no desktop. A área larga facilita capturar a divisória,
-   enquanto o traço central preserva a aparência leve do layout. */
+/* Resizable side panels on desktop. The wide area makes the divider easy to grab, while
+   the centre stroke preserves the layout's light appearance. */
 .panel-resizer{position:absolute;top:0;bottom:0;width:11px;padding:0;border:0;background:transparent;cursor:col-resize;z-index:45;touch-action:none}.panel-resizer-left{right:-6px}.panel-resizer-right{left:-6px}.panel-resizer::after{content:"";position:absolute;top:0;bottom:0;left:5px;width:1px;background:transparent;transition:background .15s,box-shadow .15s}.panel-resizer:hover::after,.panel-resizer:focus-visible::after{background:var(--green);box-shadow:0 0 0 1px color-mix(in srgb,var(--green) 24%,transparent)}.panel-resizer:focus-visible{outline:0}.workspace.resizing-panels{cursor:col-resize;user-select:none}.workspace.resizing-panels iframe{pointer-events:none}
 @media(max-width:860px){.panel-resizer{display:none}}
 
@@ -26,7 +26,7 @@
 /* Local SAM setup */
 .sam-local-modal{width:min(620px,100%);max-height:min(88vh,780px);overflow:auto}.hardware-warning{border:1px solid var(--amber-border);background:var(--amber-bg);border-radius:10px;padding:12px 13px;margin-bottom:12px}.hardware-warning>b,.sam-setup>b{display:block;font-size:13px;color:var(--amber);margin-bottom:5px}.hardware-warning p{font-size:11px;line-height:1.55;color:var(--amber);margin:4px 0}.hardware-warning strong{color:var(--amber)}.sam-setup{border:1px solid var(--tool-active-border);border-radius:10px;padding:12px 13px;margin-bottom:12px;background:var(--tool-active-bg)}.sam-setup>b{color:var(--btn-accent-ink)}.sam-setup ol{margin:7px 0 9px;padding-left:19px;color:var(--muted);font-size:11px;line-height:1.6}.sam-setup li{margin:3px 0}.sam-setup a{display:inline-flex;align-items:center;gap:5px;color:var(--btn-accent-ink);font-weight:700;text-decoration:none}.sam-setup a:hover{text-decoration:underline}.sam-setup pre{white-space:pre-wrap;word-break:break-word;margin:5px 0 0;padding:7px 8px;border-radius:6px;background:var(--green);color:var(--green);font-family:var(--mono),monospace;font-size:10px;line-height:1.45}.sam-local-modal .sam-contract{margin-top:4px}.stage.freehand svg{cursor:crosshair}.freehand-line{pointer-events:none}
 .stroke-control{height:31px;display:flex;align-items:center;gap:6px;padding:0 7px;border:1px solid var(--line);border-radius:7px;background:var(--control-bg);color:var(--muted);flex:none}.stroke-control input{width:72px;accent-color:var(--green);cursor:pointer}.stroke-control output{min-width:26px;color:var(--ink);font-family:var(--mono),monospace;font-size:10px}.stroke-control.disabled,.zoom button:disabled{opacity:.42;cursor:default}.stroke-control input:disabled{cursor:default}.stage.polygon svg,.stage.freehand svg,.stage.line svg,.stage.reshape svg{cursor:url("/polygon-cursor.svg") 4 28,crosshair}
-/* Polilinha: o traço visível não recebe eventos; quem captura o clique é o traço largo invisível. */
+/* Polyline: the visible stroke takes no events; the wide invisible stroke captures the click. */
 .line-shape{fill:none;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .line-hit{fill:none;stroke:transparent;pointer-events:stroke}@media(max-width:1180px){.stroke-control input{width:50px}}
 .sam-setup li small{display:block;margin:2px 0 3px;color:var(--muted)}.canvas{min-width:260px;max-width:none;transition:none}.scroll{overscroll-behavior:contain}.vertex-handle{pointer-events:all}.edge-handle{pointer-events:visiblePainted}.edge-handle:hover{opacity:1;fill:var(--lime)}
@@ -44,10 +44,10 @@
 .snap-guide{pointer-events:none}.snap-guide circle{fill:rgba(168,224,99,.18);stroke:#8BE3BD}
 .snap-guide line{stroke:#FFFFFF;stroke-linecap:round}
 .movable-annotation{cursor:move}
-/* Com uma ferramenta ativa, o cursor dela vale sobre toda a área do canvas: nenhuma
-   forma pode sugerir a ação de outra ferramenta durante o procedimento. */
+/* With a tool active, its cursor applies across the whole canvas area: no shape may
+   suggest another tool's action during the operation. */
 .stage:not(.select) svg *{cursor:inherit}
-/* Exceção: as alças pertencem à própria ferramenta Transformar, então mantêm o cursor delas. */
+/* Exception: the handles belong to the Transform tool itself, so they keep their own cursor. */
 .stage.transform .transform-handle.rotate-handle{cursor:grab}
 .stage.transform .transform-handle.scale-handle{cursor:nwse-resize}
 .reshape-target{stroke-dasharray:none}
@@ -75,7 +75,7 @@ html[data-theme="light"]{--ink:#111614;--muted:#55635C;--line:#D5DED8;--green:#1
 .coordinate-guide line{stroke:var(--green);stroke-width:1;stroke-dasharray:4 5;vector-effect:non-scaling-stroke;opacity:.72}.coordinate-guide rect{fill:rgba(17,22,20,.88);stroke:var(--green);stroke-width:.8;vector-effect:non-scaling-stroke}.coordinate-guide text{fill:#fff;font-family:var(--mono),monospace;font-size:10px;font-weight:700}
 .coordinate-guide.obscured>g{opacity:.18}
 
-/* Estados semânticos: o texto nunca depende de uma cor auxiliar sobre um fundo de alerta. */
+/* Semantic states: the text never depends on an auxiliary colour over an alert background. */
 html{--notice-bg:#252039;--notice-border:#6554B9;--notice-ink:#F4F1FF;--overlay:rgba(13,11,20,.52);--tooltip-bg:#211C32;--tooltip-ink:#F4F1FF;--thumb-overlay:rgba(13,11,20,.78)}
 html[data-theme="light"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-ink:#25166D;--overlay:rgba(42,31,79,.34);--tooltip-bg:#2B1C6E;--tooltip-ink:#FFFFFF;--thumb-overlay:rgba(28,19,66,.76)}
 @media(prefers-color-scheme:light){html[data-theme="system"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-ink:#25166D;--overlay:rgba(42,31,79,.34);--tooltip-bg:#2B1C6E;--tooltip-ink:#FFFFFF;--thumb-overlay:rgba(28,19,66,.76)}}
@@ -87,9 +87,9 @@ html[data-theme="light"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-in
 @media(max-width:560px){.project-pop{position:fixed;left:10px;right:10px;top:56px;width:auto}.project-rename{grid-template-columns:1fr}.project-rename button{height:34px;justify-content:center}}
 
 /* Full-image navigation and resilient class panel */
-/* Centralização por margin:auto no filho, valendo tanto para o canvas quanto para o cartão
-   de projeto vazio, e sem depender do suporte a `safe center`. As margens automáticas zeram
-   sozinhas quando o conteúdo transborda, então nada fica fora do alcance do scroll. */
+/* Centring by margin:auto on the child, valid for both the canvas and the empty project
+   card, and without depending on `safe center` support. The automatic margins zero themselves
+   when the content overflows, so nothing ends up out of scroll reach. */
 .scroll{display:flex;overflow:auto;scrollbar-gutter:stable both-edges;overscroll-behavior:contain}.scroll>*{margin:auto}.canvas{flex:0 0 auto}
 .labels-editor{display:flex;flex:1;min-height:0;flex-direction:column;overflow:hidden;isolation:isolate}.labels-editor .label-creator,.labels-editor .label-help,.labels-editor .batch-class{flex:none}.labels-editor .label-list{position:relative;z-index:1;flex:1 1 0;min-height:64px;max-height:160px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.labels-editor .instances{position:relative;z-index:2;flex:1.25 1 0;min-height:92px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:var(--surface);pointer-events:auto}.labels-editor .label-row{grid-template-columns:25px minmax(0,1fr) 31px 31px}.label-selector,.label-selector-spacer{width:20px;height:20px;margin-left:3px}.label-list .label-selector{display:grid;place-items:center;grid-template-columns:none;gap:0;padding:0;border:1px solid var(--line);border-radius:5px;background:var(--control-bg);color:var(--tool-hint-ink)}.label-list .label-selector.selected{border-color:var(--green);background:var(--green)}.label-selector-spacer{display:block}.delete-label{width:28px;height:28px;border:0;background:transparent;border-radius:6px;display:grid;place-items:center;padding:0;color:var(--muted);cursor:pointer}.delete-label:hover:not(:disabled){background:var(--danger-bg);color:var(--danger)}.delete-label:disabled{opacity:.22;cursor:not-allowed}
 .label-help{min-height:58px;padding:10px 10px 7px}.label-help>div:first-child,.class-selection-summary{display:flex;align-items:center;justify-content:space-between;gap:7px}.label-help>div:first-child>button{border:0;background:transparent;color:var(--btn-accent-ink);padding:2px;font-size:10px;font-weight:700;cursor:pointer}.class-selection-summary{min-height:25px;margin-top:4px}.class-selection-summary>span{margin:0;font-weight:650;color:var(--ink)}.class-selection-summary>button{height:24px;border:1px solid var(--danger-border);border-radius:6px;background:var(--danger-bg);color:var(--danger);padding:0 7px;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;cursor:pointer}.label-list .label-row.checked{border-color:color-mix(in srgb,var(--green) 42%,var(--line))}
@@ -116,8 +116,8 @@ html[data-theme="light"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-in
 .empty-project{width:min(520px,calc(100% - 32px));padding:38px 30px;border:1px dashed color-mix(in srgb,var(--green) 45%,var(--line));border-radius:18px;background:color-mix(in srgb,var(--surface) 88%,transparent);color:var(--ink);text-align:center;box-shadow:0 14px 35px rgba(32,54,40,.08)}.empty-project>span{width:58px;height:58px;margin:0 auto 15px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--green) 14%,var(--surface));color:var(--green)}.empty-project h2{margin:0;font-size:20px}.empty-project p{max-width:390px;margin:8px auto 19px;color:var(--muted);font-size:13px;line-height:1.55}.empty-project>div{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}.empty-project button{height:38px;padding:0 14px;border:1px solid var(--line);border-radius:9px;background:var(--control-bg);color:var(--ink);display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;cursor:pointer}.empty-project button.primary{border-color:var(--green);background:var(--green);color:var(--on-brand)}.empty-project small{display:block;margin-top:18px;color:var(--muted);font-size:10px}
 @media(max-width:560px){.project-save-options{grid-template-columns:1fr}.project-save-options>button{min-height:118px}.project-save-modal{max-height:calc(100vh - 24px);overflow:auto}}
 
-/* ---- Barra de menu estilo Word: linha própria abaixo do nome da aplicação ---- */
-/* O topbar passa a ter duas faixas empilhadas; o padding horizontal migra para .topbar-main. */
+/* ---- Word-style menu bar: its own row below the application name ---- */
+/* The topbar now has two stacked rows; the horizontal padding moves to .topbar-main. */
 .topbar{height:96px;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0}
 .topbar-main{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;padding:0 18px 0 20px}
 .new-project-main{height:34px;padding:0 11px;border:1px solid var(--green);border-radius:8px;background:color-mix(in srgb,var(--green) 9%,var(--surface));color:var(--btn-accent-ink);display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:750;white-space:nowrap;cursor:pointer}.new-project-main:hover:not(:disabled){background:var(--green);color:var(--on-brand)}.new-project-main:disabled{opacity:.45;cursor:wait}
@@ -128,8 +128,8 @@ html[data-theme="light"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-in
 .menu-trigger.open svg{transform:rotate(180deg)}
 .menu-pop{position:absolute;left:0;right:auto;top:calc(100% + 5px);width:min(320px,calc(100vw - 20px))}
 .menu-separator{display:block;height:1px;margin:5px 4px;background:var(--line)}
-/* O nome do projeto é o próprio campo de edição: clicar entra em modo de digitação.
-   O lápis só aparece no hover, para não competir com a marca ao lado. */
+/* The project name is the edit field itself: clicking enters typing mode.
+   The pencil only appears on hover, so it does not compete with the brand next to it. */
 .project-name{display:flex;align-items:center;gap:7px;min-width:0;max-width:34vw;font-size:13px;font-weight:700;
   color:var(--ink);border:1px solid transparent;border-radius:8px;background:transparent;padding:5px 9px;
   cursor:text;text-align:left;font-family:inherit}
@@ -152,7 +152,7 @@ html[data-theme="light"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-in
 .project-pop>button:disabled{opacity:.45;cursor:default}
 .project-pop>button:disabled:hover{background:transparent}
 
-/* ---- Lockup Poligome no cabeçalho e na tela de carregamento ---- */
+/* ---- Poligome lockup in the header and on the loading screen ---- */
 .brand-lockup{display:flex;align-items:center;gap:7px;color:var(--green);flex:none}.brand-lockup strong{font-size:clamp(17px,1.8vw,23px);font-weight:800;letter-spacing:-.07em;line-height:1;color:var(--ink)}.brand-lockup strong span{color:var(--green);font-weight:700}
 .brand-lockup svg{display:block;overflow:visible}
 .brand-home{display:flex;border-radius:7px;color:inherit;text-decoration:none;cursor:pointer}.brand-home:focus-visible{outline:2px solid var(--green);outline-offset:3px}
@@ -160,8 +160,8 @@ html[data-theme="light"]{--notice-bg:#ECE8FF;--notice-border:#A99AEE;--notice-in
 .loading-card{gap:0}
 
 /* ================= Landing page ================= */
-/* O corpo do app usa overflow:hidden porque o editor gerencia o próprio scroll;
-   a landing precisa rolar, então libera na própria página. */
+/* The app body uses overflow:hidden because the editor manages its own scroll;
+   the landing needs to scroll, so it releases it on its own page. */
 .landing{min-height:100vh;background:var(--paper);color:var(--ink);overflow-y:auto;
   display:flex;flex-direction:column;align-items:center;padding:0 22px 0}
 body:has(.landing){overflow:auto}
@@ -177,7 +177,7 @@ body:has(.landing){overflow:auto}
 .landing-langs button:hover{color:var(--ink);background:var(--theme-hover)}
 .landing-langs button.active{background:var(--tool-active-bg);color:var(--tool-active-ink)}
 
-/* Grade pontilhada do herói: mesma linguagem do canvas de anotação. */
+/* Dotted grid of the hero: same language as the annotation canvas. */
 .landing-hero{padding:58px 0 44px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(250px,.65fr);align-items:center;gap:48px;
   background:radial-gradient(var(--dot) 1px,transparent 1px) 0 0/22px 22px;
   background-clip:content-box}
@@ -197,7 +197,7 @@ body:has(.landing){overflow:auto}
   background:var(--tool-active-bg);color:var(--tool-active-ink);font-size:12px;font-weight:700}
 .landing-cta-note{margin:0;font-size:12.5px;color:var(--tool-hint-ink)}
 
-/* O símbolo central conecta os dois domínios sem transformar a marca num logo diferente. */
+/* The central symbol connects the two domains without turning the brand into a different logo. */
 .landing-identity{height:250px;position:relative;border:1px solid var(--line);border-radius:24px;
   background:linear-gradient(145deg,color-mix(in srgb,var(--green) 11%,var(--surface)),var(--surface));
   box-shadow:0 24px 70px color-mix(in srgb,var(--paper) 70%,transparent);overflow:hidden}
@@ -246,42 +246,42 @@ body:has(.landing){overflow:auto}
   .landing-langs{width:100%;justify-content:center;border-radius:12px}
 }
 
-/* Identidade Poligome: violeta geométrico com contraste preservado em ambos os temas. */
+/* Poligome identity: geometric violet with contrast preserved in both themes. */
 html,html[data-theme="dark"]{--green:#8D75FF;--lime:#D7CEFF;--paper:#12101C;--surface:#1B1829;--surface-soft:#171421;--canvas-bg:#0D0B14;--control-bg:#252039;--theme-hover:#211C32;--dot:#2D2642;--line:#383052;--muted:#B9B1CC;--tool-ink:#D8D1E9;--tool-active-bg:#312954;--tool-active-ink:#B9A9FF;--tool-active-border:#6554B9;--tool-disabled-ink:#5B5570;--tool-hint-ink:#938BA8;--btn-accent-ink:#D7CEFF}
 html[data-theme="light"]{--green:#5D43D8;--lime:#412EAD;--tool-active-bg:#ECE8FF;--tool-active-ink:#412EAD;--tool-active-border:#C8BEFF;--btn-accent-ink:#5D43D8}
 @media(prefers-color-scheme:light){html[data-theme="system"]{--green:#5D43D8;--lime:#412EAD;--tool-active-bg:#ECE8FF;--tool-active-ink:#412EAD;--tool-active-border:#C8BEFF;--btn-accent-ink:#5D43D8}}
 @media(prefers-color-scheme:dark){html[data-theme="system"]{--ink:#F4F1FF;--muted:#B9B1CC;--line:#383052;--green:#8D75FF;--lime:#D7CEFF;--paper:#12101C;--surface:#1B1829;--surface-soft:#171421;--canvas-bg:#0D0B14;--control-bg:#252039;--theme-hover:#211C32;--dot:#2D2642;--tool-ink:#D8D1E9;--tool-active-bg:#312954;--tool-active-ink:#B9A9FF;--tool-active-border:#6554B9;--tool-disabled-ink:#5B5570;--tool-hint-ink:#938BA8;--btn-accent-ink:#D7CEFF;--amber:#E1B86E;--amber-bg:#382D19;--amber-border:#765D30;--danger:#F0849A;--danger-bg:#3B1F2A;--danger-border:#854052;--info:#A99CFF;--on-brand:#0D0B14}}
 
-/* Controles diretos para remover imagens e anotações da sessão. */
+/* Direct controls for removing images and annotations from the session. */
 .aside-title>div{display:flex;align-items:center;gap:2px}.aside-title button:disabled{opacity:.35;cursor:default}.annotation-editor .instance-row{grid-template-columns:29px minmax(0,1fr) 31px 28px}.instance-row .delete-annotation{width:26px;height:26px;border:0;background:transparent;border-radius:6px;display:grid;place-items:center;padding:0;color:var(--muted);cursor:pointer}.instance-row .delete-annotation:hover{background:var(--danger-bg);color:var(--danger)}
 .asset-list>.asset-row{display:grid;grid-template-columns:28px minmax(0,1fr);align-items:center;border:1px solid transparent;border-radius:8px}.asset-list>.asset-row:hover{background:var(--theme-hover)}.asset-list>.asset-row.active{background:color-mix(in srgb,var(--green) 22%,var(--surface));border-color:color-mix(in srgb,var(--green) 55%,var(--line));box-shadow:inset 3px 0 var(--green)}.asset-row .asset-selector{width:20px;height:20px;margin-left:4px;border:1px solid var(--line);border-radius:5px;background:var(--control-bg);color:var(--tool-hint-ink);display:grid;place-items:center;padding:0;cursor:pointer}.asset-row .asset-selector.selected{border-color:var(--green);background:var(--green);color:var(--on-brand)}.asset-row .asset-main{width:100%;display:grid;grid-template-columns:48px minmax(0,1fr) 17px;gap:9px;align-items:center;border:0;background:transparent;padding:7px;text-align:left;cursor:pointer}.asset-row .asset-main>div:nth-child(2){min-width:0}.asset-row .asset-main i{width:16px;height:16px;border:1px solid var(--line);border-radius:50%;display:grid;place-items:center;font-size:10px;font-style:normal;color:var(--tool-hint-ink)}.asset-row .asset-main i.checked{background:var(--green);border-color:var(--green)}
 
-/* Reordenação das listas por alça, com indicação precisa do ponto de inserção. */
+/* Reordering the lists by handle, with a precise indication of the insertion point. */
 .asset-list>.asset-row{grid-template-columns:22px 28px minmax(0,1fr);position:relative}.annotation-editor .instance-row{grid-template-columns:22px 29px minmax(0,1fr) 31px 28px;position:relative}.reorder-handle{width:22px;height:28px;padding:0;border:0;background:transparent;color:var(--tool-hint-ink);display:grid;place-items:center;cursor:grab}.reorder-handle:active{cursor:grabbing}.reorder-handle:hover,.reorder-handle:focus-visible{color:var(--green)}.reorder-handle:focus-visible{outline:2px solid color-mix(in srgb,var(--green) 55%,var(--line));outline-offset:-2px;border-radius:5px}.asset-row.dragging,.instance-row.dragging{opacity:.42}.asset-row.drop-before::after,.asset-row.drop-after::after,.instance-row.drop-before::after,.instance-row.drop-after::after{content:"";position:absolute;left:4px;right:4px;height:2px;border-radius:2px;background:var(--green);pointer-events:none;z-index:2}.asset-row.drop-before::after,.instance-row.drop-before::after{top:-2px}.asset-row.drop-after::after,.instance-row.drop-after::after{bottom:-2px}
 
-/* A foto é decodificada antes de liberar a tela; junto dela entra o SVG da máscara. */
+/* The photo is decoded before releasing the screen; the mask's SVG comes in with it. */
 .canvas>img.image-loading{visibility:hidden}
 
-/* Mantém a janela de navegação pronta no DOM; somente o quadro selecionado é visível. */
+/* Keeps the navigation window ready in the DOM; only the selected frame is visible. */
 .canvas>img{position:absolute;inset:0}.canvas>img.image-preload{visibility:hidden;pointer-events:none}.canvas>img.image-current{visibility:visible}
 
-/* A linha de corte é contínua, como as demais ferramentas de traçado. */
+/* The cut line is continuous, like the other stroke tools. */
 .split-line{stroke-dasharray:none;stroke-linecap:round;vector-effect:non-scaling-stroke}
 
-/* A revisão de qualidade fica preservada no código, mas fora da interface por enquanto. */
+/* The quality review is kept in the code but out of the interface for now. */
 .labels>.tabs{display:none}
 
-/* Paleta de permanência: superfícies neutras e lavanda de baixa saturação reduzem a
-   fadiga em sessões longas, sem perder o contraste das ações e dos avisos. */
+/* Palette for the long haul: neutral surfaces and low-saturation lavender reduce fatigue
+   in long sessions, without losing the contrast of actions and warnings. */
 html,html[data-theme="dark"]{--ink:#ECEAF0;--muted:#AAA6B2;--line:#3B3942;--green:#A497C8;--lime:#DAD4E8;--paper:#1D1C21;--surface:#25242A;--surface-soft:#201F24;--canvas-bg:#18171B;--control-bg:#2B2A31;--theme-hover:#2D2B33;--dot:#36343D;--tool-ink:#C9C5D0;--tool-active-bg:#34313E;--tool-active-ink:#D0C6EC;--tool-active-border:#5E5674;--tool-disabled-ink:#65616C;--tool-hint-ink:#99949F;--btn-accent-ink:#D3CAE6;--amber:#D5AD71;--amber-bg:#3C3123;--amber-border:#6E593E;--danger:#DF919C;--danger-bg:#3B252B;--danger-border:#77454F;--info:#AAB9E4;--on-brand:#1D1C21;--notice-bg:#302D38;--notice-border:#625A78;--notice-ink:#F1EFF5;--overlay:rgba(17,16,20,.58);--tooltip-bg:#2B2931;--tooltip-ink:#F1EFF5;--thumb-overlay:rgba(20,19,24,.76);color-scheme:dark}
 html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7161B7;--lime:#4F427F;--paper:#F7F7F5;--surface:#FFFFFF;--surface-soft:#F2F1F4;--canvas-bg:#ECEBEF;--control-bg:#FAF9FB;--theme-hover:#EAE8EE;--dot:#CCC9D2;--tool-ink:#605B6B;--tool-active-bg:#E8E5F2;--tool-active-ink:#544681;--tool-active-border:#C7C0DE;--tool-disabled-ink:#B0ABB8;--tool-hint-ink:#777180;--btn-accent-ink:#574984;--amber:#A66D24;--amber-bg:#FFF4E1;--amber-border:#E6C58F;--danger:#B94E5E;--danger-bg:#FBEAEC;--danger-border:#E6ACB4;--info:#596DAD;--on-brand:#FFFFFF;--notice-bg:#F1EEF9;--notice-border:#C7C0DE;--notice-ink:#3A3156;--overlay:rgba(42,39,50,.30);--tooltip-bg:#40375C;--tooltip-ink:#FFFFFF;--thumb-overlay:rgba(45,39,63,.72);color-scheme:light}
 @media(prefers-color-scheme:light){html[data-theme="system"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7161B7;--lime:#4F427F;--paper:#F7F7F5;--surface:#FFFFFF;--surface-soft:#F2F1F4;--canvas-bg:#ECEBEF;--control-bg:#FAF9FB;--theme-hover:#EAE8EE;--dot:#CCC9D2;--tool-ink:#605B6B;--tool-active-bg:#E8E5F2;--tool-active-ink:#544681;--tool-active-border:#C7C0DE;--tool-disabled-ink:#B0ABB8;--tool-hint-ink:#777180;--btn-accent-ink:#574984;--amber:#A66D24;--amber-bg:#FFF4E1;--amber-border:#E6C58F;--danger:#B94E5E;--danger-bg:#FBEAEC;--danger-border:#E6ACB4;--info:#596DAD;--on-brand:#FFFFFF;--notice-bg:#F1EEF9;--notice-border:#C7C0DE;--notice-ink:#3A3156;--overlay:rgba(42,39,50,.30);--tooltip-bg:#40375C;--tooltip-ink:#FFFFFF;--thumb-overlay:rgba(45,39,63,.72);color-scheme:light}}
 @media(prefers-color-scheme:dark){html[data-theme="system"]{--ink:#ECEAF0;--muted:#AAA6B2;--line:#3B3942;--green:#A497C8;--lime:#DAD4E8;--paper:#1D1C21;--surface:#25242A;--surface-soft:#201F24;--canvas-bg:#18171B;--control-bg:#2B2A31;--theme-hover:#2D2B33;--dot:#36343D;--tool-ink:#C9C5D0;--tool-active-bg:#34313E;--tool-active-ink:#D0C6EC;--tool-active-border:#5E5674;--tool-disabled-ink:#65616C;--tool-hint-ink:#99949F;--btn-accent-ink:#D3CAE6;--amber:#D5AD71;--amber-bg:#3C3123;--amber-border:#6E593E;--danger:#DF919C;--danger-bg:#3B252B;--danger-border:#77454F;--info:#AAB9E4;--on-brand:#1D1C21;--notice-bg:#302D38;--notice-border:#625A78;--notice-ink:#F1EFF5;--overlay:rgba(17,16,20,.58);--tooltip-bg:#2B2931;--tooltip-ink:#F1EFF5;--thumb-overlay:rgba(20,19,24,.76);color-scheme:dark}}
 
-/* Módulo LLM/Text: fluxo local de importação, configuração e revisão de registros. */
+/* LLM/Text module: local flow for importing, configuring and reviewing records. */
 .llm-shell{min-height:100vh;background:var(--paper);color:var(--ink)}.llm-top{height:62px;padding:0 28px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;align-items:center;gap:15px}.llm-top>.brand-home{font-size:19px;letter-spacing:-.05em}.llm-top>span{font-size:13px;color:var(--muted)}.llm-top>.llm-progress{margin-left:auto}.llm-top>button,.llm-secondary{height:34px;border:1px solid var(--line);border-radius:8px;background:var(--control-bg);padding:0 10px;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;cursor:pointer}.llm-primary{border:1px solid var(--green);border-radius:9px;background:var(--green);color:var(--on-brand);padding:0 14px;height:39px;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-weight:750;cursor:pointer}.llm-primary.compact{height:34px}.llm-welcome,.llm-setup{width:min(900px,calc(100% - 32px));margin:0 auto;padding:72px 0}.llm-welcome{max-width:780px;text-align:center}.llm-welcome h1,.llm-setup h1{letter-spacing:-.055em;font-size:clamp(28px,4vw,46px);margin:12px 0}.llm-welcome>p:not(.llm-eyebrow):not(.llm-message){max-width:630px;margin:0 auto 24px;line-height:1.65;color:var(--muted)}.llm-eyebrow{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--btn-accent-ink);font-size:12px;font-weight:750}.llm-drop{margin:14px auto 30px;padding:19px;border:1px dashed var(--tool-active-border);border-radius:10px;color:var(--muted);font-size:12px;max-width:410px}.llm-message{margin:12px auto;padding:9px 12px;background:var(--notice-bg);border:1px solid var(--notice-border);border-radius:8px;color:var(--notice-ink);font-size:12px}.llm-mode-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:left}.llm-mode-grid article,.llm-mode-grid button{min-height:105px;border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:16px;text-align:left}.llm-mode-grid b,.llm-mode-grid span{display:block}.llm-mode-grid b{font-size:14px}.llm-mode-grid span{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.45}.llm-mode-grid.selectable button{cursor:pointer}.llm-mode-grid.selectable button.selected{border-color:var(--green);background:var(--tool-active-bg);box-shadow:inset 3px 0 var(--green)}.llm-dataset-summary{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding:13px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}.llm-dataset-summary strong{font-size:14px}.llm-dataset-summary span{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.llm-config{display:grid;grid-template-columns:repeat(2,1fr);gap:13px;margin-top:20px;padding:20px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}.llm-field{display:grid;gap:6px;font-size:11px;font-weight:700}.llm-field.full,.llm-config-full{grid-column:1/-1}.llm-field span{color:var(--muted)}.llm-field input,.llm-field select,.llm-field textarea,.llm-comment textarea,.llm-correction textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--control-bg);color:var(--ink);padding:8px;font-size:12px;outline:0}.llm-field textarea{height:64px;resize:vertical}.llm-check{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer}.llm-tags{display:flex;gap:6px;flex-wrap:wrap}.llm-tags button{border:1px solid var(--tool-active-border);border-radius:999px;background:var(--tool-active-bg);color:var(--tool-active-ink);padding:5px 8px;display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer}.llm-tags button.add{background:transparent;border-style:dashed}.llm-criteria{display:grid;gap:7px}.llm-criteria>div{display:grid;grid-template-columns:1fr 66px auto 66px 30px;gap:6px;align-items:center}.llm-criteria input{height:32px;border:1px solid var(--line);border-radius:7px;background:var(--control-bg);color:var(--ink);padding:0 7px;font-size:11px}.llm-criteria span{font-size:11px;color:var(--muted)}.llm-criteria button{height:30px;border:0;border-radius:7px;background:var(--danger-bg);color:var(--danger);cursor:pointer}.llm-footer{margin-top:20px;display:flex;justify-content:space-between}.llm-work{padding-left:82px}.llm-sidebar{position:fixed;z-index:5;left:0;top:62px;bottom:0;width:82px;padding:14px 9px;border-right:1px solid var(--line);background:var(--surface);overflow:auto}.llm-sidebar>b{display:block;text-align:center;margin-bottom:8px;font-size:10px;color:var(--muted);text-transform:uppercase}.llm-sidebar>div{display:grid;gap:4px}.llm-sidebar button{height:28px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font-size:10px;cursor:pointer;position:relative}.llm-sidebar button.active{border-color:var(--green);background:var(--tool-active-bg);color:var(--tool-active-ink)}.llm-sidebar button i{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--line)}.llm-sidebar button.annotated i{background:var(--green)}.llm-sidebar button.review i{background:var(--amber)}.llm-sidebar button.skipped i{background:var(--muted)}.llm-record{width:min(1050px,calc(100% - 48px));margin:0 auto;padding:28px 0 70px}.llm-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}.llm-nav button{height:33px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 10px;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;cursor:pointer}.llm-nav button:disabled{opacity:.35}.llm-nav label{font-size:11px;color:var(--muted)}.llm-nav input{width:55px;margin-left:5px;border:1px solid var(--line);border-radius:6px;background:var(--control-bg);color:var(--ink);padding:5px}.llm-text-block{margin:12px 0;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--surface)}.llm-text-block>b{display:block;padding:9px 12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10px;letter-spacing:.1em}.llm-text-block pre{margin:0;padding:16px;white-space:pre-wrap;word-break:break-word;font:13px/1.65 var(--sans),Arial,sans-serif}.llm-responses{display:grid;grid-template-columns:1fr 1fr;gap:12px}.llm-responses .llm-text-block{margin:0}.llm-annotation{margin-top:18px;padding:18px;border:1px solid var(--tool-active-border);border-radius:13px;background:color-mix(in srgb,var(--green) 6%,var(--surface))}.llm-annotation>header{display:flex;justify-content:space-between;gap:12px}.llm-annotation>header b,.llm-annotation>header span{display:block}.llm-annotation>header b{font-size:11px;letter-spacing:.1em}.llm-annotation>header span{margin-top:4px;font-size:12px;color:var(--muted)}.llm-annotation>header>div:last-child{display:flex;gap:5px}.llm-annotation>header button{height:28px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:0 7px;display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer}.llm-annotation>header button.active{border-color:var(--green);color:var(--btn-accent-ink)}.llm-options{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.llm-options button{min-width:145px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:9px;display:flex;align-items:center;gap:7px;text-align:left;font-size:12px;cursor:pointer}.llm-options button i{width:17px;height:17px;border:1px solid var(--line);border-radius:50%;display:grid;place-items:center}.llm-options button.selected{border-color:var(--green);background:var(--tool-active-bg)}.llm-options button.selected i{border-color:var(--green);background:var(--green);color:var(--on-brand)}.llm-ratings{display:grid;gap:14px;margin-top:18px}.llm-ratings>div>b,.llm-ratings>div>span{display:block}.llm-ratings>div>b{font-size:13px}.llm-ratings>div>span{font-size:11px;color:var(--muted);margin-top:2px}.llm-ratings section{display:flex;gap:6px;margin-top:7px}.llm-ratings button{width:33px;height:31px;border:1px solid var(--line);border-radius:7px;background:var(--surface);cursor:pointer}.llm-ratings button.selected,.llm-preference button.selected{background:var(--green);border-color:var(--green);color:var(--on-brand)}.llm-preference{margin-top:18px}.llm-preference>b{font-size:13px}.llm-preference section{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.llm-preference button{height:35px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 12px;font-size:11px;font-weight:700;cursor:pointer}.llm-preference small{margin-left:5px;color:var(--muted)}.llm-correction{margin-top:18px}.llm-correction>div{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;font-size:11px}.llm-correction>div button{border:0;background:transparent;color:var(--btn-accent-ink);display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer}.llm-correction textarea{height:190px;resize:vertical;line-height:1.55}.llm-correction .llm-check{margin-top:8px}.llm-comment{display:grid;gap:5px;margin-top:16px;font-size:11px;color:var(--muted)}.llm-comment textarea{height:58px;resize:vertical}.llm-modal{position:fixed;z-index:20;inset:0;background:var(--overlay);display:grid;place-items:center;padding:20px}.llm-modal>section{position:relative;width:min(420px,100%);padding:24px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 24px 70px color-mix(in srgb,var(--paper) 65%,transparent)}.llm-modal h2{margin:0;font-size:18px}.llm-modal p{font-size:12px;line-height:1.5;color:var(--muted)}.llm-modal .close{position:absolute;right:10px;top:10px;border:0;background:transparent;cursor:pointer}.llm-modal>section>div{display:flex;gap:7px;margin-top:18px}.llm-modal .llm-primary{flex:1;font-size:11px}
-/* O módulo de texto usa o mesmo chrome do anotador visual; a segunda faixa alterna
-   o domínio de trabalho e mantém os controles específicos do dataset à direita. */
+/* The text module uses the same chrome as the visual annotator; the second row switches
+   the working domain and keeps the dataset-specific controls on the right. */
 .llm-platform-header{position:sticky;top:0;z-index:50}.llm-platform-header .brand-lockup strong{font-size:19px}
 .llm-project-name{min-width:0;max-width:34vw;display:flex;align-items:center;gap:7px;padding:5px 9px;font-size:13px;font-weight:700}
 .llm-project-name>em{width:7px;height:7px;flex:none;border-radius:50%;background:var(--green)}
@@ -324,7 +324,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
   border-radius:8px;background:var(--control-bg);color:var(--ink);font-size:17px;line-height:1;cursor:pointer}
 .cog-crop>header>button:hover{background:var(--theme-hover)}
 
-/* Ler o cabeçalho de um GeoTIFF não expõe progresso: a faixa só indica atividade. */
+/* Reading a GeoTIFF header exposes no progress: the bar only indicates activity. */
 .cog-crop-progress{height:3px;background:var(--control-bg);overflow:hidden;flex:none}
 .cog-crop-progress>i{display:block;height:100%;width:34%;background:var(--green);
   animation:cog-desliza 1.1s ease-in-out infinite}
@@ -393,7 +393,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
   .cog-crop-corpo>aside{padding:14px 0 0}
 }
 
-/* ================= Protótipo COG (rota /cog, isolada) ================= */
+/* ================= COG prototype styles ================= */
 .cog{height:100vh;display:flex;flex-direction:column;background:var(--paper);color:var(--ink);overflow:hidden}
 .cog>header{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--surface);flex:none}
 .cog h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.2px}
@@ -423,7 +423,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .cog-note{margin:0;font-size:10.5px;line-height:1.55;color:var(--tool-hint-ink);
   border-top:1px solid var(--line);padding-top:10px}
 
-/* Controles do OpenLayers no visual do app, sem depender do ol.css */
+/* OpenLayers controls in the app's look, without depending on ol.css */
 .cog .ol-viewport{background:var(--canvas-bg)}
 .cog .ol-zoom{position:absolute;top:10px;left:10px;display:flex;flex-direction:column;gap:3px}
 .cog .ol-zoom button{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;
@@ -433,14 +433,14 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .cog .ol-attribution button{display:none}
 @media(max-width:860px){.cog-body{grid-template-columns:minmax(0,1fr)}.cog-hud{display:none}}
 
-/* ---- Progresso e diagnóstico do protótipo COG ---- */
+/* ---- Progress and diagnostics of the COG prototype ---- */
 .cog-progress{position:relative;height:6px;margin:10px 0 0;border-radius:999px;
   background:var(--control-bg);overflow:hidden}
 .cog-progress>i{display:block;height:100%;background:var(--green);border-radius:999px;
   transition:width .18s ease-out}
 .cog-progress>b{position:absolute;right:0;top:9px;font-family:var(--mono),monospace;
   font-size:10px;font-weight:400;color:var(--tool-hint-ink)}
-/* Ler o cabeçalho não expõe progresso: a faixa apenas indica atividade. */
+/* Reading the header exposes no progress: the bar only indicates activity. */
 .cog-progress.indeterminada>i{width:34%;animation:cog-desliza 1.1s ease-in-out infinite}
 @keyframes cog-desliza{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
 @media(prefers-reduced-motion:reduce){
@@ -464,11 +464,11 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .cog-erro-dica{margin-top:5px!important;color:var(--ink)!important}
 .cog-erro code,.cog-aviso code{font-family:var(--mono),monospace;background:var(--control-bg);
   padding:1px 5px;border-radius:4px;font-size:11px}
-/* A aplicação principal bloqueia a rolagem do body; a tela de texto tem seu próprio scroll. */
+/* The main application blocks body scrolling; the text screen has its own scroll. */
 .llm-shell{height:100vh;overflow:auto;overscroll-behavior:contain}
 
-/* Oferta de código-fonte exigida pela seção 13 da AGPL-3.0: precisa estar visível para
-   quem usa o app pela rede, inclusive no mobile, onde o selo de execução local se esconde. */
+/* Source-code offer required by section 13 of the AGPL-3.0: it has to be visible to
+   whoever uses the app over a network, including on mobile, where the local-run badge hides. */
 .source-link{height:30px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:var(--control-bg);color:var(--tool-ink);display:flex;align-items:center;gap:5px;font-size:11px;font-weight:650;text-decoration:none;white-space:nowrap}
 .source-link:hover{background:var(--theme-hover);color:var(--tool-active-ink);border-color:var(--tool-active-border)}
 .landing-foot .source-link{height:26px;font-size:12px;font-weight:400;background:transparent;border-color:transparent;color:var(--tool-hint-ink);padding:0}

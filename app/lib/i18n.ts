@@ -1,8 +1,8 @@
 export type Language = "pt" | "en" | "fr" | "es";
 export type ThemeMode = "system" | "light" | "dark";
 
-// Seção 13 da AGPL-3.0: quem oferece este programa por uma rede precisa oferecer o
-// código-fonte correspondente a quem o usa. O link vive aqui para ter uma fonte única.
+// Section 13 of the AGPL-3.0: whoever offers this program over a network has to offer the
+// corresponding source code to whoever uses it. The link lives here to have a single source.
 export const SOURCE_URL = "https://github.com/eduardoafonso1089/poligome";
 
 const pt = {
@@ -658,8 +658,8 @@ fileMenu: "Archivo", renameProject: "Renombrar proyecto", projectImages: "imáge
 
 export type Copy = Record<TranslationKey, string>;
 
-// Preferencias ficam no navegador; a landing e o anotador leem as mesmas chaves,
-// para a escolha de idioma e tema valer nas duas telas.
+// Preferences live in the browser; the landing and the annotator read the same keys, so the
+// language and theme choice applies on both screens.
 export function storedLanguage(): Language {
   if (typeof window === "undefined") return "pt";
   const stored = localStorage.getItem("poligome-language");

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { SOURCE_URL, getCopy, storedLanguage, storedTheme } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
 
-// Símbolo geométrico nativo da marca; o texto segue a fonte já carregada pelo app.
+// Geometric symbol native to the brand; the text follows the font the app already loads.
 function BrandLockup({ height = 34 }: { height?: number }) {
   return <span className="brand-lockup" role="img" aria-label="Poligome">
     <svg viewBox="0 0 40 40" height={height} aria-hidden="true">
@@ -24,9 +24,9 @@ const LANGUAGES: Array<{ id: Language; name: string; code: string }> = [
 ];
 
 export default function Landing() {
-  // Começa no mesmo idioma que o servidor renderizou, para a hidratação casar, e adota a
-  // preferência salva um quadro depois. O conteúdo vai inteiro no HTML: a landing precisa
-  // ser legível por buscadores e sem JavaScript.
+  // Starts in the same language the server rendered, so hydration matches, and adopts the
+  // saved preference one frame later. The content goes whole into the HTML: the landing has
+  // to be readable by search engines and without JavaScript.
   const [language, setLanguage] = useState<Language>("pt");
   const copy = getCopy(language);
 
@@ -43,8 +43,8 @@ export default function Landing() {
     document.title = copy.appTitle;
   }, [copy.appTitle, language]);
 
-  // Só a escolha explícita do usuário é gravada; o efeito acima não deve sobrescrever
-  // uma preferência existente com o "pt" do primeiro render.
+  // Only the user's explicit choice is stored; the effect above must not overwrite an
+  // existing preference with the "pt" of the first render.
   function chooseLanguage(next: Language) {
     setLanguage(next);
     localStorage.setItem("poligome-language", next);

@@ -25,7 +25,7 @@ import type { Recorte } from "../lib/cog";
 import type { Language, ThemeMode } from "../lib/i18n";
 import type { Annotation, Asset, Label, SamPrompt, Tool } from "../lib/types";
 
-// useLayoutEffect não roda no servidor; alternar evita o aviso do React na renderização SSR.
+// useLayoutEffect does not run on the server; swapping avoids the React warning during SSR.
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 const UNLABELED_ID = "unlabeled";
@@ -38,8 +38,8 @@ const colors = [
   "#8d7bff", "#ff6b6b", "#3fd0d4", "#b6c94a",
 ];
 
-// Converte um matiz em hex mantendo saturação e luminosidade fixas, para as cores
-// geradas depois que a paleta acaba continuarem legíveis sobre a imagem.
+// Converts a hue to hex keeping saturation and lightness fixed, so the colours generated
+// after the palette runs out stay legible over the image.
 function hueToHex(hue: number) {
   const chroma = 0.4712;
   const match = 0.3844;
@@ -52,8 +52,8 @@ function hueToHex(hue: number) {
   return `#${channels.map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
-// Sugere a próxima cor livre para uma classe nova. A paleta é percorrida em ordem e
-// só recorremos à roda de matizes quando todas as cores já estiverem em uso.
+// Suggests the next free colour for a new class. The palette is walked in order and the
+// hue wheel is only used once every colour is already taken.
 function nextLabelColor(existing: Label[]) {
   const used = new Set(existing.map((label) => label.color.toLowerCase()));
   const available = colors.find((color) => !used.has(color.toLowerCase()));
@@ -121,7 +121,7 @@ function reorderItems<T extends { id: string }>(items: T[], sourceId: string, ta
   return next;
 }
 
-// Símbolo geométrico nativo da marca; o texto segue a fonte já carregada pelo app.
+// Geometric symbol native to the brand; the text follows the font the app already loads.
 function BrandLockup({ height = 30 }: { height?: number }) {
   return <span className="brand-lockup" role="img" aria-label="Poligome">
     <svg viewBox="0 0 40 40" height={height} aria-hidden="true">
@@ -136,13 +136,13 @@ function ToolButton({ title, active, disabled, onClick, children, keyHint }: { t
   return <button className={`tool-btn ${active ? "active" : ""}`} aria-label={title} title={title} disabled={disabled} onClick={onClick}>{children}{keyHint && <small>{keyHint}</small>}</button>;
 }
 
-// Raio base de todo marcador do canvas, em unidades do viewBox: nós de polígono, pontos-chave,
-// prompts do SAM, alças e guias derivam daqui. Como pertencem ao desenho, escalam junto com a imagem.
+// Base radius of every canvas marker, in viewBox units: polygon nodes, keypoints,
+// SAM prompts, handles and guides all derive from it. Being part of the drawing, they scale with the image.
 const MARKER_RADIUS = 4.6;
 
-// Máscaras rasterizadas podem ter milhares de pontos. Para a visualização, um desvio abaixo
-// de um pixel não é perceptível, mas reduz drasticamente o trabalho do SVG. A geometria
-// original nunca é alterada: ela continua sendo usada ao selecionar, editar e exportar.
+// Rasterised masks can have thousands of points. For display, a deviation under one pixel
+// is not perceptible but cuts the SVG's work drastically. The original geometry is never
+// changed: it is still what selecting, editing and exporting use.
 const maskPreviewCache = new WeakMap<number[], string>();
 function maskPreviewPoints(points: number[] = []) {
   if (points.length <= 400) return pointsToSvg(points);
@@ -153,8 +153,8 @@ function maskPreviewPoints(points: number[] = []) {
   return preview;
 }
 
-// Nós de polígono encolhem conforme a densidade de vértices para não se sobreporem, mas nunca
-// passam do raio base — então um polígono simples tem nós do mesmo tamanho dos outros marcadores.
+// Polygon nodes shrink as vertex density grows so they do not overlap, but never exceed the
+// base radius — so a simple polygon has nodes the same size as the other markers.
 function polygonHandleRadius(zoomScale: number) {
   return MARKER_RADIUS * zoomScale;
 }
@@ -221,8 +221,8 @@ export default function Home() {
   const [saved, setSaved] = useState(true);
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(colors[0]);
-  // GeoTIFF não vira asset direto: cada arquivo passa pelo recorte antes de entrar na
-  // lista. A fila existe porque o usuário pode soltar vários de uma vez.
+  // A GeoTIFF does not become an asset directly: each file goes through the crop step
+  // before entering the list. The queue exists because the user can drop several at once.
   const [cogFila, setCogFila] = useState<File[]>([]);
   const [batchLabel, setBatchLabel] = useState(UNLABELED_ID);
   const [leftOpen, setLeftOpen] = useState(false);
@@ -323,16 +323,16 @@ export default function Home() {
       ? activePolygonBounds.y
       : activePolygonBounds.y + activePolygonBounds.height
     : 0;
-  // Ferramentas e rótulos são controles de tela: compensamos o zoom para que não aumentem
-  // enquanto a imagem é ampliada. A espessura configurada é, portanto, visual e não em pixels da foto.
-  // No zoom out, uma curva suave reduz os controles sem torná-los ilegíveis; no zoom in,
-  // compensamos para que não se tornem desproporcionalmente grandes na tela.
+  // Tools and labels are screen controls: we compensate for zoom so they do not grow while
+  // the image is magnified. The configured thickness is therefore visual, not in photo pixels.
+  // Zooming out, a smooth curve shrinks the controls without making them illegible; zooming in,
+  // we compensate so they do not become disproportionately large on screen.
   const handleScale = zoom < 100 ? Math.pow(100 / zoom, 0.6) : 100 / zoom;
   const markerRadius = MARKER_RADIUS * handleScale;
   const visualLineWidth = lineThickness * handleScale;
-  // A placa também usa handleScale para manter o mesmo tamanho visual. Seus limites precisam
-  // acompanhar essa escala; constantes calculadas para 100% faziam a placa parar muito antes
-  // da borda no zoom in e ultrapassar o canvas no zoom out.
+  // The plate also uses handleScale to keep the same visual size. Its limits have to follow
+  // that scale; constants computed for 100% made the plate stop well short of the edge when
+  // zoomed in and overflow the canvas when zoomed out.
   const coordinateLabelWidth = 116 * handleScale;
   const coordinateLabelHeight = 22 * handleScale;
   const coordinateLabelGap = 9 * handleScale;
@@ -343,8 +343,8 @@ export default function Home() {
     ? Math.min(650 - coordinateLabelHeight, Math.max(coordinateLabelHeight + handleScale, cursorPoint.y - coordinateLabelGap))
     : 0;
   const cursorOverCoordinateLabel = !!cursorPoint && cursorPoint.x >= coordinateLabelX && cursorPoint.x <= coordinateLabelX + coordinateLabelWidth && cursorPoint.y >= coordinateLabelY && cursorPoint.y <= coordinateLabelY + coordinateLabelHeight;
-  // O SVG usa viewBox fixo sobre imagens de proporções variadas. Compensar o eixo Y
-  // evita que um círculo de controle vire uma elipse ao trocar de imagem.
+  // The SVG uses a fixed viewBox over images of varying proportions. Compensating the Y axis
+  // keeps a control circle from turning into an ellipse when the image changes.
   const markerAspect = 650 * (asset?.width ?? 1000) / (1000 * (asset?.height ?? 650));
   const selectedIds = multiSelected.length ? multiSelected : selected ? [selected] : [];
   const resolvedBatchLabel = labels.some((label) => label.id === batchLabel) ? batchLabel : labels[0]?.id ?? "";
@@ -367,8 +367,8 @@ export default function Home() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  // Recoloca o scroll assim que o canvas assume o tamanho novo e antes da pintura, para o
-  // ponto ancorado continuar exatamente sob o cursor sem nenhum quadro intermediário.
+  // Puts the scroll back as soon as the canvas takes its new size and before painting, so
+  // the anchored point stays exactly under the cursor with no intermediate frame.
   useIsomorphicLayoutEffect(() => {
     const pending = pendingZoomRef.current;
     pendingZoomRef.current = null;
@@ -450,7 +450,7 @@ export default function Home() {
       const annotation = annotations.find((item) => item.id === selectedVertex.annotationId);
       if (!annotation?.pts?.length) return;
       remember();
-      // Abaixo do mínimo a forma deixa de existir: 2 pontos numa linha, 1 num polígono.
+      // Below the minimum the shape stops existing: 2 points on a line, 1 on a polygon.
       if (annotation.pts.length <= (annotation.type === "line" ? 4 : 2)) {
         setAnnotations((items) => items.filter((item) => item.id !== selectedVertex.annotationId));
         setSelected(null); setMultiSelected([]); setSelectedVertex(null);
@@ -481,7 +481,7 @@ export default function Home() {
     setPolygonDraft([]); setSelected(id); setMultiSelected([id]);
   }, [polygonDraft, remember, current, activeLabel]);
 
-  // Uma linha precisa de apenas dois pontos; o contorno fica aberto.
+  // A line needs only two points; the outline stays open.
   const finishLine = useCallback(() => {
     if (lineDraft.length < 4) return;
     remember();
@@ -497,8 +497,8 @@ export default function Home() {
       if (event.key === "Enter" && tool === "polygon") finishPolygon();
       if (event.key === "Enter" && tool === "line") finishLine();
       if (event.key === "Escape") {
-        // As ferramentas de edição trabalham sobre o polígono já selecionado. Ao cancelá-las,
-        // voltamos para Selecionar e mover sem perder esse contexto de edição.
+        // The editing tools work on the already selected polygon. Cancelling them returns
+        // to Select and move without losing that editing context.
         const returnsToSelection = tool === "split" || tool === "transform" || tool === "reshape";
         const isCreationTool = tool === "box" || tool === "polygon" || tool === "freehand" || tool === "line" || tool === "point" || tool === "sam";
         setProjectOpen(false); setProjectEditing(false); setProjectSaveOpen(false); setClassManagerOpen(false); setSelectedClassIds([]);
@@ -515,7 +515,7 @@ export default function Home() {
           if (isCreationTool) setTool("select");
         }
         setSelectedVertex(null);
-        // Fora das ferramentas dependentes de polígono, Esc cancela a seleção e o rascunho atual.
+        // Outside the polygon-dependent tools, Esc cancels the selection and the current draft.
         setPanStart(null); setStart(null);
       }
       if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelection(); }
@@ -552,9 +552,9 @@ export default function Home() {
     return { x: Math.max(0, Math.min(1000, (clientX - bounds.left) / bounds.width * 1000)), y: Math.max(0, Math.min(650, (clientY - bounds.top) / bounds.height * 650)) };
   }
 
-  // Aplica um novo zoom guardando o ponto que deve permanecer parado: o cursor quando ele
-  // está sobre o canvas, senão o centro da viewport. A recolocação do scroll acontece no
-  // layout effect abaixo, já com o canvas no tamanho novo.
+  // Applies a new zoom keeping the point that must stay still: the cursor when it is over
+  // the canvas, otherwise the viewport centre. The scroll is repositioned in the layout
+  // effect below, with the canvas already at its new size.
   const applyZoom = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
     const target = Math.max(10, Math.min(400, Math.round(nextZoom)));
     if (target === zoom) return;
@@ -575,10 +575,10 @@ export default function Home() {
     setZoom(target);
   }, [zoom]);
 
-  // O wheel precisa de listener nativo com passive:false. O React registra `onWheel` como
-  // passivo (react-dom: "wheel" entra na mesma lista de touchstart/touchmove), então ali o
-  // preventDefault() é ignorado e o Chrome ainda aplica o scroll nativo de Shift + roda —
-  // que é horizontal e arrastava a imagem para o lado a cada passo de zoom.
+  // The wheel needs a native listener with passive:false. React registers `onWheel` as
+  // passive (react-dom: "wheel" is in the same list as touchstart/touchmove), so there
+  // preventDefault() is ignored and Chrome still applies the native Shift + wheel scroll —
+  // which is horizontal and dragged the image sideways on every zoom step.
   useEffect(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
@@ -593,7 +593,7 @@ export default function Home() {
     return () => scroller.removeEventListener("wheel", onWheel);
   }, [applyZoom, mounted, zoom]);
 
-  // Mantém a janela de navegação na memória/decodificada, sem ocupar RAM com o dataset inteiro.
+  // Keeps the navigation window in memory and decoded, without spending RAM on the whole dataset.
   useEffect(() => {
     const index = Math.max(0, assets.findIndex((item) => item.id === current));
     assets.slice(Math.max(0, index - 3), index + 4).forEach((item) => { if (!item.missing) warmImage(item.src); });
@@ -610,8 +610,8 @@ export default function Home() {
     return Math.max(10, Math.min(100, Math.floor(Math.min(100, heightFit) * 0.96)));
   }
 
-  // Cada imagem tem seu proprio enquadramento: ao trocar o arquivo, o zoom e o
-  // scroll anteriores nao podem ser reutilizados.
+  // Each image has its own framing: when the file changes, the previous zoom and
+  // scroll cannot be reused.
   useEffect(() => {
     if (!current || !asset?.width || !asset?.height) return;
     const scroller = scrollRef.current;
@@ -691,9 +691,9 @@ export default function Home() {
     }
     if (tool === "box") { setStart(point); setDraft({ ...point, w: 0, h: 0 }); capture(event.pointerId); }
     if (tool === "polygon") {
-      // O fechamento só acontece no nó inicial, por clique direito ou Enter. Um raio de
-      // proximidade aqui fazia o quarto vértice de retângulos estreitos ser confundido
-      // com o primeiro e o resultado acabava como um triângulo.
+      // Closing only happens on the starting node, by right click or Enter. A proximity
+      // radius here made the fourth vertex of narrow rectangles be confused with the first,
+      // and the result ended up as a triangle.
       setPolygonDraft((points) => [...points, point.x, point.y]);
     }
     if (tool === "line") setLineDraft((points) => [...points, point.x, point.y]);
@@ -1135,8 +1135,8 @@ export default function Home() {
   function files(list: FileList | null) {
     const uploadId = makeId("upload");
     const todos = Array.from(list ?? []);
-    // O navegador não decodifica TIFF, então esses vão para a fila de recorte em vez de
-    // virar asset. O type de um .tif varia entre sistemas, daí a checagem também por nome.
+    // The browser does not decode TIFF, so these go to the crop queue instead of becoming
+    // an asset. The type of a .tif varies between systems, hence also checking by name.
     const geotiffs = todos.filter((file) => ehArquivoTiff(file.name, file.type));
     if (geotiffs.length) {
       setCogFila((atual) => [...atual, ...geotiffs]);
@@ -1161,8 +1161,8 @@ export default function Home() {
       else incoming.push({ id: `${uploadId}-${index}`, name: file.name, src, local: true, byteSize: file.size });
     });
     setAssets((items) => [...incoming, ...items.map((item) => replacements.get(item.id) ?? item)]);
-    // Decodifica tudo em segundo plano e registra as dimensões antes da navegação do usuário.
-    // Assim, a troca de imagens não precisa esperar o carregamento do arquivo selecionado.
+    // Decodes everything in the background and records the dimensions before the user navigates.
+    // That way switching images does not have to wait for the selected file to load.
     const addedAssets = [...incoming, ...replacements.values()];
     void Promise.all(addedAssets.map(async (item) => ({ id: item.id, dimensions: await readImageDimensions(item.src) }))).then((resolved) => {
       const dimensionsById = new Map(resolved.filter((item) => item.dimensions).map((item) => [item.id, item.dimensions!]));
@@ -1318,9 +1318,9 @@ export default function Home() {
       const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
       const images = new Map(data.images.filter((item) => typeof item.id === "number" && typeof item.file_name === "string")
         .map((item) => [item.id!, { ...item, asset: assetByName.get(item.file_name!.split(/[\\/]/).at(-1)!.toLocaleLowerCase()) }]));
-      // Registra as dimensões reais antes de inserir as máscaras. Sem isso, a troca de uma
-      // imagem ainda não visitada começava no aspect ratio padrão 1000×650 e deformava o
-      // SVG por um quadro até o onLoad da foto informar seu tamanho.
+      // Records the real dimensions before inserting the masks. Without this, switching to
+      // an image not yet visited started at the default 1000×650 aspect ratio and deformed
+      // the SVG for one frame until the photo's onLoad reported its size.
       const dimensionsByAsset = new Map<string, { width: number; height: number }>();
       images.forEach((image) => {
         if (!image.asset) return;
@@ -1350,9 +1350,9 @@ export default function Home() {
         const sourceHeight = Number(image.height) || targetAsset.height || 650;
         const sx = 1000 / sourceWidth; const sy = 650 / sourceHeight;
         const label = typeof item.category_id === "number" ? labelByCategory.get(item.category_id) ?? UNLABELED_ID : UNLABELED_ID;
-        // COCO permite vários anéis em uma annotation. O editor trabalha com um anel
-        // por polígono, então cada contorno válido vira sua própria anotação — assim uma
-        // parte principal no segundo anel não desaparece, como acontecia em 13.jpg.
+        // COCO allows several rings in one annotation. The editor works with one ring per
+        // polygon, so each valid contour becomes its own annotation — that way a main part
+        // in the second ring does not disappear, as it did in 13.jpg.
         const polygons = Array.isArray(item.segmentation)
           ? item.segmentation.filter(Array.isArray).map((ring) => ring.map(Number))
             .filter((ring) => ring.length >= 6 && ring.length % 2 === 0 && ring.every(Number.isFinite))
@@ -1377,8 +1377,8 @@ export default function Home() {
     } catch { showToast("Não foi possível ler o arquivo COCO JSON."); }
   }
 
-  // O recorte entra como imagem comum: é isso que faz toda ferramenta já existente, e o
-  // SAM junto, funcionarem sobre um COG sem nenhuma alteração nelas.
+  // The crop enters as a regular image: that is what makes every existing tool, SAM
+  // included, work over a COG with no change to them.
   function recorteVirouAsset(recorte: Recorte, nomeOrigem: string) {
     const src = URL.createObjectURL(recorte.blob);
     projectObjectUrlsRef.current.push(src);
@@ -1417,7 +1417,7 @@ export default function Home() {
     const created: Label = { id, name, color: newLabelColor, key };
     setLabels((items) => [...items, created]);
     setActiveLabel(id); setBatchLabel(id); setNewLabel(""); setSaved(false);
-    // Já deixa a próxima classe com uma cor inédita; o usuário ainda pode trocá-la à mão.
+    // Leaves the next class with an unused colour already; the user can still change it by hand.
     setNewLabelColor(nextLabelColor([...labels, created]));
     showToast(fill(copy.toastClassCreated, { name }));
     requestAnimationFrame(() => labelInputRef.current?.focus());
@@ -1516,8 +1516,8 @@ export default function Home() {
     requestAnimationFrame(() => { projectInputRef.current?.focus(); projectInputRef.current?.select(); });
   }
 
-  // Esc desiste da edição. A marca no ref existe porque sair do modo de edição desmonta o
-  // campo e pode disparar o blur, que também salva — sem ela, Esc acabaria confirmando.
+  // Esc gives up the edit. The ref flag exists because leaving edit mode unmounts the field
+  // and can fire blur, which also saves — without it, Esc would end up confirming.
   function cancelProjectRename() {
     renameCancelledRef.current = true;
     setProjectEditing(false);
@@ -1624,8 +1624,8 @@ export default function Home() {
       if (kind === "coco") exportCoco(assets, labels, annotations);
       if (kind === "yolo") await exportYoloZip(assets, labels, annotations, copy.yoloReadme);
       if (kind === "geojson") {
-        // Sem recorte de COG não há origem nem escala, e um GeoJSON em coordenada de pixel
-        // seria pior que nenhum: parece georreferenciado e não é.
+        // With no COG crop there is no origin and no scale, and a GeoJSON in pixel
+        // coordinates would be worse than none: it looks georeferenced and is not.
         const semGeo = !assets.some((asset) => asset.geo);
         if (semGeo) { setExporting(false); showToast(copy.errGeoJsonNoGeo); return; }
         exportGeoJson(assets, labels, annotations);
@@ -1686,7 +1686,7 @@ export default function Home() {
     remember(); const id = makeId("sam");
     setAnnotations((items) => [...items, { id, asset: current, label: activeLabel, type: "polygon", pts: [...samPreview] }]);
     setSelected(id); setMultiSelected([id]); setSelectedVertex(null); setBatchLabel(activeLabel);
-    // A ferramenta continua ativa para o próximo objeto; só os prompts são zerados.
+    // The tool stays active for the next object; only the prompts are cleared.
     clearSam(); setSamPromptMode(1); showToast(copy.samSavedToolActive);
   }
   function clearSam() { samRequestRef.current += 1; setSamPrompts([]); setSamPreview([]); setSamLoading(false); }

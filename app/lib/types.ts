@@ -19,26 +19,26 @@ export type Label = {
 };
 
 /**
- * Referência de um recorte de COG ao arquivo que o originou. Guardada no asset porque é
- * o que devolve a anotação — desenhada no espaço de 1000 × 650 do editor — para pixel do
- * arquivo original e para coordenada de terreno.
+ * Reference from a COG crop to the file it came from. Kept in the asset because it is what
+ * maps the annotation — drawn in the editor's 1000 × 650 space — back to a pixel of the
+ * original file and to a ground coordinate.
  */
 export type GeoRef = {
   /** Nome ou URL do COG de origem. */
   source: string;
-  /** Código EPSG do arquivo, ou "sem CRS". */
+  /** EPSG code of the file, or "sem CRS". */
   crs: string;
   /** Canto superior esquerdo do arquivo, na unidade do CRS. */
   originX: number;
   originY: number;
-  /** Unidades do CRS por pixel do arquivo. */
+  /** CRS units per pixel of the file. */
   scaleX: number;
   scaleY: number;
   sourceWidth: number;
   sourceHeight: number;
-  /** A janela recortada, em pixel do arquivo de origem, com y crescendo para baixo. */
+  /** The cropped window, in pixels of the source file, with y growing downwards. */
   window: { x: number; y: number; w: number; h: number };
-  /** Tamanho do PNG gerado. Pode ser menor que a janela: o recorte é limitado. */
+  /** Size of the generated PNG. It can be smaller than the window: the crop is capped. */
   cropWidth: number;
   cropHeight: number;
 };
@@ -59,7 +59,7 @@ export type Annotation = {
   id: string;
   asset: string;
   label: string;
-  // "line" é uma polilinha aberta: usa `pts` como o polígono, mas sem fechar o contorno.
+  // "line" is an open polyline: it uses `pts` like the polygon, but without closing the outline.
   type: "box" | "polygon" | "line" | "point";
   x?: number;
   y?: number;

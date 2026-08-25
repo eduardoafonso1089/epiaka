@@ -86,12 +86,12 @@ export function exportLlm(rows: DatasetRow[], schema: LlmSchema, annotations: Re
   const output = selected.map((row) => outputRow(row, annotations[row.internalId], schema));
   if (format === "json") return downloadBlob("poligome-llm.json", new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }));
   if (format === "jsonl") return downloadBlob("poligome-llm.jsonl", new Blob([output.map((row) => JSON.stringify(row)).join("\n")], { type: "application/x-ndjson" }));
-  // O CSV lê os campos originais achatados: outputRow espalha row.original na raiz do objeto, então as
-  // colunas vêm do próprio registro. Ler de row.original também evita que um campo do dataset chamado
-  // "annotation" ou "metadata" seja lido como se fosse a anotação.
+  // The CSV reads the flattened original fields: outputRow spreads row.original at the root of the
+  // object, so the columns come from the record itself. Reading from row.original also keeps a dataset
+  // field named "annotation" or "metadata" from being read as if it were the annotation.
   const columns = Array.from(new Set(selected.flatMap((row) => Object.keys(row.original))));
   const lines = [columns.concat(["annotation_type", "annotation_labels", "annotation_ratings", "preference_winner", "preference_strength", "annotation_comment", "corrected_response", "response_changed", "status"]).map(escaped).join(",")];
-  // Valores entram crus e são escapados uma única vez no fim; escapar antes do concat gerava """valor""".
+  // Values go in raw and are escaped exactly once at the end; escaping before the concat produced """value""".
   selected.forEach((row) => { const note = annotations[row.internalId]; lines.push(columns.map((field) => row.original[field]).concat([schema.mode, JSON.stringify(note?.labels ?? []), JSON.stringify(note?.ratings ?? {}), note?.winner ?? "", note?.strength ?? "", note?.comment ?? "", note?.correctedResponse ?? "", String(note?.changed ?? ""), note?.status ?? "unannotated"]).map(escaped).join(",")); });
   downloadBlob("poligome-llm.csv", new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }));
 }

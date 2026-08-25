@@ -77,7 +77,7 @@ export default function TextAnnotationPage() {
   const done = Object.values(annotations).filter((item) => item.status === "annotated").length;
   const locale = llmLocales[language];
 
-  // A rota pode ser aberta diretamente; tema e idioma continuam seguindo a plataforma.
+  // The route can be opened directly; theme and language still follow the platform.
   useEffect(() => {
     const storedThemeMode = storedTheme();
     document.documentElement.dataset.theme = storedThemeMode;
@@ -174,8 +174,8 @@ export default function TextAnnotationPage() {
 
   function updateNote(patch: Partial<LlmAnnotation>) {
     if (!row) return;
-    // Editar um campo marca o registro como anotado, mas não apaga um "review" ou "skipped"
-    // já escolhido: o status explícito só entra quando ainda não existe registro.
+    // Editing a field marks the record as annotated, but does not erase a "review" or
+    // "skipped" already chosen: the explicit status only applies when there is no record yet.
     setAnnotations((current) => {
       const existing = current[row.internalId];
       return { ...current, [row.internalId]: { ...existing, status: existing?.status ?? "annotated", ...patch } };
@@ -184,8 +184,8 @@ export default function TextAnnotationPage() {
 
   function setStatus(status: RecordStatus) {
     if (!row) return;
-    // O status pedido tem de vencer o que já estava gravado, senão os botões de review e
-    // skip param de responder depois do primeiro clique.
+    // The requested status has to beat whatever was already stored, otherwise the review and
+    // skip buttons stop responding after the first click.
     setAnnotations((current) => ({ ...current, [row.internalId]: { ...current[row.internalId], status } }));
   }
 

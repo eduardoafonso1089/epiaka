@@ -38,8 +38,8 @@ export function insertPolygonVertex(points: number[], edgeIndex: number, x: numb
   ];
 }
 
-// `open` descarta a aresta de fechamento, para polilinhas não ganharem um ponto de inserção
-// entre o último e o primeiro vértice.
+// `open` discards the closing edge, so polylines do not gain an insertion point between the
+// last and the first vertex.
 export function edgeMidpoints(points: number[], open = false) {
   const result: Array<{ x: number; y: number; edgeIndex: number }> = [];
   if (points.length < 4) return result;
@@ -273,8 +273,8 @@ export function reshapePolygon(points: number[], path: number[]): ReshapeResult 
     for (let edge = 0; edge < ring.length; edge += 1) {
       const hit = segmentIntersection(trace[pathSegment], trace[pathSegment + 1], ring[edge], ring[(edge + 1) % ring.length]);
       if (!hit) continue;
-      // Só a mesma interseção é duplicada (por exemplo, em um vértice compartilhado).
-      // Pontos próximos continuam distintos: esta ferramenta trabalha na coordenada exata.
+      // Only the same intersection is deduplicated (for example, at a shared vertex).
+      // Nearby points stay distinct: this tool works on the exact coordinate.
       const duplicate = intersections.some((item) => item.point[0] === hit.x && item.point[1] === hit.y);
       if (!duplicate) intersections.push({ pathSegment, pathT: hit.pathT, edge, edgeT: hit.edgeT, point: [hit.x, hit.y] });
     }
@@ -290,8 +290,8 @@ export function reshapePolygon(points: number[], path: number[]): ReshapeResult 
   const traceSection: Array<[number, number]> = [first.point];
   for (let index = first.pathSegment + 1; index <= last.pathSegment; index += 1) traceSection.push(trace[index]);
   traceSection.push(last.point);
-  // Não simplifique o traço de remodelagem: cada ponto capturado pode definir uma borda
-  // de um pixel e a simplificação introduziria uma tolerância que muda o resultado.
+  // Do not simplify the reshape stroke: each captured point can define a one-pixel edge and
+  // simplification would introduce a tolerance that changes the result.
   const simplifiedTrace = traceSection;
 
   const insertions = new Map<number, Array<{ endpoint: number; t: number; point: [number, number] }>>();

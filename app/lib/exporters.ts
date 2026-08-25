@@ -48,8 +48,8 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
     );
     const segmentation =
       annotation.type === "polygon" ? [scalePoints(annotation.pts ?? [], width, height)] : [];
-    // Uma polilinha não delimita região: sai em `line` (extensão), com area 0 e segmentation
-    // vazia, para nenhum consumidor a interpretar como máscara.
+    // A polyline does not enclose a region: it goes out in `line` (an extension), with area 0
+    // and empty segmentation, so no consumer interprets it as a mask.
     const line = annotation.type === "line" ? scalePoints(annotation.pts ?? [], width, height) : [];
     const area = annotation.type === "polygon"
       ? polygonArea(scalePoints(annotation.pts ?? [], width, height))
@@ -125,14 +125,15 @@ export async function exportYoloZip(assets: Asset[], labels: Label[], annotation
 // ---------------------------------------------------------------------------
 // GeoJSON
 //
-// Só faz sentido para asset que veio de um COG: é o `geo` dele que carrega a origem, a
-// escala e a janela recortada. Sem isso a anotação existe apenas em pixel, e um GeoJSON
-// com coordenada de pixel seria pior que nenhum, porque parece georreferenciado.
+// Only makes sense for an asset that came from a COG: it is its `geo` that carries the
+// origin, the scale and the cropped window. Without that the annotation exists only in
+// pixels, and a GeoJSON with pixel coordinates would be worse than none, because it looks
+// georeferenced.
 // ---------------------------------------------------------------------------
 
 /**
- * Espaço do editor (1000 × 650) → pixel do recorte → pixel do arquivo → coordenada do CRS.
- * O y do editor cresce para baixo e o do CRS para cima; a inversão acontece no último passo.
+ * Editor space (1000 × 650) → crop pixel → file pixel → CRS coordinate.
+ * The editor's y grows downwards and the CRS's upwards; the flip happens in the last step.
  */
 function paraCoordenada(asset: Asset, x: number, y: number): [number, number] {
   const geo = asset.geo!;
@@ -147,9 +148,9 @@ function anel(asset: Asset, pontos: number[]) {
   const saida: Array<[number, number]> = [];
   for (let index = 0; index < pontos.length; index += 2) {
     const ponto = paraCoordenada(asset, pontos[index], pontos[index + 1]);
-    // O duplo clique que encerra um polígono no editor grava um vértice em cima do
-    // anterior. Em pixel isso é invisível; num GeoJSON vira segmento de comprimento zero,
-    // que validador de geometria reprova.
+    // The double click that closes a polygon in the editor records a vertex on top of the
+    // previous one. In pixels that is invisible; in a GeoJSON it becomes a zero-length
+    // segment, which a geometry validator rejects.
     const ultimo = saida.at(-1);
     if (ultimo && ultimo[0] === ponto[0] && ultimo[1] === ponto[1]) continue;
     saida.push(ponto);
@@ -172,7 +173,7 @@ function geometriaDe(asset: Asset, annotation: Annotation) {
   const pontos = anel(asset, annotation.pts ?? []);
   if (pontos.length < 2) return null;
   if (annotation.type === "line") return { type: "LineString", coordinates: pontos };
-  // O anel de um polígono GeoJSON precisa fechar repetindo o primeiro vértice.
+  // A GeoJSON polygon ring has to close by repeating the first vertex.
   return pontos.length >= 3 ? { type: "Polygon", coordinates: [[...pontos, pontos[0]]] } : null;
 }
 
@@ -200,14 +201,14 @@ export function annotationsToGeoJson(assets: Asset[], labels: Label[], annotatio
     }];
   });
 
-  // Todos os recortes de uma exportação precisam falar o mesmo CRS: misturar UTM de zonas
-  // diferentes num arquivo só produziria geometria sobreposta sem aviso.
+  // Every crop in an export has to speak the same CRS: mixing UTM from different zones in
+  // a single file would produce overlapping geometry with no warning.
   const crsUsados = [...new Set(comGeo.map((asset) => asset.geo!.crs))];
   return {
     colecao: {
       type: "FeatureCollection",
-      // Membro `crs` saiu da especificação em 2016, mas QGIS e GDAL continuam lendo, e é
-      // a única forma de não perder a projeção sem reprojetar para WGS84 aqui.
+      // The `crs` member left the specification in 2016, but QGIS and GDAL still read it,
+      // and it is the only way not to lose the projection without reprojecting to WGS84 here.
       ...(crsUsados.length === 1 && crsUsados[0] !== "sem CRS"
         ? { crs: { type: "name", properties: { name: `urn:ogc:def:crs:EPSG::${crsUsados[0].replace("EPSG:", "")}` } } }
         : {}),

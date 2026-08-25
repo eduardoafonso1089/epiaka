@@ -281,9 +281,19 @@ export default function Home() {
   const handleScale = zoom < 100 ? Math.pow(100 / zoom, 0.6) : 100 / zoom;
   const markerRadius = MARKER_RADIUS * handleScale;
   const visualLineWidth = lineThickness * handleScale;
-  const coordinateLabelX = cursorPoint ? Math.min(875, cursorPoint.x + 9) : 0;
-  const coordinateLabelY = cursorPoint ? Math.min(628, Math.max(23, cursorPoint.y - 9)) : 0;
-  const cursorOverCoordinateLabel = !!cursorPoint && cursorPoint.x >= coordinateLabelX && cursorPoint.x <= coordinateLabelX + 116 * handleScale && cursorPoint.y >= coordinateLabelY && cursorPoint.y <= coordinateLabelY + 22 * handleScale;
+  // A placa também usa handleScale para manter o mesmo tamanho visual. Seus limites precisam
+  // acompanhar essa escala; constantes calculadas para 100% faziam a placa parar muito antes
+  // da borda no zoom in e ultrapassar o canvas no zoom out.
+  const coordinateLabelWidth = 116 * handleScale;
+  const coordinateLabelHeight = 22 * handleScale;
+  const coordinateLabelGap = 9 * handleScale;
+  const coordinateLabelX = cursorPoint
+    ? Math.min(1000 - coordinateLabelWidth - coordinateLabelGap, cursorPoint.x + coordinateLabelGap)
+    : 0;
+  const coordinateLabelY = cursorPoint
+    ? Math.min(650 - coordinateLabelHeight, Math.max(coordinateLabelHeight + handleScale, cursorPoint.y - coordinateLabelGap))
+    : 0;
+  const cursorOverCoordinateLabel = !!cursorPoint && cursorPoint.x >= coordinateLabelX && cursorPoint.x <= coordinateLabelX + coordinateLabelWidth && cursorPoint.y >= coordinateLabelY && cursorPoint.y <= coordinateLabelY + coordinateLabelHeight;
   // O SVG usa viewBox fixo sobre imagens de proporções variadas. Compensar o eixo Y
   // evita que um círculo de controle vire uma elipse ao trocar de imagem.
   const markerAspect = 650 * (asset?.width ?? 1000) / (1000 * (asset?.height ?? 650));

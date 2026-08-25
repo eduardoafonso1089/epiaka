@@ -19,14 +19,14 @@ This starter does not use `wrangler.jsonc`.
 
 Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
 
-## SAM local
+## Local SAM
 
-O Poligome usa um conector FastAPI executado no computador do usuário; imagens e prompts não são enviados para o Site. A tela **Ativar SAM local** oferece dois instaladores autocontidos:
+Poligome uses a FastAPI connector that runs on the user's own machine; images and prompts are never sent to the Site. The **Enable local SAM** screen offers two self-contained installers:
 
-- `public/poligome-sam-windows.bat`: prepara Python quando necessário, cria um ambiente isolado, instala as dependências, baixa o checkpoint ViT-B oficial e inicia o conector;
-- `public/poligome-sam-macos-linux.sh`: faz a mesma preparação usando o Python 3 já instalado no sistema.
+- `public/poligome-sam-windows.bat`: prepares Python when needed, creates an isolated environment, installs the dependencies, downloads the official ViT-B checkpoint, and starts the connector;
+- `public/poligome-sam-macos-linux.sh`: performs the same preparation using the Python 3 already installed on the system.
 
-O conector fica em `http://127.0.0.1:7860`, detecta CUDA, Apple Silicon/MPS ou CPU automaticamente e mantém em cache o embedding da imagem atual para acelerar prompts adicionais. A alternativa manual continua disponível em `public/poligome-sam-local.py`.
+The connector listens on `http://127.0.0.1:7860`, detects CUDA, Apple Silicon/MPS, or CPU automatically, and caches the current image's embedding to speed up further prompts. The manual alternative remains available at `public/poligome-sam-local.py`.
 
 ## Included Shape
 
@@ -116,20 +116,20 @@ The timeout defaults can be overridden for a controlled canary with `SITES_INSTA
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
 
-## Licença
+## License
 
-Poligome — anotação de dados para IA
+Poligome — data annotation for AI
 Copyright (C) 2026 Eduardo Afonso
 
-Este programa é software livre, distribuído sob a
-[GNU Affero General Public License, versão 3](LICENSE) (`AGPL-3.0-only`).
-Você pode usá-lo, estudá-lo, modificá-lo e redistribuí-lo, desde que
-qualquer versão derivada permaneça sob a mesma licença.
+This program is free software, distributed under the
+[GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`).
+You may use, study, modify, and redistribute it, provided that any derivative
+version stays under the same license.
 
-Como o Poligome é uma aplicação web, a **seção 13** da AGPL se aplica: quem
-modificar este programa e oferecê-lo para uso através de uma rede precisa
-disponibilizar o código-fonte correspondente às pessoas que o utilizam — na
-prática, expor um link para o fonte na própria interface da instância.
+Because Poligome is a web application, **section 13** of the AGPL applies:
+anyone who modifies this program and offers it for use over a network must make
+the corresponding source code available to the people using it — in practice,
+exposing a link to the source in the instance's own interface.
 
-Sem nenhuma garantia; veja o [LICENSE](LICENSE) para os termos completos e o
-[NOTICE](NOTICE) para titularidade e créditos de contribuição.
+No warranty; see [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE) for
+ownership and contribution credits.

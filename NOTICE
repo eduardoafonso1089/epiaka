@@ -1,54 +1,53 @@
 Poligome
 Copyright (C) 2026 Eduardo Afonso
 
-Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo
-sob os termos da GNU Affero General Public License, conforme publicada pela
-Free Software Foundation, versão 3.
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3.
 
-Este programa é distribuído na esperança de que seja útil, mas SEM NENHUMA
-GARANTIA; sem sequer a garantia implícita de COMERCIABILIDADE ou ADEQUAÇÃO A
-UM PROPÓSITO ESPECÍFICO. Consulte a GNU Affero General Public License para
-mais detalhes.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 
-Você deve ter recebido uma cópia da GNU Affero General Public License junto
-com este programa. Se não, veja <https://www.gnu.org/licenses/>.
-
-
-TITULARIDADE
-------------
-
-Titular dos direitos autorais: Eduardo Afonso.
-
-Trabalho independente. O código não foi produzido no âmbito de vínculo
-empregatício, contrato de prestação de serviços ou encomenda de terceiros, e
-nenhuma pessoa jurídica detém direitos sobre ele.
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
-IDENTIFICADOR DA LICENÇA
-------------------------
+OWNERSHIP
+---------
+
+Copyright holder: Eduardo Afonso.
+
+Independent work. This code was not produced under employment, a services
+contract, or a commission from a third party, and no legal entity holds any
+rights over it.
+
+
+LICENSE IDENTIFIER
+------------------
 
 SPDX-License-Identifier: AGPL-3.0-only
 
-A escolha por "only" (e não "or-later") é deliberada: versões futuras da AGPL
-não se aplicam automaticamente a este código. Qualquer mudança de versão
-depende de decisão expressa do titular.
+The choice of "only" rather than "or-later" is deliberate: future versions of
+the AGPL do not apply to this code automatically. Any change of version depends
+on an express decision by the copyright holder.
 
 
-CONTRIBUIDORES
---------------
+CONTRIBUTORS
+------------
 
-- Eduardo Afonso <eduardoafonso1089@gmail.com> — autor e titular
-- Lucas Betioli — contribuições na branch `BYOM`, publicadas sob AGPL-3.0-only
-  com a concordância do autor.
+- Eduardo Afonso <eduardoafonso1089@gmail.com> - author and copyright holder
+- Lucas Betioli - contributions on the `BYOM` branch, published under
+  AGPL-3.0-only with the author's consent.
 
 
-USO EM REDE (SEÇÃO 13 DA AGPL)
-------------------------------
+NETWORK USE (AGPL SECTION 13)
+-----------------------------
 
-O Poligome é uma aplicação web. A seção 13 da AGPL-3.0 exige que qualquer
-pessoa que modifique este programa e o disponibilize para uso remoto através
-de uma rede ofereça a essas pessoas o código-fonte correspondente da versão
-modificada. Uma instância pública deve, portanto, expor um link para o
-código-fonte na própria interface.
+Poligome is a web application. Section 13 of the AGPL-3.0 requires anyone who
+modifies this program and makes it available for remote use over a network to
+offer those users the corresponding source code of the modified version. A
+public instance must therefore expose a link to the source code in its own
+interface.
 
-Código-fonte oficial: https://github.com/eduardoafonso1089/poligome
+Official source code: https://github.com/eduardoafonso1089/poligome

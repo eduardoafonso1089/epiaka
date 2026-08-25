@@ -14,9 +14,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type OlMapa from "ol/Map.js";
 import type OlDesenho from "ol/interaction/Draw.js";
 import { dimensionaRecorte, ehArquivoTiff, geraRecorte, leMetadados, medeFaixa } from "../lib/cog";
-import type { MetadadosCog, Recorte } from "../lib/cog";
+import type { MetadadosCog, PerfilCog, Recorte } from "../lib/cog";
 import { fill } from "../lib/i18n";
-import type { Copy } from "../lib/i18n";
+import type { Copy, TranslationKey } from "../lib/i18n";
+
+/** The profile is stored as a key so the label can follow the interface language. */
+const ROTULO_PERFIL: Record<PerfilCog, TranslationKey> = {
+  complete: "cogProfileComplete",
+  "tiled-no-overviews": "cogProfileTiledNoOverviews",
+  striped: "cogProfileStriped",
+};
 
 type Modo = "visivel" | "retangulo";
 
@@ -273,7 +280,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
   // Only look for the helper when it would solve something: for a complete COG the
   // conversion changes nothing, and a pointless probe just logs an error for the user.
   useEffect(() => {
-    if (!meta || meta.perfil === "sim") return;
+    if (!meta || meta.perfil === "complete") return;
     let vivo = true;
     const controle = new AbortController();
     const tempo = window.setTimeout(() => controle.abort(), 4000);
@@ -358,8 +365,8 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
         <p className="cog-crop-dica">{copy.cogFailedHint}</p>
       </div>}
 
-      {meta && meta.perfil !== "sim" && <div className="cog-crop-aviso" role="status">
-        <b>{fill(copy.cogNotOptimized, { profile: meta.perfil })}</b>
+      {meta && meta.perfil !== "complete" && <div className="cog-crop-aviso" role="status">
+        <b>{fill(copy.cogNotOptimized, { profile: copy[ROTULO_PERFIL[meta.perfil]] })}</b>
         <p>{copy.cogNotOptimizedHint}</p>
         {conversao?.estado === "convertendo" ? <p className="cog-crop-convertendo">
           <i className="cog-crop-girando" aria-hidden="true" />
@@ -387,7 +394,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
             <dt>{copy.cogBands}</dt><dd>{meta?.bandas ?? "—"}</dd>
             <dt>{copy.cogOverviews}</dt><dd>{meta?.overviews ?? "—"}</dd>
             <dt>{copy.cogProfile}</dt>
-            <dd className={meta && meta.perfil !== "sim" ? "cog-bad" : ""}>{meta?.perfil ?? "—"}</dd>
+            <dd className={meta && meta.perfil !== "complete" ? "cog-bad" : ""}>{meta ? copy[ROTULO_PERFIL[meta.perfil]] : "—"}</dd>
           </dl>
 
           <h3>{copy.cogCropSection}</h3>

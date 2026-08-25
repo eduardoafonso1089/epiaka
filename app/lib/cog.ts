@@ -17,6 +17,9 @@ import type { GeoRef } from "./types";
 export const RECORTE_LADO_MAX = 4096;
 export const RECORTE_MP_MAX = 12;
 
+/** Stored as a key, not as a label: the wording is translated at render time. */
+export type PerfilCog = "complete" | "tiled-no-overviews" | "striped";
+
 export type MetadadosCog = {
   largura: number;
   altura: number;
@@ -33,8 +36,7 @@ export type MetadadosCog = {
   niveis: number[];
   tiled: boolean;
   semDado: number | null;
-  /** Possible values: "sim" | "tiled, sem overviews" | "não — por faixas" */
-  perfil: string;
+  perfil: PerfilCog;
 };
 
 /** Only the first 4 bytes. A File gives slice, a URL gives a range request: it is the
@@ -120,7 +122,7 @@ export async function leMetadados(origem: File | string): Promise<MetadadosCog &
     niveis,
     tiled,
     semDado: imagem.getGDALNoData(),
-    perfil: tiled && niveis.length > 1 ? "sim" : tiled ? "tiled, sem overviews" : "não — por faixas",
+    perfil: tiled && niveis.length > 1 ? "complete" : tiled ? "tiled-no-overviews" : "striped",
   };
 }
 

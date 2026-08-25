@@ -75,9 +75,8 @@ path, including the workaround for networks that block the npm registry.
 app/page.tsx          landing
 app/anotar/           image annotator
 app/texto/            LLM and text annotator
-app/cog/              GeoTIFF/COG viewer
 app/lib/              exporters, geometry, SAM and COG clients, i18n
-public/               local connector installers and brand assets
+public/               local connector installers, favicon and cursors
 docs/PLATFORM.md      hosting platform, bindings, and auth notes
 ```
 

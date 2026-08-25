@@ -3,11 +3,12 @@
 import {
   Check, ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
   Combine, Copy, Download, Eye, EyeOff, FileText, FolderOpen, FolderUp, Hand, HardDriveDownload, ImagePlus, Images, Keyboard, Languages, Link2,
-  Focus, Globe, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
+  Focus, Globe, GripVertical, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
   Monitor, Moon, Palette, Pencil, Pentagon, Plus, Power, Redo2, Scissors, Search, Settings2, Sparkles,
   Spline, Square, Sun, Tags, Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut, PenTool,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   annotationIntersectsRect, boundedAnnotationDelta, deletePolygonVertex, edgeMidpoints,
   insertPolygonVertex, movePolygon, MIN_VERTEX_DISTANCE, pointInPolygon, pointsToSvg,
@@ -17,7 +18,7 @@ import {
 import { exportCoco, exportGeoJson, exportYoloZip } from "../lib/exporters";
 import { fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
 import { openPoligomeProject, savePoligomeProject } from "../lib/project";
-import type { ProjectSaveMode } from "../lib/project";
+import type { ProjectLayout, ProjectSaveMode } from "../lib/project";
 import { requestSamMask } from "../lib/sam";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
@@ -78,6 +79,48 @@ type TransformDrag = {
   startDistance: number;
   points: number[];
 };
+type PanelSide = "left" | "right";
+type PanelResize = { side: PanelSide; pointerId: number; startX: number; startWidth: number };
+type ReorderDrag = { sourceId: string; targetId: string | null; position: "before" | "after" };
+
+const LEFT_PANEL_MIN_WIDTH = 190;
+const LEFT_PANEL_MAX_WIDTH = 520;
+const RIGHT_PANEL_MIN_WIDTH = 220;
+const RIGHT_PANEL_MAX_WIDTH = 560;
+const EDITOR_MIN_WIDTH = 440;
+
+function defaultPanelLayout(): ProjectLayout {
+  const compact = typeof window !== "undefined" && window.innerWidth <= 1080;
+  return { leftPanelWidth: compact ? 222 : 256, rightPanelWidth: compact ? 252 : 288 };
+}
+
+function normalizePanelLayout(layout?: Partial<ProjectLayout>): ProjectLayout {
+  const defaults = defaultPanelLayout();
+  let leftPanelWidth = Math.min(LEFT_PANEL_MAX_WIDTH, Math.max(LEFT_PANEL_MIN_WIDTH, layout?.leftPanelWidth ?? defaults.leftPanelWidth));
+  let rightPanelWidth = Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, layout?.rightPanelWidth ?? defaults.rightPanelWidth));
+  if (typeof window !== "undefined" && window.innerWidth > 860) {
+    const maximumPanelsWidth = Math.max(LEFT_PANEL_MIN_WIDTH + RIGHT_PANEL_MIN_WIDTH, window.innerWidth - EDITOR_MIN_WIDTH);
+    let overflow = leftPanelWidth + rightPanelWidth - maximumPanelsWidth;
+    if (overflow > 0) {
+      const rightReduction = Math.min(overflow, rightPanelWidth - RIGHT_PANEL_MIN_WIDTH);
+      rightPanelWidth -= rightReduction;
+      overflow -= rightReduction;
+      leftPanelWidth -= Math.min(overflow, leftPanelWidth - LEFT_PANEL_MIN_WIDTH);
+    }
+  }
+  return { leftPanelWidth: Math.round(leftPanelWidth), rightPanelWidth: Math.round(rightPanelWidth) };
+}
+
+function reorderItems<T extends { id: string }>(items: T[], sourceId: string, targetId: string, position: "before" | "after") {
+  if (sourceId === targetId) return items;
+  const sourceIndex = items.findIndex((item) => item.id === sourceId);
+  if (sourceIndex < 0 || !items.some((item) => item.id === targetId)) return items;
+  const next = [...items];
+  const [moved] = next.splice(sourceIndex, 1);
+  const targetIndex = next.findIndex((item) => item.id === targetId);
+  next.splice(targetIndex + (position === "after" ? 1 : 0), 0, moved);
+  return next;
+}
 
 // Símbolo geométrico nativo da marca; o texto segue a fonte já carregada pelo app.
 function BrandLockup({ height = 30 }: { height?: number }) {
@@ -185,6 +228,8 @@ export default function Home() {
   const [batchLabel, setBatchLabel] = useState(UNLABELED_ID);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [panelLayout, setPanelLayout] = useState<ProjectLayout>(defaultPanelLayout);
+  const [resizingPanel, setResizingPanel] = useState<PanelSide | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectEditing, setProjectEditing] = useState(false);
   const [projectName, setProjectName] = useState(() => getCopy(storedLanguage()).newProject);
@@ -205,7 +250,11 @@ export default function Home() {
   const [splitEnd, setSplitEnd] = useState<{ x: number; y: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editingLabelName, setEditingLabelName] = useState("");
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [assetReorder, setAssetReorder] = useState<ReorderDrag | null>(null);
+  const [annotationReorder, setAnnotationReorder] = useState<ReorderDrag | null>(null);
   const [pendingDeleteClassIds, setPendingDeleteClassIds] = useState<string[]>([]);
   const [pendingDeleteAnnotationIds, setPendingDeleteAnnotationIds] = useState<string[]>([]);
   const [samOpen, setSamOpen] = useState(false);
@@ -237,6 +286,8 @@ export default function Home() {
   const vertexDragRef = useRef<VertexDrag | null>(null);
   const transformDragRef = useRef<TransformDrag | null>(null);
   const reshapeTargetRef = useRef<string | null>(null);
+  const annotationSelectionAnchorRef = useRef<string | null>(null);
+  const panelResizeRef = useRef<PanelResize | null>(null);
   const samRequestRef = useRef(0);
   const renameCancelledRef = useRef(false);
   const zoomAnchorRef = useRef<{ x: number; y: number } | null>(null);
@@ -249,9 +300,8 @@ export default function Home() {
   const assetIndex = Math.max(0, assets.findIndex((item) => item.id === asset?.id));
   const imageWindow = assets.slice(Math.max(0, assetIndex - 3), assetIndex + 4).filter((item) => !item.missing);
   const imageIsReady = !!asset && readyImageIds.includes(asset.id);
+  const canEditImage = !!asset && !asset.missing && imageIsReady;
   const currentAnnotations = annotations.filter((annotation) => annotation.asset === current);
-  const currentPolygonIds = currentAnnotations.filter((annotation) => annotation.type === "polygon").map((annotation) => annotation.id);
-  const allCurrentPolygonsSelected = currentPolygonIds.length > 0 && currentPolygonIds.every((id) => multiSelected.includes(id));
   const visibleAnnotations = currentAnnotations.filter((annotation) =>
     !hiddenAnnotations.includes(annotation.id) && !hiddenLabels.includes(annotation.label),
   );
@@ -473,6 +523,7 @@ export default function Home() {
       const tools: Record<string, Tool> = { v: "select", h: "pan", b: "box", p: "polygon", f: "freehand", l: "line", k: "point", s: "sam", t: "transform", r: "reshape" };
       const nextTool = tools[event.key.toLowerCase()];
       if (nextTool) {
+        if (!canEditImage) return;
         if (nextTool === "sam" && !samEndpoint) {
           setSamEndpointDraft(samEndpoint || "http://127.0.0.1:7860/predict"); setSamOpen(true);
         } else if (nextTool === "sam") {
@@ -485,7 +536,7 @@ export default function Home() {
     };
     addEventListener("keydown", keydown);
     return () => removeEventListener("keydown", keydown);
-  }, [deleteSelection, finishLine, finishPolygon, labels, samEndpoint, tool, undo]);
+  }, [canEditImage, deleteSelection, finishLine, finishPolygon, labels, samEndpoint, tool, undo]);
 
   function resetDrafts() {
     setPolygonDraft([]); setLineDraft([]); setFreehandDraft([]); setFreehandDrawing(false); setDraft(null);
@@ -946,6 +997,77 @@ export default function Home() {
     setSelectedVertex(null);
   }
 
+  function selectAnnotationFromPanel(annotation: Annotation, shiftKey: boolean, additive: boolean, toggle: boolean) {
+    const anchorId = annotationSelectionAnchorRef.current;
+    const anchorIndex = anchorId ? currentAnnotations.findIndex((item) => item.id === anchorId) : -1;
+    const targetIndex = currentAnnotations.findIndex((item) => item.id === annotation.id);
+
+    if (shiftKey && anchorIndex >= 0 && targetIndex >= 0) {
+      const start = Math.min(anchorIndex, targetIndex);
+      const end = Math.max(anchorIndex, targetIndex);
+      const rangeIds = currentAnnotations.slice(start, end + 1).map((item) => item.id);
+      const next = additive ? Array.from(new Set([...multiSelected, ...rangeIds])) : rangeIds;
+      setSelected(annotation.id);
+      setMultiSelected(next);
+      syncBatchLabel(next);
+    } else if (toggle || additive) {
+      toggleMultiSelection(annotation.id);
+      annotationSelectionAnchorRef.current = annotation.id;
+    } else {
+      setSelected(annotation.id);
+      setMultiSelected([annotation.id]);
+      setBatchLabel(annotation.label);
+      annotationSelectionAnchorRef.current = annotation.id;
+    }
+
+    setSelectedVertex(null);
+    setTool("select");
+  }
+
+  function updatePanelWidth(side: PanelSide, width: number) {
+    setPanelLayout((currentLayout) => normalizePanelLayout({
+      ...currentLayout,
+      [side === "left" ? "leftPanelWidth" : "rightPanelWidth"]: width,
+    }));
+    setSaved(false);
+  }
+
+  function beginPanelResize(event: React.PointerEvent<HTMLButtonElement>, side: PanelSide) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startWidth = side === "left" ? panelLayout.leftPanelWidth : panelLayout.rightPanelWidth;
+    panelResizeRef.current = { side, pointerId: event.pointerId, startX: event.clientX, startWidth };
+    setResizingPanel(side);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function movePanelResize(event: React.PointerEvent<HTMLButtonElement>) {
+    const resize = panelResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const direction = resize.side === "left" ? 1 : -1;
+    updatePanelWidth(resize.side, resize.startWidth + (event.clientX - resize.startX) * direction);
+  }
+
+  function finishPanelResize(event: React.PointerEvent<HTMLButtonElement>) {
+    const resize = panelResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch { /* A captura pode ter sido liberada pelo navegador. */ }
+    panelResizeRef.current = null;
+    setResizingPanel(null);
+  }
+
+  function resizePanelWithKeyboard(event: React.KeyboardEvent<HTMLButtonElement>, side: PanelSide) {
+    const grows = side === "left" ? event.key === "ArrowRight" : event.key === "ArrowLeft";
+    const shrinks = side === "left" ? event.key === "ArrowLeft" : event.key === "ArrowRight";
+    if (!grows && !shrinks) return;
+    event.preventDefault();
+    const currentWidth = side === "left" ? panelLayout.leftPanelWidth : panelLayout.rightPanelWidth;
+    updatePanelWidth(side, currentWidth + (grows ? 16 : -16));
+  }
+
   function toggleAnnotationVisibility(id: string) {
     const annotation = annotations.find((item) => item.id === id);
     if (annotation && hiddenLabels.includes(annotation.label)) {
@@ -1059,6 +1181,70 @@ export default function Home() {
 
   function toggleAssetSelection(id: string) {
     setSelectedAssetIds((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
+  }
+
+  function dragPosition(event: React.DragEvent<HTMLElement>): "before" | "after" {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+  }
+
+  function beginAssetReorder(event: React.DragEvent<HTMLButtonElement>, id: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+    setAssetReorder({ sourceId: id, targetId: null, position: "before" });
+  }
+
+  function moveAssetByKeyboard(event: React.KeyboardEvent<HTMLButtonElement>, id: string) {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const sourceIndex = assets.findIndex((item) => item.id === id);
+    const targetIndex = sourceIndex + (event.key === "ArrowUp" ? -1 : 1);
+    const target = assets[targetIndex];
+    if (!target) return;
+    setAssets((items) => reorderItems(items, id, target.id, event.key === "ArrowUp" ? "before" : "after"));
+    setSaved(false);
+  }
+
+  function dropAsset(event: React.DragEvent<HTMLDivElement>, targetId: string) {
+    event.preventDefault(); event.stopPropagation();
+    if (!assetReorder) return;
+    const position = dragPosition(event);
+    setAssets((items) => reorderItems(items, assetReorder.sourceId, targetId, position));
+    if (assetReorder.sourceId !== targetId) setSaved(false);
+    setAssetReorder(null);
+  }
+
+  function reorderCurrentAnnotations(sourceId: string, targetId: string, position: "before" | "after") {
+    if (sourceId === targetId) return;
+    setAnnotations((items) => {
+      const reordered = reorderItems(items.filter((annotation) => annotation.asset === current), sourceId, targetId, position);
+      let currentIndex = 0;
+      return items.map((annotation) => annotation.asset === current ? reordered[currentIndex++] : annotation);
+    });
+    setSaved(false);
+  }
+
+  function beginAnnotationReorder(event: React.DragEvent<HTMLButtonElement>, id: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+    setAnnotationReorder({ sourceId: id, targetId: null, position: "before" });
+  }
+
+  function moveAnnotationByKeyboard(event: React.KeyboardEvent<HTMLButtonElement>, id: string) {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const sourceIndex = currentAnnotations.findIndex((annotation) => annotation.id === id);
+    const targetIndex = sourceIndex + (event.key === "ArrowUp" ? -1 : 1);
+    const target = currentAnnotations[targetIndex];
+    if (!target) return;
+    reorderCurrentAnnotations(id, target.id, event.key === "ArrowUp" ? "before" : "after");
+  }
+
+  function dropAnnotation(event: React.DragEvent<HTMLDivElement>, targetId: string) {
+    event.preventDefault(); event.stopPropagation();
+    if (!annotationReorder) return;
+    reorderCurrentAnnotations(annotationReorder.sourceId, targetId, dragPosition(event));
+    setAnnotationReorder(null);
   }
 
   function deleteSelectedImages() {
@@ -1243,14 +1429,37 @@ export default function Home() {
     if (validIds.length) setPendingDeleteClassIds(validIds);
   }
 
-  function toggleAllCurrentPolygons() {
-    if (!currentPolygonIds.length) return;
-    if (allCurrentPolygonsSelected) {
-      setSelected(null); setMultiSelected([]); setSelectedVertex(null); return;
+  function beginLabelRename(label: Label) {
+    if (label.id === UNLABELED_ID) return;
+    setEditingLabelId(label.id);
+    setEditingLabelName(label.name);
+  }
+
+  function cancelLabelRename() {
+    setEditingLabelId(null);
+    setEditingLabelName("");
+  }
+
+  function saveLabelRename(labelId: string) {
+    const label = labels.find((item) => item.id === labelId);
+    const name = editingLabelName.trim();
+    if (!label || label.id === UNLABELED_ID) { cancelLabelRename(); return; }
+    if (!name) {
+      showToast(copy.classNameRequired);
+      return;
     }
-    setSelected(currentPolygonIds[0]); setMultiSelected(currentPolygonIds); setSelectedVertex(null); setTool("select");
-    const first = annotations.find((annotation) => annotation.id === currentPolygonIds[0]);
-    if (first) setBatchLabel(first.label);
+    const duplicate = labels.find((item) => item.id !== labelId && item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (duplicate) {
+      showToast(fill(copy.toastClassExists, { name: duplicate.name }));
+      return;
+    }
+    if (name !== label.name) {
+      const affected = annotations.filter((annotation) => annotation.label === labelId).length;
+      setLabels((items) => items.map((item) => item.id === labelId ? { ...item, name } : item));
+      setSaved(false);
+      showToast(fill(copy.toastClassRenamed, { name, n: affected }));
+    }
+    cancelLabelRename();
   }
 
   function deletePendingAnnotations() {
@@ -1337,7 +1546,9 @@ export default function Home() {
   }
 
   function requestNewProject() {
-    if (!saved && !window.confirm(copy.replaceUnsavedWithNewProject)) return;
+    if (projectBusy) return;
+    const hasProjectContent = assets.length > 0 || annotations.length > 0 || labels.some((label) => label.id !== UNLABELED_ID) || !saved;
+    if (hasProjectContent && !window.confirm(copy.replaceUnsavedWithNewProject)) return;
     projectObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     projectObjectUrlsRef.current = [];
     if (input.current) input.current.value = "";
@@ -1346,9 +1557,11 @@ export default function Home() {
     setProjectName(copy.newProject); setProjectNameDraft("");
     setAssets([]); setCurrent(""); setAnnotations([]); setLabels([unlabeledLabel(copy.unlabeled)]);
     setActiveLabel(UNLABELED_ID); setBatchLabel(UNLABELED_ID); setHistory([]); setNewLabelColor(colors[0]);
-    setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSelectedClassIds([]);
+    annotationSelectionAnchorRef.current = null;
+    setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSelectedClassIds([]); setSelectedAssetIds([]);
     setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
     setSearch(""); setQuality(false); setTool("select"); setZoom(92); resetDrafts();
+    setPanelLayout(defaultPanelLayout());
     setProjectOpen(false); setProjectEditing(false); setProjectSaveOpen(false);
     setClassManagerOpen(false); setLeftOpen(false); setRightOpen(false); setSaved(true);
     showToast(copy.newProjectReady);
@@ -1363,6 +1576,7 @@ export default function Home() {
       const firstLabel = loaded.labels.find((label) => label.id !== UNLABELED_ID) ?? loaded.labels[0];
       setProjectName(loaded.projectName); setAssets(loaded.assets); setAnnotations(loaded.annotations); setLabels(loaded.labels);
       setCurrent(loaded.assets[0].id); setActiveLabel(firstLabel.id); setBatchLabel(firstLabel.id);
+      setPanelLayout(normalizePanelLayout(loaded.layout));
       setNewLabelColor(nextLabelColor(loaded.labels));
       setHistory([]); setSelected(null); setMultiSelected([]); setSelectedVertex(null); setHiddenAnnotations([]); setHiddenLabels([]);
       setSearch(""); setTool("select"); resetDrafts(); setProjectOpen(false); setLeftOpen(loaded.missingImages > 0); setSaved(true);
@@ -1388,7 +1602,7 @@ export default function Home() {
     if (mode === "complete" && missingProjectImages) return;
     setProjectBusy(true);
     try {
-      const fileName = await savePoligomeProject(projectName, assets, labels, annotations, mode, copy);
+      const fileName = await savePoligomeProject(projectName, assets, labels, annotations, mode, copy, panelLayout);
       setSaved(true); setProjectOpen(false); setProjectSaveOpen(false);
       showToast(`${copy.projectSaved}: ${fileName}`);
     } catch (error) {
@@ -1477,6 +1691,7 @@ export default function Home() {
     const index = assets.findIndex((item) => item.id === id);
     assets.slice(Math.max(0, index - 2), index + 3).forEach((item) => { if (!item.missing) warmImage(item.src); });
     if (target.width && target.height) setZoom(zoomToFit(target));
+    annotationSelectionAnchorRef.current = null;
     setCurrent(id); setSelected(null); setMultiSelected([]); setSelectedVertex(null); resetDrafts(); setLeftOpen(false);
   }
   function go(direction: number) {
@@ -1493,7 +1708,7 @@ export default function Home() {
       <div className="topbar-main">
       <div className="brand-side">
         <button className="mobile" onClick={() => setLeftOpen(true)} aria-label={copy.openImages}><Menu size={19} /></button>
-        <a className="brand-home" href="/" aria-label="Ir para a página inicial"><BrandLockup height={28} /></a><i />
+        <Link className="brand-home" href="/" aria-label="Ir para a página inicial"><BrandLockup height={28} /></Link><i />
         {projectEditing
           ? <input className="project-name-input" ref={projectInputRef} value={projectNameDraft}
               aria-label={copy.renameProject} maxLength={80}
@@ -1504,14 +1719,14 @@ export default function Home() {
       </div>
       {/* Abrir, salvar, exportar e preferências vivem no menu Arquivo; aqui ficam apenas o
           estado da sessão, a conexão do SAM e o selo de execução local. */}
-      <div className="head-actions"><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${samEndpoint ? "connected" : ""}`} onClick={openSamSettings}><Link2 size={14} />{samEndpoint ? copy.samActive : copy.activateSam}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
+      <div className="head-actions"><button className="new-project-main" disabled={projectBusy} title={copy.newProjectHint} onClick={requestNewProject}><Plus size={15} /><span>{copy.newProject}</span></button><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${samEndpoint ? "connected" : ""}`} onClick={openSamSettings}><Link2 size={14} />{samEndpoint ? copy.samActive : copy.activateSam}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
       </div>
       <nav className="menubar" aria-label={copy.fileMenu}>
         <div className="menu" ref={projectSwitcherRef}>
           <button className={`menu-trigger ${projectOpen ? "open" : ""}`} aria-haspopup="menu" aria-expanded={projectOpen} onClick={() => { setProjectOpen((value) => !value); setProjectEditing(false); }}>{copy.fileMenu}<ChevronDown size={13} /></button>
           {projectOpen && <div className="project-pop menu-pop" role="menu" aria-label={copy.fileMenu}>
             <div className="project-summary"><span><em />{projectName}</span><small>{assets.length} {copy.projectImages} · {annotations.length} {copy.projectAnnotations}</small></div>
-              <button role="menuitem" onClick={requestNewProject}><Plus size={14} /><span><b>{copy.newProject}</b><small>{copy.newProjectHint}</small></span></button>
+              <button role="menuitem" disabled={projectBusy} onClick={requestNewProject}><Plus size={14} /><span><b>{copy.newProject}</b><small>{copy.newProjectHint}</small></span></button>
               <button role="menuitem" disabled={projectBusy} onClick={requestOpenProject}><FolderUp size={14} /><span><b>{copy.openProject}</b><small>{copy.openProjectHint}</small></span></button>
               <button role="menuitem" disabled={projectBusy} onClick={openSaveProjectDialog}><Save size={14} /><span><b>{copy.saveProject}</b><small>{copy.saveProjectHint}</small></span></button>
               <button role="menuitem" onClick={beginProjectRename}><Pencil size={14} /><span><b>{copy.renameProject}</b><small>{projectName}</small></span></button>
@@ -1528,26 +1743,41 @@ export default function Home() {
       </nav>
     </header>
 
-    <div className="workspace">
+    <div className={`workspace ${resizingPanel ? "resizing-panels" : ""}`} style={{ gridTemplateColumns: `${panelLayout.leftPanelWidth}px minmax(0,1fr) ${panelLayout.rightPanelWidth}px` }}>
       <aside className={`assets ${leftOpen ? "open" : ""}`}>
         <div className="drawer-head"><b>{copy.images}</b><button onClick={() => setLeftOpen(false)}><X size={19} /></button></div>
-        <div className="aside-title"><span>{copy.images} <b>{assets.length}</b></span><div><button title={copy.importImages} aria-label={copy.importImages} onClick={() => input.current?.click()}><Plus size={16} /></button><button title="Selecionar todas as imagens" aria-label="Selecionar todas as imagens" disabled={!assets.length} onClick={() => { const ids = assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item) => item.id); setSelectedAssetIds((items) => ids.every((id) => items.includes(id)) ? items.filter((id) => !ids.includes(id)) : Array.from(new Set([...items, ...ids]))); }}><Check size={16} /></button><button title={currentImageAnnotationsHidden ? `${copy.showAnnotation}: ${copy.images.toLocaleLowerCase()}` : `${copy.hideAnnotation}: ${copy.images.toLocaleLowerCase()}`} aria-label={currentImageAnnotationsHidden ? `${copy.showAnnotation}: ${copy.images.toLocaleLowerCase()}` : `${copy.hideAnnotation}: ${copy.images.toLocaleLowerCase()}`} disabled={!currentAnnotations.length} onClick={toggleCurrentImageAnnotationVisibility}>{currentImageAnnotationsHidden ? <EyeOff size={16} /> : <Eye size={16} />}</button><button title="Carregar anotações COCO ou landmarks" aria-label="Carregar anotações COCO ou landmarks" disabled={!assets.length} onClick={() => cocoInputRef.current?.click()}><FileText size={16} /></button><button title="Excluir imagens selecionadas" aria-label="Excluir imagens selecionadas" disabled={!asset && !selectedAssetIds.length} onClick={deleteSelectedImages}><Trash2 size={16} /></button></div></div>
+        <button type="button" className="panel-resizer panel-resizer-left" aria-label={copy.resizeImagesPanel} title={copy.resizeImagesPanel} onPointerDown={(event) => beginPanelResize(event, "left")} onPointerMove={movePanelResize} onPointerUp={finishPanelResize} onPointerCancel={finishPanelResize} onKeyDown={(event) => resizePanelWithKeyboard(event, "left")} />
+        <div className="aside-title"><span>{copy.images} <b>{assets.length}</b></span><div><button title={copy.importImages} aria-label={copy.importImages} onClick={() => input.current?.click()}><Plus size={16} /></button><button title="Selecionar todas as imagens" aria-label="Selecionar todas as imagens" disabled={!assets.length} onClick={() => { const ids = assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item) => item.id); setSelectedAssetIds((items) => ids.every((id) => items.includes(id)) ? items.filter((id) => !ids.includes(id)) : Array.from(new Set([...items, ...ids]))); }}><Check size={16} /></button><button title="Carregar anotações COCO ou landmarks" aria-label="Carregar anotações COCO ou landmarks" disabled={!assets.length} onClick={() => cocoInputRef.current?.click()}><FileText size={16} /></button><button title="Excluir imagens selecionadas" aria-label="Excluir imagens selecionadas" disabled={!asset && !selectedAssetIds.length} onClick={deleteSelectedImages}><Trash2 size={16} /></button></div></div>
         <input hidden ref={input} type="file" accept="image/*,.tif,.tiff" multiple onChange={(event) => files(event.target.files)} />
         <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; if (annotationFiles.length) void importCocoAnnotations(annotationFiles); }} />
         <button className="import" onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>
-        <div className="asset-list">{assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item, index) => { const count = annotations.filter((annotation) => annotation.asset === item.id).length; const isChecked = selectedAssetIds.includes(item.id); return <div key={item.id} className={`asset-row ${current === item.id ? "active" : ""} ${item.missing ? "missing" : ""}`}><button className={`asset-selector ${isChecked ? "selected" : ""}`} aria-label={`Selecionar imagem: ${item.name}`} aria-pressed={isChecked} onClick={() => toggleAssetSelection(item.id)}>{isChecked && <Check size={11} />}</button><button className="asset-main" onClick={() => chooseImage(item.id)}><div className="thumb" style={{ backgroundImage: item.src ? `url(${item.src})` : "none" }}><span>{String(index + 1).padStart(2, "0")}</span>{count > 0 && <b>{count}</b>}</div><div><strong>{item.name}</strong><small>{item.missing ? copy.imageNotLoaded : item.width && item.height ? `${item.width} × ${item.height}` : copy.localImage}</small></div><i className={count ? "checked" : ""}>{count ? "✓" : ""}</i></button></div>; })}</div>
+        <div className="asset-list">{assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item, index) => {
+          const count = annotations.filter((annotation) => annotation.asset === item.id).length;
+          const isChecked = selectedAssetIds.includes(item.id);
+          const details = item.missing ? copy.imageNotLoaded : item.width && item.height ? `${item.width} × ${item.height}` : copy.localImage;
+          const dropClass = assetReorder?.targetId === item.id ? `drop-${assetReorder.position}` : "";
+          return <div key={item.id} className={`asset-row ${current === item.id ? "active" : ""} ${item.missing ? "missing" : ""} ${assetReorder?.sourceId === item.id ? "dragging" : ""} ${dropClass}`} onDragOver={(event) => { if (!assetReorder) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; const position = dragPosition(event); if (assetReorder.targetId !== item.id || assetReorder.position !== position) setAssetReorder({ ...assetReorder, targetId: item.id, position }); }} onDrop={(event) => dropAsset(event, item.id)}>
+            <button className="reorder-handle" draggable aria-label={`${copy.reorderImage}: ${item.name}`} title={copy.reorderImage} onDragStart={(event) => beginAssetReorder(event, item.id)} onDragEnd={() => setAssetReorder(null)} onKeyDown={(event) => moveAssetByKeyboard(event, item.id)}><GripVertical size={14} /></button>
+            <button className={`asset-selector ${isChecked ? "selected" : ""}`} aria-label={`Selecionar imagem: ${item.name}`} aria-pressed={isChecked} onClick={() => toggleAssetSelection(item.id)}>{isChecked && <Check size={11} />}</button>
+            <button className="asset-main" onClick={() => chooseImage(item.id)}>
+              <div className="thumb" style={{ backgroundImage: item.src ? `url(${item.src})` : "none" }}><span>{String(index + 1).padStart(2, "0")}</span></div>
+              <div><strong>{item.name}</strong><small>{details}{count > 0 ? ` · ${count} ${copy.projectAnnotations}` : ""}</small></div>
+              <i className={count ? "checked" : ""}>{count ? "✓" : ""}</i>
+            </button>
+          </div>;
+        })}</div>
         <div className="privacy"><ShieldCheck size={14} /> {copy.privacy}</div>
       </aside>
 
       <section className="editor">
         <div className="tools">
-          <div><ToolButton title={copy.select} keyHint="V" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" active={tool === "pan"} onClick={() => setTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
-          <div><ToolButton title={copy.box} keyHint="B" active={tool === "box"} onClick={() => setTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" active={tool === "polygon"} onClick={() => setTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" active={tool === "freehand"} onClick={() => setTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" active={tool === "line"} onClick={() => setTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" active={tool === "point"} onClick={() => setTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
-          <div className="edit-tools"><ToolButton title={copy.simplify} disabled={activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title={copy.split} disabled={activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => setTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={activeAnnotation?.type !== "polygon"} active={tool === "transform"} onClick={() => setTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => setTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
-          <div><ToolButton title={copy.undo} disabled={!history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!selected && !polygonDraft.length} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
-          <label className="stroke-control" title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton>
+          <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => setTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
+          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} onClick={() => setTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => setTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => setTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => setTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => setTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
+          <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => setTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "transform"} onClick={() => setTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => setTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
+          <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
+          <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton>
         </div>
 
         <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
@@ -1609,10 +1839,23 @@ export default function Home() {
 
       <aside className={`labels ${rightOpen ? "open" : ""}`}>
         <div className="drawer-head"><b>{copy.annotations}</b><button onClick={() => setRightOpen(false)}><X size={19} /></button></div>
+        <button type="button" className="panel-resizer panel-resizer-right" aria-label={copy.resizeAnnotationsPanel} title={copy.resizeAnnotationsPanel} onPointerDown={(event) => beginPanelResize(event, "right")} onPointerMove={movePanelResize} onPointerUp={finishPanelResize} onPointerCancel={finishPanelResize} onKeyDown={(event) => resizePanelWithKeyboard(event, "right")} />
         <div className="tabs"><button className={!quality ? "active" : ""} onClick={() => setQuality(false)}>{copy.annotations}</button><button className={quality ? "active" : ""} onClick={() => setQuality(true)}>{copy.quality} <b>{currentAnnotations.length ? 1 : 0}</b></button></div>
-        {!quality ? <div className="annotation-editor"><section className="annotation-panel-head"><div><b>{copy.annotations} · {currentAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div><div className="annotation-panel-actions"><button disabled={!currentPolygonIds.length} onClick={toggleAllCurrentPolygons}><Check size={13} />{allCurrentPolygonsSelected ? copy.clearPolygonSelection : copy.selectAllPolygons}</button><button onClick={() => { setSelectedClassIds([]); setNewLabelColor(nextLabelColor(labels)); setClassManagerOpen(true); }}><Palette size={14} />{copy.manageClasses}</button></div></section>
+        {!quality ? <div className="annotation-editor"><section className="annotation-panel-head"><div><b>{copy.annotations} · {currentAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div><div className="annotation-panel-actions"><button disabled={!currentAnnotations.length} title={currentImageAnnotationsHidden ? copy.showAllAnnotations : copy.hideAllAnnotations} onClick={toggleCurrentImageAnnotationVisibility}>{currentImageAnnotationsHidden ? <EyeOff size={14} /> : <Eye size={14} />}{currentImageAnnotationsHidden ? copy.showAllAnnotations : copy.hideAllAnnotations}</button><button onClick={() => { setSelectedClassIds([]); cancelLabelRename(); setNewLabelColor(nextLabelColor(labels)); setClassManagerOpen(true); }}><Palette size={14} />{copy.manageClasses}</button></div></section>
           {selectedIds.length > 0 && <section className="batch-class"><div><Tags size={14} /><span><b>{selectedIds.length} {copy.batchSelection}</b><small>{copy.changeClass}</small></span></div><div><select aria-label={copy.changeClass} value={resolvedBatchLabel} onChange={(event) => setBatchLabel(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.id === UNLABELED_ID ? copy.unlabeled : label.name}</option>)}</select><button onClick={reclassifySelection}>{copy.applyClass}</button><button className="batch-delete" onClick={() => setPendingDeleteAnnotationIds(selectedIds)}><Trash2 size={13} />{copy.deleteSelectedAnnotations}</button></div></section>}
-          <div className="instances">{currentAnnotations.map((annotation, index) => { const label = getLabel(annotation.label); const isHidden = hiddenAnnotations.includes(annotation.id) || hiddenLabels.includes(annotation.label); const isChecked = multiSelected.includes(annotation.id); return <div key={annotation.id} className={`instance-row ${isChecked ? "active" : ""} ${isHidden ? "hidden" : ""}`}><button className={`annotation-selector ${isChecked ? "selected" : ""}`} aria-label={`${copy.selectAnnotation}: ${annotation.label === UNLABELED_ID ? copy.unlabeled : label.name} #${index + 1}`} aria-pressed={isChecked} onClick={() => { toggleMultiSelection(annotation.id); setTool("select"); }}>{isChecked && <Check size={11} />}</button><button className="instance-main" onClick={(event) => { if (event.shiftKey) toggleMultiSelection(annotation.id); else { setSelected(annotation.id); setMultiSelected([annotation.id]); setBatchLabel(annotation.label); } setSelectedVertex(null); setTool("select"); }}><i style={{ borderColor: label.color }}>{annotation.type === "point" ? "•" : annotation.type === "line" ? "╱" : ""}</i><span>{annotation.label === UNLABELED_ID ? copy.unlabeled : label.name} <small>#{index + 1}</small></span></button><button className="visibility-toggle" title={isHidden ? copy.showAnnotation : copy.hideAnnotation} aria-label={`${isHidden ? copy.showAnnotation : copy.hideAnnotation}: ${label.name} #${index + 1}`} onClick={() => toggleAnnotationVisibility(annotation.id)}>{isHidden ? <EyeOff size={14} /> : <Eye size={14} />}</button><button className="delete-annotation" title={copy.deleteShape} aria-label={`${copy.deleteShape}: ${label.name} #${index + 1}`} onClick={() => setPendingDeleteAnnotationIds([annotation.id])}><Trash2 size={13} /></button></div>; })}</div>
+          <div className="instances">{currentAnnotations.map((annotation, index) => {
+            const label = getLabel(annotation.label);
+            const isHidden = hiddenAnnotations.includes(annotation.id) || hiddenLabels.includes(annotation.label);
+            const isChecked = multiSelected.includes(annotation.id);
+            const dropClass = annotationReorder?.targetId === annotation.id ? `drop-${annotationReorder.position}` : "";
+            return <div key={annotation.id} className={`instance-row ${isChecked ? "active" : ""} ${isHidden ? "hidden" : ""} ${annotationReorder?.sourceId === annotation.id ? "dragging" : ""} ${dropClass}`} onDragOver={(event) => { if (!annotationReorder) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; const position = dragPosition(event); if (annotationReorder.targetId !== annotation.id || annotationReorder.position !== position) setAnnotationReorder({ ...annotationReorder, targetId: annotation.id, position }); }} onDrop={(event) => dropAnnotation(event, annotation.id)}>
+              <button className="reorder-handle" draggable aria-label={`${copy.reorderAnnotation}: ${label.name} #${index + 1}`} title={copy.reorderAnnotation} onDragStart={(event) => beginAnnotationReorder(event, annotation.id)} onDragEnd={() => setAnnotationReorder(null)} onKeyDown={(event) => moveAnnotationByKeyboard(event, annotation.id)}><GripVertical size={14} /></button>
+              <button className={`annotation-selector ${isChecked ? "selected" : ""}`} aria-label={`${copy.selectAnnotation}: ${annotation.label === UNLABELED_ID ? copy.unlabeled : label.name} #${index + 1}`} aria-pressed={isChecked} onClick={(event) => selectAnnotationFromPanel(annotation, event.shiftKey, event.ctrlKey || event.metaKey, true)}>{isChecked && <Check size={11} />}</button>
+              <button className="instance-main" onClick={(event) => selectAnnotationFromPanel(annotation, event.shiftKey, event.ctrlKey || event.metaKey, false)}><i style={{ borderColor: label.color }}>{annotation.type === "point" ? "•" : annotation.type === "line" ? "╱" : ""}</i><span>{annotation.label === UNLABELED_ID ? copy.unlabeled : label.name} <small>#{index + 1}</small></span></button>
+              <button className="visibility-toggle" title={isHidden ? copy.showAnnotation : copy.hideAnnotation} aria-label={`${isHidden ? copy.showAnnotation : copy.hideAnnotation}: ${label.name} #${index + 1}`} onClick={() => toggleAnnotationVisibility(annotation.id)}>{isHidden ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+              <button className="delete-annotation" title={copy.deleteShape} aria-label={`${copy.deleteShape}: ${label.name} #${index + 1}`} onClick={() => setPendingDeleteAnnotationIds([annotation.id])}><Trash2 size={13} /></button>
+            </div>;
+          })}</div>
         </div> : <div className="quality"><div className="score"><strong>92<small>/100</small></strong><span>{copy.goodConsistency}</span></div><article className="warn"><b>!</b><div><strong>{copy.possibleOverlap}</strong><p>{copy.overlapText}</p></div></article><article><b>✓</b><div><strong>{copy.validClasses}</strong><p>{copy.validClassesText}</p></div></article><article><b>✓</b><div><strong>{copy.noEmpty}</strong><p>{copy.noEmptyText}</p></div></article><button onClick={() => { setQuality(false); setSelected(visibleAnnotations[0]?.id ?? null); setMultiSelected(visibleAnnotations[0] ? [visibleAnnotations[0].id] : []); }}>{copy.review}</button></div>}
         <div className="hint"><b>{activeAnnotation?.type === "polygon" ? copy.vectorEditing : copy.quickTip}</b><p>{activeAnnotation?.type === "polygon" ? copy.vectorHint : copy.shortcutHint}</p></div>
       </aside>
@@ -1627,7 +1870,7 @@ export default function Home() {
       onPronto={recorteVirouAsset}
     />}
 
-    {classManagerOpen && <div className="modal-backdrop class-manager-backdrop"><section className="class-manager-page" role="dialog" aria-modal="true" aria-labelledby="class-manager-title"><header><div><span><Palette size={20} /></span><div><h2 id="class-manager-title">{copy.classManagerTitle}</h2><p>{copy.classManagerHint}</p></div></div><button onClick={() => { setClassManagerOpen(false); setSelectedClassIds([]); }} aria-label={copy.close}><X size={21} /></button></header><div className="class-manager-body"><div className="class-manager-sidebar"><section className="label-creator"><div><Palette size={14} /><span><b>{copy.labelStudio}</b><small>{copy.labelStudioHint}</small></span></div><div className="label-create-row"><input ref={labelInputRef} aria-label={copy.className} placeholder={copy.className} value={newLabel} onChange={(event) => setNewLabel(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addClass()} /><input className="label-color" type="color" aria-label={copy.labelColor} title={copy.labelColor} value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} /><button aria-label={copy.createLabel} title={copy.createLabel} disabled={!newLabel.trim()} onClick={addClass}><Plus size={15} /></button></div></section><section className="class-manager-active"><div><Tags size={14} /><span><b>{copy.newAnnotationClass}</b><small>{copy.newShapesClass}</small></span></div><select aria-label={copy.newAnnotationClass} value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.id === UNLABELED_ID ? copy.unlabeled : label.name}</option>)}</select></section></div><section className="class-manager-classes"><div className="class-manager-list-head"><div><b>{copy.classList}</b><span>{labels.length} {copy.classes.toLocaleLowerCase()}</span></div>{selectableClasses.length > 0 && <button onClick={() => setSelectedClassIds(selectedClassIds.length === selectableClasses.length ? [] : selectableClasses.map((label) => label.id))}>{selectedClassIds.length === selectableClasses.length ? copy.clearClassSelection : copy.selectAllClasses}</button>}</div>{selectedClassIds.length > 0 && <div className="class-selection-summary"><span>{selectedClassIds.length} {copy.classesSelected}</span><button onClick={() => requestClassDeletion(selectedClassIds)}><Trash2 size={12} />{copy.deleteSelectedClasses}</button></div>}<div className="label-list class-manager-list">{labels.map((label) => { const isHidden = hiddenLabels.includes(label.id); const isUnlabeled = label.id === UNLABELED_ID; const isChecked = selectedClassIds.includes(label.id); return <div key={label.id} className={`label-row ${isHidden ? "hidden" : ""} ${isChecked ? "checked" : ""}`}>{isUnlabeled ? <span className="label-selector-spacer" /> : <button className={`label-selector ${isChecked ? "selected" : ""}`} aria-label={`${copy.selectClass}: ${label.name}`} aria-pressed={isChecked} onClick={() => setSelectedClassIds((items) => items.includes(label.id) ? items.filter((id) => id !== label.id) : [...items, label.id])}>{isChecked && <Check size={11} />}</button>}<div className="label-main"><i style={{ background: label.color }} /><span>{isUnlabeled ? copy.unlabeled : label.name}</span><em>{annotations.filter((annotation) => annotation.label === label.id).length}</em>{label.key ? <kbd>{label.key}</kbd> : <span />}</div><button className="visibility-toggle" title={isHidden ? copy.showClass : copy.hideClass} aria-label={`${isHidden ? copy.showClass : copy.hideClass}: ${label.name}`} onClick={() => toggleLabelVisibility(label.id)}>{isHidden ? <EyeOff size={14} /> : <Eye size={14} />}</button><button className="delete-label" disabled={isUnlabeled} title={isUnlabeled ? copy.unlabeledProtected : copy.deleteClass} aria-label={`${copy.deleteClass}: ${label.name}`} onClick={() => requestClassDeletion([label.id])}><Trash2 size={13} /></button></div>; })}</div></section></div><footer><button onClick={() => { setClassManagerOpen(false); setSelectedClassIds([]); }}><Check size={14} />{copy.close}</button></footer></section></div>}
+    {classManagerOpen && <div className="modal-backdrop class-manager-backdrop"><section className="class-manager-page" role="dialog" aria-modal="true" aria-labelledby="class-manager-title"><header><div><span><Palette size={20} /></span><div><h2 id="class-manager-title">{copy.classManagerTitle}</h2><p>{copy.classManagerHint}</p></div></div><button onClick={() => { setClassManagerOpen(false); setSelectedClassIds([]); }} aria-label={copy.close}><X size={21} /></button></header><div className="class-manager-body"><div className="class-manager-sidebar"><section className="label-creator"><div><Palette size={14} /><span><b>{copy.labelStudio}</b><small>{copy.labelStudioHint}</small></span></div><div className="label-create-row"><input ref={labelInputRef} aria-label={copy.className} placeholder={copy.className} value={newLabel} onChange={(event) => setNewLabel(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addClass()} /><input className="label-color" type="color" aria-label={copy.labelColor} title={copy.labelColor} value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} /><button aria-label={copy.createLabel} title={copy.createLabel} disabled={!newLabel.trim()} onClick={addClass}><Plus size={15} /></button></div></section><section className="class-manager-active"><div><Tags size={14} /><span><b>{copy.newAnnotationClass}</b><small>{copy.newShapesClass}</small></span></div><select aria-label={copy.newAnnotationClass} value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.id === UNLABELED_ID ? copy.unlabeled : label.name}</option>)}</select></section></div><section className="class-manager-classes"><div className="class-manager-list-head"><div><b>{copy.classList}</b><span>{labels.length} {copy.classes.toLocaleLowerCase()}</span></div>{selectableClasses.length > 0 && <button onClick={() => setSelectedClassIds(selectedClassIds.length === selectableClasses.length ? [] : selectableClasses.map((label) => label.id))}>{selectedClassIds.length === selectableClasses.length ? copy.clearClassSelection : copy.selectAllClasses}</button>}</div>{selectedClassIds.length > 0 && <div className="class-selection-summary"><span>{selectedClassIds.length} {copy.classesSelected}</span><button onClick={() => requestClassDeletion(selectedClassIds)}><Trash2 size={12} />{copy.deleteSelectedClasses}</button></div>}<div className="label-list class-manager-list">{labels.map((label) => { const isHidden = hiddenLabels.includes(label.id); const isUnlabeled = label.id === UNLABELED_ID; const isChecked = selectedClassIds.includes(label.id); const isEditing = editingLabelId === label.id; return <div key={label.id} className={`label-row ${isHidden ? "hidden" : ""} ${isChecked ? "checked" : ""}`}>{isUnlabeled ? <span className="label-selector-spacer" /> : <button className={`label-selector ${isChecked ? "selected" : ""}`} aria-label={`${copy.selectClass}: ${label.name}`} aria-pressed={isChecked} onClick={() => setSelectedClassIds((items) => items.includes(label.id) ? items.filter((id) => id !== label.id) : [...items, label.id])}>{isChecked && <Check size={11} />}</button>}<div className={`label-main ${isEditing ? "editing" : ""}`}><i style={{ background: label.color }} />{isEditing ? <input autoFocus aria-label={copy.renameClass} value={editingLabelName} onChange={(event) => setEditingLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveLabelRename(label.id); if (event.key === "Escape") cancelLabelRename(); }} /> : <span>{isUnlabeled ? copy.unlabeled : label.name}</span>}<em>{annotations.filter((annotation) => annotation.label === label.id).length}</em>{label.key ? <kbd>{label.key}</kbd> : <span />}</div><button className="rename-label" disabled={isUnlabeled} title={isUnlabeled ? copy.unlabeledProtected : isEditing ? copy.saveClassName : copy.renameClass} aria-label={`${isEditing ? copy.saveClassName : copy.renameClass}: ${label.name}`} onClick={() => isEditing ? saveLabelRename(label.id) : beginLabelRename(label)}>{isEditing ? <Check size={13} /> : <Pencil size={13} />}</button><button className="visibility-toggle" title={isHidden ? copy.showClass : copy.hideClass} aria-label={`${isHidden ? copy.showClass : copy.hideClass}: ${label.name}`} onClick={() => toggleLabelVisibility(label.id)}>{isHidden ? <EyeOff size={14} /> : <Eye size={14} />}</button><button className="delete-label" disabled={isUnlabeled} title={isUnlabeled ? copy.unlabeledProtected : copy.deleteClass} aria-label={`${copy.deleteClass}: ${label.name}`} onClick={() => requestClassDeletion([label.id])}><Trash2 size={13} /></button></div>; })}</div></section></div><footer><button onClick={() => { setClassManagerOpen(false); setSelectedClassIds([]); }}><Check size={14} />{copy.close}</button></footer></section></div>}
     {projectSaveOpen && <div className="modal-backdrop"><section className="sam-modal project-save-modal" role="dialog" aria-modal="true" aria-labelledby="project-save-title"><header><div><span><Save size={18} /></span><div><h2 id="project-save-title">{copy.saveProjectTitle}</h2><p>{copy.saveProjectDescription}</p></div></div><button onClick={() => setProjectSaveOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="project-save-options" role="radiogroup" aria-label={copy.saveProjectTitle}><button className={projectSaveMode === "annotations" ? "active" : ""} role="radio" aria-checked={projectSaveMode === "annotations"} onClick={() => setProjectSaveMode("annotations")}><span><FileText size={20} /></span><div><b>{copy.annotationsOnly}</b><p>{copy.annotationsOnlyHint}</p><small>{formatBytes(annotationProjectBytes)} · {assets.length} {copy.imageReferences}</small></div><Check size={16} /></button><button className={projectSaveMode === "complete" ? "active" : ""} role="radio" aria-checked={projectSaveMode === "complete"} disabled={missingProjectImages > 0} onClick={() => setProjectSaveMode("complete")}><span><Images size={20} /></span><div><b>{copy.imagesAndAnnotations}</b><p>{copy.imagesAndAnnotationsHint}</p><small>{knownProjectImageBytes ? `${formatBytes(knownProjectImageBytes)} + ${formatBytes(annotationProjectBytes)}` : copy.sizeCalculatedOnSave}</small>{missingProjectImages > 0 && <em>{missingProjectImages} {copy.projectImagesNeedReload}</em>}</div><Check size={16} /></button></div><div className="project-save-privacy"><ShieldCheck size={16} /><div><b>{copy.localOnly}</b><p>{copy.projectSavePrivacy}</p></div></div><footer><button onClick={() => setProjectSaveOpen(false)}>{copy.cancel}</button><button className="connect" disabled={projectBusy || (projectSaveMode === "complete" && missingProjectImages > 0)} onClick={() => void savePortableProject(projectSaveMode)}>{projectBusy ? <LoaderCircle className="spin" size={15} /> : <Download size={15} />}{copy.generateProjectFile}</button></footer></section></div>}
     {pendingDeleteAnnotations.length > 0 && <div className="modal-backdrop"><section className="sam-modal delete-class-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-annotations-title" aria-describedby="delete-annotations-description"><header><div><span><Trash2 size={18} /></span><div><h2 id="delete-annotations-title">{copy.confirmDeleteAnnotations}</h2><p>{pendingDeleteAnnotations.length} {copy.annotationsToDelete}</p></div></div><button onClick={() => setPendingDeleteAnnotationIds([])} aria-label={copy.close}><X size={19} /></button></header><p id="delete-annotations-description" className="delete-class-warning">{copy.deleteAnnotationsWarning}</p><div className="delete-class-impact"><span>{copy.annotationsToDelete}</span><b>{pendingDeleteAnnotations.length}</b></div><footer><button onClick={() => setPendingDeleteAnnotationIds([])}>{copy.cancel}</button><button className="danger" onClick={deletePendingAnnotations}><Trash2 size={14} />{copy.confirmDelete}</button></footer></section></div>}
     {pendingDeleteClasses.length > 0 && <div className="modal-backdrop"><section className="sam-modal delete-class-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-class-title" aria-describedby="delete-class-description"><header><div><span><Trash2 size={18} /></span><div><h2 id="delete-class-title">{pendingDeleteClasses.length === 1 ? copy.confirmDeleteClass : copy.confirmDeleteClasses}</h2><p>{pendingDeleteClasses.map((label) => label.name).join(", ")}</p></div></div><button onClick={() => setPendingDeleteClassIds([])} aria-label={copy.close}><X size={19} /></button></header><p id="delete-class-description" className="delete-class-warning">{copy.deleteClassWarning} <strong>{copy.unlabeled}</strong>.</p><div className="delete-class-impact"><span>{copy.affectedAnnotations}</span><b>{pendingAffectedAnnotations}</b></div><footer><button onClick={() => setPendingDeleteClassIds([])}>{copy.cancel}</button><button className="danger" onClick={deletePendingClasses}><Trash2 size={14} />{copy.confirmDelete}</button></footer></section></div>}

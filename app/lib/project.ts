@@ -10,6 +10,10 @@ type PortableAsset = Omit<Asset, "src" | "local"> & {
 };
 
 export type ProjectSaveMode = "annotations" | "complete";
+export type ProjectLayout = {
+  leftPanelWidth: number;
+  rightPanelWidth: number;
+};
 
 type ProjectManifest = {
   format: "poligome-project";
@@ -19,6 +23,10 @@ type ProjectManifest = {
   assets: PortableAsset[];
   labels: Label[];
   annotations: Annotation[];
+  layout?: {
+    left_panel_width: number;
+    right_panel_width: number;
+  };
 };
 
 export type LoadedPoligomeProject = {
@@ -26,6 +34,7 @@ export type LoadedPoligomeProject = {
   assets: Asset[];
   labels: Label[];
   annotations: Annotation[];
+  layout?: ProjectLayout;
   objectUrls: string[];
   missingImages: number;
 };
@@ -42,6 +51,17 @@ function safeFileName(name: string, fallback: string) {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseLayout(value: unknown): ProjectManifest["layout"] {
+  if (!isObject(value)) return undefined;
+  const left = value.left_panel_width;
+  const right = value.right_panel_width;
+  if (typeof left !== "number" || !Number.isFinite(left) || typeof right !== "number" || !Number.isFinite(right)) return undefined;
+  return {
+    left_panel_width: Math.round(left),
+    right_panel_width: Math.round(right),
+  };
 }
 
 function parseManifest(value: unknown, copy: Copy): ProjectManifest {
@@ -75,10 +95,11 @@ function parseManifest(value: unknown, copy: Copy): ProjectManifest {
     assets,
     labels,
     annotations: annotations.filter((item) => assetIds.has(item.asset) && labelIds.has(item.label)),
+    layout: parseLayout(value.layout),
   };
 }
 
-export async function savePoligomeProject(projectName: string, assets: Asset[], labels: Label[], annotations: Annotation[], mode: ProjectSaveMode, copy: Copy) {
+export async function savePoligomeProject(projectName: string, assets: Asset[], labels: Label[], annotations: Annotation[], mode: ProjectSaveMode, copy: Copy, layout?: ProjectLayout) {
   const zip = new JSZip();
   const portableAssets = await Promise.all(assets.map(async (asset, index): Promise<PortableAsset> => {
     const { src, local, ...metadata } = asset;
@@ -103,6 +124,10 @@ export async function savePoligomeProject(projectName: string, assets: Asset[], 
     assets: portableAssets,
     labels,
     annotations,
+    layout: layout ? {
+      left_panel_width: Math.round(layout.leftPanelWidth),
+      right_panel_width: Math.round(layout.rightPanelWidth),
+    } : undefined,
   };
   zip.file("project.json", JSON.stringify(manifest, null, 2));
   const archive = await zip.generateAsync({ type: "blob", compression: "STORE", mimeType: "application/vnd.poligome.project+zip" });
@@ -133,7 +158,18 @@ export async function openPoligomeProject(file: File, copy: Copy): Promise<Loade
       if (!source || source === "local") throw new Error(fill(copy.errProjectImageNotBundled, { name: asset.name }));
       return { ...metadata, src: source, local: false };
     }));
-    return { projectName: manifest.project_name, assets, labels: manifest.labels, annotations: manifest.annotations, objectUrls, missingImages: assets.filter((asset) => asset.missing).length };
+    return {
+      projectName: manifest.project_name,
+      assets,
+      labels: manifest.labels,
+      annotations: manifest.annotations,
+      layout: manifest.layout ? {
+        leftPanelWidth: manifest.layout.left_panel_width,
+        rightPanelWidth: manifest.layout.right_panel_width,
+      } : undefined,
+      objectUrls,
+      missingImages: assets.filter((asset) => asset.missing).length,
+    };
   } catch (error) {
     objectUrls.forEach((url) => URL.revokeObjectURL(url));
     throw error;

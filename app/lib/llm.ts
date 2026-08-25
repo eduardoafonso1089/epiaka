@@ -76,18 +76,23 @@ export function fieldsOf(rows: DatasetRow[]) { return Array.from(new Set(rows.sl
 export function suggestedField(fields: string[], names: string[]) { return fields.find((field) => names.includes(field.toLowerCase())) ?? fields.find((field) => names.some((name) => field.toLowerCase().includes(name))) ?? fields[0] ?? ""; }
 export function textValue(value: unknown) { return typeof value === "string" ? value : value == null ? "" : JSON.stringify(value); }
 
-function escaped(value: unknown) { const text = typeof value === "string" ? value : JSON.stringify(value); return `"${text.replaceAll('"', '""')}"`; }
+function escaped(value: unknown) { const text = value == null ? "" : typeof value === "string" ? value : JSON.stringify(value); return `"${text.replaceAll('"', '""')}"`; }
 function outputRow(row: DatasetRow, annotation: LlmAnnotation | undefined, schema: LlmSchema) {
   return { ...row.original, annotation: annotation ? { type: schema.mode, ...annotation } : undefined, metadata: { status: annotation?.status ?? "unannotated" } };
 }
 
 export function exportLlm(rows: DatasetRow[], schema: LlmSchema, annotations: Record<string, LlmAnnotation>, format: "json" | "jsonl" | "csv", annotatedOnly: boolean) {
-  const output = rows.filter((row) => !annotatedOnly || annotations[row.internalId]?.status === "annotated").map((row) => outputRow(row, annotations[row.internalId], schema));
+  const selected = rows.filter((row) => !annotatedOnly || annotations[row.internalId]?.status === "annotated");
+  const output = selected.map((row) => outputRow(row, annotations[row.internalId], schema));
   if (format === "json") return downloadBlob("poligome-llm.json", new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }));
   if (format === "jsonl") return downloadBlob("poligome-llm.jsonl", new Blob([output.map((row) => JSON.stringify(row)).join("\n")], { type: "application/x-ndjson" }));
-  const columns = Array.from(new Set(output.flatMap((item) => Object.keys(item.original))));
+  // O CSV lê os campos originais achatados: outputRow espalha row.original na raiz do objeto, então as
+  // colunas vêm do próprio registro. Ler de row.original também evita que um campo do dataset chamado
+  // "annotation" ou "metadata" seja lido como se fosse a anotação.
+  const columns = Array.from(new Set(selected.flatMap((row) => Object.keys(row.original))));
   const lines = [columns.concat(["annotation_type", "annotation_labels", "annotation_ratings", "preference_winner", "preference_strength", "annotation_comment", "corrected_response", "response_changed", "status"]).map(escaped).join(",")];
-  output.forEach((item) => { const note = item.annotation; lines.push(columns.map((field) => escaped(item.original[field])).concat([schema.mode, JSON.stringify(note?.labels ?? []), JSON.stringify(note?.ratings ?? {}), note?.winner ?? "", note?.strength ?? "", note?.comment ?? "", note?.correctedResponse ?? "", String(note?.changed ?? ""), item.metadata.status]).map(escaped).join(",")); });
+  // Valores entram crus e são escapados uma única vez no fim; escapar antes do concat gerava """valor""".
+  selected.forEach((row) => { const note = annotations[row.internalId]; lines.push(columns.map((field) => row.original[field]).concat([schema.mode, JSON.stringify(note?.labels ?? []), JSON.stringify(note?.ratings ?? {}), note?.winner ?? "", note?.strength ?? "", note?.comment ?? "", note?.correctedResponse ?? "", String(note?.changed ?? ""), note?.status ?? "unannotated"]).map(escaped).join(",")); });
   downloadBlob("poligome-llm.csv", new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }));
 }
 

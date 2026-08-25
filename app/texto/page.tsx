@@ -174,12 +174,19 @@ export default function TextAnnotationPage() {
 
   function updateNote(patch: Partial<LlmAnnotation>) {
     if (!row) return;
-    setAnnotations((current) => ({ ...current, [row.internalId]: { status: "annotated", ...current[row.internalId], ...patch } }));
+    // Editar um campo marca o registro como anotado, mas não apaga um "review" ou "skipped"
+    // já escolhido: o status explícito só entra quando ainda não existe registro.
+    setAnnotations((current) => {
+      const existing = current[row.internalId];
+      return { ...current, [row.internalId]: { ...existing, status: existing?.status ?? "annotated", ...patch } };
+    });
   }
 
   function setStatus(status: RecordStatus) {
     if (!row) return;
-    setAnnotations((current) => ({ ...current, [row.internalId]: { status, ...current[row.internalId] } }));
+    // O status pedido tem de vencer o que já estava gravado, senão os botões de review e
+    // skip param de responder depois do primeiro clique.
+    setAnnotations((current) => ({ ...current, [row.internalId]: { ...current[row.internalId], status } }));
   }
 
   function choosePreference(choice: "A" | "B" | "tie") {

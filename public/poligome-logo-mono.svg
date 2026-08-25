@@ -1,6 +1,6 @@
 <!-- Versao monocromatica: tudo herda currentColor, inclusive o no. Para carimbo,
      gravacao, fax de documentacao e qualquer uso de uma cor so. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-26.5 -160.4 622.4 213.2" width="622" height="213" fill="currentColor" role="img" aria-label="Epiaka">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-26.5 -160.4 622.4 213.2" width="622" height="213" fill="currentColor" role="img" aria-label="Poligome">
   <g transform="translate(0,-50)">
     <g fill="none" stroke="currentColor" stroke-width="8.2" stroke-linecap="round">
       <path d="M0 -98.3V90.7"/>

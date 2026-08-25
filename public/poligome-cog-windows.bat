@@ -1,20 +1,20 @@
 @echo off
 chcp 65001 >nul
 setlocal EnableExtensions
-title Epiaka COG local
+title Poligome local COG
 
-set "APP_DIR=%LOCALAPPDATA%\EpiakaCOG"
+set "APP_DIR=%LOCALAPPDATA%\PoligomeCOG"
 set "VENV_DIR=%APP_DIR%\venv"
-set "CONNECTOR=%APP_DIR%\epiaka-cog-local.py"
+set "CONNECTOR=%APP_DIR%\poligome-cog-local.py"
 set "READY_FILE=%APP_DIR%\dependencies-v1.ok"
 set "SAIDA_DIR=%APP_DIR%\convertidos"
-set "SITE_URL=https://www.epiaka.com/anotar"
+set "SITE_URL=https://www.poligome.com/anotar"
 
 echo.
 echo ==========================================
-echo        Epiaka COG local
+echo        Poligome local COG
 echo ==========================================
-echo Converte GeoTIFF grande para COG na sua maquina.
+echo Converts a large GeoTIFF to COG on your own machine.
 echo Na primeira execucao a preparacao pode demorar alguns minutos.
 echo.
 
@@ -31,7 +31,7 @@ if not defined PY_CMD where python >nul 2>nul && set "PY_CMD=python"
 if defined PY_CMD %PY_CMD% --version >nul 2>nul || set "PY_CMD="
 if not defined PY_CMD (
   where winget >nul 2>nul || goto :python_error
-  echo Instalando Python 3.11...
+  echo Installing Python 3.11...
   winget install -e --id Python.Python.3.11 --scope user --accept-package-agreements --accept-source-agreements
   if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 )
@@ -45,30 +45,30 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 set "PYTHON=%VENV_DIR%\Scripts\python.exe"
 
 if not exist "%READY_FILE%" (
-  echo Atualizando o instalador de pacotes...
+  echo Updating the package installer...
   "%PYTHON%" -m pip install --upgrade pip
   if errorlevel 1 goto :install_error
-  echo Instalando rasterio, rio-cogeo e o servidor local. Aguarde...
+  echo Installing rasterio, rio-cogeo and the local server. Please wait...
   "%PYTHON%" -m pip install rasterio rio-cogeo fastapi uvicorn python-multipart
   if errorlevel 1 goto :install_error
   echo pronto>"%READY_FILE%"
 )
 
 echo.
-echo Preparacao concluida. Mantenha esta janela aberta enquanto converte.
+echo Setup complete. Keep this window open while it converts.
 echo Os arquivos convertidos ficam em %SAIDA_DIR%
 start "" "%SITE_URL%"
 echo.
-"%PYTHON%" "%CONNECTOR%" --porta 7861 --pasta "%SAIDA_DIR%"
+"%PYTHON%" "%CONNECTOR%" --port 7861 --folder "%SAIDA_DIR%"
 echo.
-echo O conversor foi encerrado. Abra este arquivo novamente para reutiliza-lo.
+echo The converter has stopped. Open this file again to reuse it.
 pause
 exit /b 0
 
 :python_error
 echo.
 echo Nao foi possivel instalar ou localizar o Python 3.
-echo Instale Python 3.11 em https://www.python.org/downloads/ e abra este arquivo novamente.
+echo Install Python 3.11 from https://www.python.org/downloads/ and open this file again.
 pause
 exit /b 1
 
@@ -80,24 +80,24 @@ exit /b 1
 
 :install_error
 echo.
-echo A instalacao das dependencias falhou. Verifique a conexao e tente novamente.
+echo Installing the dependencies failed. Check your connection and try again.
 pause
 exit /b 1
 
-# === EPIAKA_PYTHON ===
+# === POLIGOME_PYTHON ===
 #!/usr/bin/env python3
-"""Conversor local de TIFF para COG do Epiaka.
+"""Local TIFF-to-COG converter for Poligome.
 
-Converter no navegador não funciona para os arquivos que mais precisam da conversão: o
-processo exige ler o raster inteiro e gerar a pirâmide de overviews, e um GeoTIFF de
-gigapixels não cabe na memória de uma aba. Medido nesta base: 3 288 MP levaram 11 minutos
-e 619 MB de entrada. Aqui isso roda na máquina do usuário, em segundo plano.
+Converting in the browser does not work for the files that need it most: the process has
+to read the whole raster and build the overview pyramid, and a gigapixel GeoTIFF does not
+fit in a tab's memory. Measured on this codebase: 3,288 MP took 11 minutes and 619 MB of
+input. Here it runs on the user's own machine, in the background.
 
-O servidor também devolve o COG pronto com suporte a Range, para o Epiaka abrir o
-resultado por tiles sem baixar o arquivo de novo.
+The server also serves the finished COG with Range support, so Poligome can read the
+result by tiles without downloading the file again.
 
-    python epiaka-cog-local.py
-    python epiaka-cog-local.py --porta 7861 --pasta ~/epiaka-cog
+    python poligome-cog-local.py
+    python poligome-cog-local.py --port 7861 --folder ~/poligome-cog
 """
 
 from __future__ import annotations
@@ -118,19 +118,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from rio_cogeo.cogeo import cog_translate, cog_validate
 from rio_cogeo.profiles import cog_profiles
 
-app = FastAPI(title="Epiaka COG local", version="1.0")
+app = FastAPI(title="Poligome local COG", version="1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
-    # Sem isto o navegador não expõe o Content-Range ao geotiff.js, e a leitura por tiles
-    # cai para o caminho lento de baixar tudo.
+    # Without this the browser does not expose Content-Range to geotiff.js, and tiled
+    # reading falls back to the slow path of downloading everything.
     expose_headers=["Content-Length", "Content-Range", "Accept-Ranges"],
 )
 
-PASTA = Path(tempfile.gettempdir()) / "epiaka-cog"
+PASTA = Path(tempfile.gettempdir()) / "poligome-cog"
 TRABALHOS: dict[str, dict] = {}
 TRAVA = threading.Lock()
 
@@ -138,7 +138,7 @@ TRAVA = threading.Lock()
 @app.middleware("http")
 async def allow_local_browser_access(request: Request, call_next):
     resposta = await call_next(request)
-    # Chrome bloqueia pedidos de uma página pública para 127.0.0.1 sem este cabeçalho.
+    # Chrome blocks requests from a public page to 127.0.0.1 without this header.
     resposta.headers["Access-Control-Allow-Private-Network"] = "true"
     resposta.headers["Accept-Ranges"] = "bytes"
     return resposta
@@ -146,7 +146,7 @@ async def allow_local_browser_access(request: Request, call_next):
 
 @app.get("/")
 def root():
-    return {"service": "Epiaka COG local", "status": "ready", "pasta": str(PASTA)}
+    return {"service": "Poligome local COG", "status": "ready", "folder": str(PASTA)}
 
 
 @app.get("/health")
@@ -157,8 +157,8 @@ def health():
 
 
 def perfil_para(caminho: Path) -> str:
-    """Reencodar JPEG como deflate multiplicaria o tamanho por seis; manter a compressão
-    de origem é o que faz a saída caber no mesmo espaço da entrada."""
+    """Re-encoding JPEG as deflate would multiply the size by six; keeping the source
+    compression is what makes the output fit in the same space as the input."""
     with rasterio.open(caminho) as fonte:
         compressao = str(fonte.profile.get("compress") or "").lower()
         bandas = fonte.count
@@ -186,7 +186,7 @@ def converte(identificador: str, entrada: Path, saida: Path) -> None:
                 bytes_saida=saida.stat().st_size,
                 url=f"/arquivos/{identificador}",
             )
-    except Exception as erro:  # noqa: BLE001 — o motivo precisa chegar ao navegador
+    except Exception as erro:  # noqa: BLE001 - the reason has to reach the browser
         with TRAVA:
             TRABALHOS[identificador].update(estado="erro", detalhe=str(erro)[:500])
     finally:
@@ -197,14 +197,14 @@ def converte(identificador: str, entrada: Path, saida: Path) -> None:
 async def converter(tarefas: BackgroundTasks, arquivo: UploadFile):
     nome = Path(arquivo.filename or "entrada.tif").name
     if not nome.lower().endswith((".tif", ".tiff")):
-        raise HTTPException(status_code=400, detail="Envie um arquivo .tif ou .tiff.")
+        raise HTTPException(status_code=400, detail="Send a .tif or .tiff file.")
 
     identificador = uuid.uuid4().hex[:12]
     PASTA.mkdir(parents=True, exist_ok=True)
     entrada = PASTA / f"{identificador}-entrada.tif"
     saida = PASTA / f"{identificador}.tif"
 
-    # Em disco, não em memória: o upload pode ter centenas de megabytes.
+    # On disk, not in memory: the upload can be hundreds of megabytes.
     with entrada.open("wb") as destino:
         while pedaco := await arquivo.read(8 * 1024 * 1024):
             destino.write(pedaco)
@@ -214,7 +214,7 @@ async def converter(tarefas: BackgroundTasks, arquivo: UploadFile):
             largura, altura, bandas = fonte.width, fonte.height, fonte.count
     except Exception as erro:  # noqa: BLE001
         entrada.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Não é um GeoTIFF legível: {erro}") from erro
+        raise HTTPException(status_code=400, detail=f"Not a readable GeoTIFF: {erro}") from erro
 
     with TRAVA:
         TRABALHOS[identificador] = {
@@ -241,8 +241,8 @@ def trabalho(identificador: str):
 def arquivo_pronto(identificador: str):
     caminho = PASTA / f"{identificador}.tif"
     if not caminho.exists():
-        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
-    # FileResponse já responde a Range, que é o que permite ler o COG por tiles.
+        raise HTTPException(status_code=404, detail="File not found.")
+    # FileResponse already answers Range requests, which is what allows reading the COG by tiles.
     return FileResponse(caminho, media_type="image/tiff", filename=f"{identificador}.tif")
 
 
@@ -257,18 +257,18 @@ def descarta(identificador: str):
 
 def main() -> None:
     global PASTA
-    parser = argparse.ArgumentParser(description="Conversor local de TIFF para COG do Epiaka")
-    parser.add_argument("--porta", type=int, default=7861)
+    parser = argparse.ArgumentParser(description="Local TIFF-to-COG converter for Poligome")
+    parser.add_argument("--port", type=int, default=7861)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--pasta", default=str(PASTA),
+    parser.add_argument("--folder", default=str(PASTA),
                         help="onde guardar os COGs convertidos")
     argumentos = parser.parse_args()
-    PASTA = Path(os.path.expanduser(argumentos.pasta))
+    PASTA = Path(os.path.expanduser(argumentos.folder))
     PASTA.mkdir(parents=True, exist_ok=True)
     livre = shutil.disk_usage(PASTA).free / 1024 ** 3
-    print(f"Epiaka COG local em http://{argumentos.host}:{argumentos.porta}")
-    print(f"Convertidos vão para {PASTA} ({livre:.1f} GB livres)")
-    uvicorn.run(app, host=argumentos.host, port=argumentos.porta, log_level="warning")
+    print(f"Poligome local COG at http://{argumentos.host}:{argumentos.port}")
+    print(f"Converted files go to {PASTA} ({livre:.1f} GB free)")
+    uvicorn.run(app, host=argumentos.host, port=argumentos.port, log_level="warning")
 
 
 if __name__ == "__main__":

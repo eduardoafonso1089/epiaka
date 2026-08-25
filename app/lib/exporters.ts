@@ -222,7 +222,7 @@ export function annotationsToGeoJson(assets: Asset[], labels: Label[], annotatio
 export function exportGeoJson(assets: Asset[], labels: Label[], annotations: Annotation[]) {
   const resultado = annotationsToGeoJson(assets, labels, annotations);
   downloadBlob(
-    "epiaka-anotacoes.geojson",
+    "poligome-annotations.geojson",
     new Blob([JSON.stringify(resultado.colecao, null, 2)], { type: "application/geo+json;charset=utf-8" }),
   );
   return resultado;

@@ -20,8 +20,8 @@ printf ' Poligome SAM - iniciar novamente\n'
 printf '==========================================\n\n'
 
 if [[ ! -x "${PYTHON}" || ! -f "${CONNECTOR}" || ! -f "${CHECKPOINT}" ]]; then
-  printf 'A instalacao completa do SAM nao foi encontrada.\n'
-  printf 'Abra o Poligome e use primeiro o instalador para macOS/Linux.\n'
+  printf 'The full SAM installation was not found.\n'
+  printf 'Open Poligome and use the macOS/Linux installer first.\n'
   open_site
   exit 1
 fi

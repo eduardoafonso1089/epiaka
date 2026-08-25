@@ -15,7 +15,7 @@ printf '==========================================\n'
 printf 'Na primeira execucao, a preparacao pode demorar alguns minutos.\n\n'
 
 command -v python3 >/dev/null 2>&1 || {
-  printf 'Python 3 nao foi encontrado. Instale-o e execute este arquivo novamente.\n'
+  printf 'Python 3 was not found. Install it and run this file again.\n'
   exit 1
 }
 
@@ -30,7 +30,7 @@ fi
 PYTHON="${VENV_DIR}/bin/python"
 
 if [[ ! -f "${READY_FILE}" ]]; then
-  printf 'Instalando PyTorch e dependencias do SAM. Aguarde...\n'
+  printf 'Installing PyTorch and the SAM dependencies. Please wait...\n'
   "${PYTHON}" -m pip install --upgrade pip
   "${PYTHON}" -m pip install torch torchvision fastapi uvicorn pillow opencv-python-headless numpy
   "${PYTHON}" -m pip install "https://github.com/facebookresearch/segment-anything/archive/refs/heads/main.zip"
@@ -38,7 +38,7 @@ if [[ ! -f "${READY_FILE}" ]]; then
 fi
 
 if [[ ! -f "${CHECKPOINT}" ]]; then
-  printf 'Baixando o checkpoint oficial ViT-B, aproximadamente 375 MB...\n'
+  printf 'Downloading the official ViT-B checkpoint, about 375 MB...\n'
   if command -v curl >/dev/null 2>&1; then
     curl -L --fail --progress-bar "${MODEL_URL}" -o "${CHECKPOINT}"
   elif command -v wget >/dev/null 2>&1; then
@@ -131,7 +131,7 @@ def decode_image(data_url: str) -> np.ndarray:
 def mask_to_polygon(mask: np.ndarray) -> list[list[float]]:
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        raise HTTPException(status_code=422, detail="O SAM nao encontrou um contorno.")
+        raise HTTPException(status_code=422, detail="SAM did not find a contour.")
     contour = max(contours, key=cv2.contourArea)
     epsilon = max(1.0, 0.002 * cv2.arcLength(contour, True))
     simplified = cv2.approxPolyDP(contour, epsilon, True)
@@ -173,7 +173,7 @@ def predict(payload: PredictionRequest):
 
 def main():
     global predictor
-    parser = argparse.ArgumentParser(description="Executa o SAM localmente para o Poligome.")
+    parser = argparse.ArgumentParser(description="Runs SAM locally for Poligome.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--model-type", choices=["vit_b", "vit_l", "vit_h"], default="vit_b")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda", "mps"], default="auto")
@@ -181,16 +181,16 @@ def main():
     args = parser.parse_args()
     checkpoint = Path(args.checkpoint).expanduser().resolve()
     if not checkpoint.is_file():
-        raise SystemExit(f"Checkpoint nao encontrado: {checkpoint}")
+        raise SystemExit(f"Checkpoint not found: {checkpoint}")
     mps_available = bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
     if args.device == "auto":
         device = "cuda" if torch.cuda.is_available() else "mps" if mps_available else "cpu"
     else:
         device = args.device
     if device == "cuda" and not torch.cuda.is_available():
-        raise SystemExit("CUDA nao esta disponivel. Use --device cpu.")
+        raise SystemExit("CUDA is not available. Use --device cpu.")
     if device == "mps" and not mps_available:
-        raise SystemExit("Apple Silicon/MPS nao esta disponivel. Use --device cpu.")
+        raise SystemExit("Apple Silicon/MPS is not available. Use --device cpu.")
     print(f"Carregando SAM {args.model_type} em {device}...")
     sam = sam_model_registry[args.model_type](checkpoint=str(checkpoint))
     sam.to(device=device)

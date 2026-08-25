@@ -1,6 +1,6 @@
-<!-- Epiaka - logo secundario, empilhado. Para espacos verticais: splash, cartao,
+<!-- Poligome - logo secundario, empilhado. Para espacos verticais: splash, cartao,
      avatar largo, capa de documentacao. Fundos claros. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-30 -30 476 372" width="476" height="372" role="img" aria-label="Epiaka">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-30 -30 476 372" width="476" height="372" role="img" aria-label="Poligome">
   <!-- Simbolo centrado sobre o logotipo -->
   <g transform="translate(208,105)">
     <g fill="none" stroke="#111614" stroke-width="8.2" stroke-linecap="round">

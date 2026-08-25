@@ -34,7 +34,9 @@ const LIMITE_MS = 45_000;
 
 /** Porta do helper local de conversão. O do SAM usa a 7860; esta é a vizinha. */
 const CONVERSOR_PADRAO = "http://127.0.0.1:7861";
-const CHAVE_CONVERSOR = "epiaka-cog-endpoint";
+const CHAVE_CONVERSOR = "poligome-cog-endpoint";
+/** Chave anterior ao rebranding; lida uma vez para não perder o endpoint já salvo. */
+const CHAVE_CONVERSOR_LEGADA = "epiaka-cog-endpoint";
 
 /** Taxas medidas nesta base com `rio cogeo create`: deflate sustenta 20–25 MP/s e JPEG
  *  cai de 7 para 5 conforme o arquivo cresce. A estimativa é deliberadamente pessimista:
@@ -107,7 +109,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
   const [segundos, setSegundos] = useState(0);
   const endpoint = typeof window === "undefined"
     ? CONVERSOR_PADRAO
-    : localStorage.getItem(CHAVE_CONVERSOR) || CONVERSOR_PADRAO;
+    : localStorage.getItem(CHAVE_CONVERSOR) || localStorage.getItem(CHAVE_CONVERSOR_LEGADA) || CONVERSOR_PADRAO;
 
   // Extent do mapa → janela em pixel do arquivo. É a única conversão que este componente
   // precisa fazer sozinho; o resto vive em lib/cog.
@@ -371,7 +373,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
             minutes: estimaMinutos((meta.largura * meta.altura) / 1e6),
           })}</small>
         </div> : conversor === "ausente" ? <p className="cog-crop-instala">
-          {copy.convUnavailable} <a href="/epiaka-cog-local.py" download>epiaka-cog-local.py</a>
+          {copy.convUnavailable} <a href="/poligome-cog-local.py" download>poligome-cog-local.py</a>
         </p> : null}
       </div>}
 

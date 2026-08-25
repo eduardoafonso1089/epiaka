@@ -27,17 +27,17 @@ if not errorlevel 1 (
   exit /b 0
 )
 
-echo Carregando o modelo instalado. Mantenha esta janela aberta.
+echo Loading the installed model. Keep this window open.
 start "" "%SITE_URL%"
 "%PYTHON%" "%CONNECTOR%" --checkpoint "%CHECKPOINT%" --model-type vit_b --device auto
 echo.
-echo O servidor foi encerrado. Execute este iniciador novamente para reabri-lo.
+echo The server has stopped. Run this launcher again to reopen it.
 pause
 exit /b 0
 
 :not_installed
-echo A instalacao completa do SAM nao foi encontrada neste computador.
-echo Abra o Poligome e use primeiro o botao "Instalar no Windows".
+echo The full SAM installation was not found on this computer.
+echo Open Poligome and use the "Install on Windows" button first.
 start "" "%SITE_URL%"
 pause
 exit /b 1

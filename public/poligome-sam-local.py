@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conector local do SAM para o Poligome.
+"""Local SAM connector for Poligome.
 
 Use somente checkpoints baixados da fonte oficial da Meta. Exemplo:
 python poligome-sam-local.py --checkpoint sam_vit_b_01ec64.pth --model-type vit_b
@@ -70,13 +70,13 @@ def decode_image(data_url: str) -> np.ndarray:
         image_bytes = base64.b64decode(encoded)
         return np.asarray(Image.open(io.BytesIO(image_bytes)).convert("RGB"))
     except Exception as error:
-        raise HTTPException(status_code=400, detail="Imagem inválida.") from error
+        raise HTTPException(status_code=400, detail="Invalid image.") from error
 
 
 def mask_to_polygon(mask: np.ndarray) -> list[list[float]]:
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        raise HTTPException(status_code=422, detail="O SAM não encontrou um contorno.")
+        raise HTTPException(status_code=422, detail="SAM did not find a contour.")
     contour = max(contours, key=cv2.contourArea)
     epsilon = max(1.0, 0.002 * cv2.arcLength(contour, True))
     simplified = cv2.approxPolyDP(contour, epsilon, True)
@@ -89,9 +89,9 @@ def mask_to_polygon(mask: np.ndarray) -> list[list[float]]:
 def predict(payload: PredictionRequest):
     global current_image_hash
     if predictor is None:
-        raise HTTPException(status_code=503, detail="O modelo ainda está carregando.")
+        raise HTTPException(status_code=503, detail="The model is still loading.")
     if not payload.point_coords or len(payload.point_coords) != len(payload.point_labels):
-        raise HTTPException(status_code=400, detail="Envie pontos e rótulos correspondentes.")
+        raise HTTPException(status_code=400, detail="Send matching points and labels.")
 
     image_hash = hashlib.sha256(payload.image.encode("utf-8")).hexdigest()
     image = decode_image(payload.image)
@@ -119,8 +119,8 @@ def predict(payload: PredictionRequest):
 
 def main():
     global predictor
-    parser = argparse.ArgumentParser(description="Executa o SAM localmente para o Poligome.")
-    parser.add_argument("--checkpoint", required=True, help="Caminho para o checkpoint .pth")
+    parser = argparse.ArgumentParser(description="Runs SAM locally for Poligome.")
+    parser.add_argument("--checkpoint", required=True, help="Path to the .pth checkpoint")
     parser.add_argument("--model-type", choices=["vit_b", "vit_l", "vit_h"], default="vit_b")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda", "mps"], default="auto")
     parser.add_argument("--port", type=int, default=7860)
@@ -128,18 +128,18 @@ def main():
 
     checkpoint = Path(args.checkpoint).expanduser().resolve()
     if not checkpoint.is_file():
-        raise SystemExit(f"Checkpoint não encontrado: {checkpoint}")
+        raise SystemExit(f"Checkpoint not found: {checkpoint}")
     mps_available = bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
     if args.device == "auto":
         device = "cuda" if torch.cuda.is_available() else "mps" if mps_available else "cpu"
     else:
         device = args.device
     if device == "cuda" and not torch.cuda.is_available():
-        raise SystemExit("CUDA não está disponível. Use --device cpu ou instale o PyTorch com CUDA.")
+        raise SystemExit("CUDA is not available. Use --device cpu or install PyTorch with CUDA.")
     if device == "mps" and not mps_available:
-        raise SystemExit("Apple Silicon/MPS não está disponível. Use --device cpu.")
+        raise SystemExit("Apple Silicon/MPS is not available. Use --device cpu.")
 
-    print(f"Carregando SAM {args.model_type} em {device}…")
+    print(f"Loading SAM {args.model_type} on {device}…")
     sam = sam_model_registry[args.model_type](checkpoint=str(checkpoint))
     sam.to(device=device)
     sam.eval()

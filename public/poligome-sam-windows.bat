@@ -15,7 +15,7 @@ echo.
 echo ==========================================
 echo        Poligome SAM local
 echo ==========================================
-echo Este instalador prepara o SAM no seu computador.
+echo This installer sets up SAM on your computer.
 echo Na primeira execucao o processo pode demorar alguns minutos.
 echo.
 
@@ -31,7 +31,7 @@ if not defined PY_CMD where python >nul 2>nul && set "PY_CMD=python"
 if defined PY_CMD %PY_CMD% --version >nul 2>nul || set "PY_CMD="
 if not defined PY_CMD (
   where winget >nul 2>nul || goto :python_error
-  echo Instalando Python 3.11...
+  echo Installing Python 3.11...
   winget install -e --id Python.Python.3.11 --scope user --accept-package-agreements --accept-source-agreements
   if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 )
@@ -45,10 +45,10 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 set "PYTHON=%VENV_DIR%\Scripts\python.exe"
 
 if not exist "%READY_FILE%" (
-  echo Atualizando o instalador de pacotes...
+  echo Updating the package installer...
   "%PYTHON%" -m pip install --upgrade pip
   if errorlevel 1 goto :install_error
-  echo Instalando PyTorch e dependencias do SAM. Aguarde...
+  echo Installing PyTorch and the SAM dependencies. Please wait...
   "%PYTHON%" -m pip install torch torchvision fastapi uvicorn pillow opencv-python-headless numpy
   if errorlevel 1 goto :install_error
   "%PYTHON%" -m pip install "https://github.com/facebookresearch/segment-anything/archive/refs/heads/main.zip"
@@ -57,26 +57,26 @@ if not exist "%READY_FILE%" (
 )
 
 if not exist "%CHECKPOINT%" (
-  echo Baixando o checkpoint oficial ViT-B, aproximadamente 375 MB...
+  echo Downloading the official ViT-B checkpoint, about 375 MB...
   powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='Continue'; Invoke-WebRequest -Uri '%MODEL_URL%' -OutFile '%CHECKPOINT%'"
   if errorlevel 1 goto :download_error
 )
 
 echo.
-echo Preparacao concluida. Mantenha esta janela aberta.
+echo Setup complete. Keep this window open.
 echo O Poligome sera aberto no navegador; espere a mensagem SAM pronto.
 start "" "%SITE_URL%"
 echo.
 "%PYTHON%" "%CONNECTOR%" --checkpoint "%CHECKPOINT%" --model-type vit_b --device auto
 echo.
-echo O conector foi encerrado. Abra este instalador novamente para reutiliza-lo.
+echo The connector has stopped. Open this installer again to reuse it.
 pause
 exit /b 0
 
 :python_error
 echo.
 echo Nao foi possivel instalar ou localizar o Python 3.
-echo Instale Python 3.11 em https://www.python.org/downloads/ e abra este arquivo novamente.
+echo Install Python 3.11 from https://www.python.org/downloads/ and open this file again.
 pause
 exit /b 1
 
@@ -88,13 +88,13 @@ exit /b 1
 
 :install_error
 echo.
-echo A instalacao das dependencias falhou. Verifique a conexao e tente novamente.
+echo Installing the dependencies failed. Check your connection and try again.
 pause
 exit /b 1
 
 :download_error
 echo.
-echo O download do modelo falhou. Verifique a conexao e tente novamente.
+echo Downloading the model failed. Check your connection and try again.
 pause
 exit /b 1
 
@@ -170,7 +170,7 @@ def decode_image(data_url: str) -> np.ndarray:
 def mask_to_polygon(mask: np.ndarray) -> list[list[float]]:
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        raise HTTPException(status_code=422, detail="O SAM nao encontrou um contorno.")
+        raise HTTPException(status_code=422, detail="SAM did not find a contour.")
     contour = max(contours, key=cv2.contourArea)
     epsilon = max(1.0, 0.002 * cv2.arcLength(contour, True))
     simplified = cv2.approxPolyDP(contour, epsilon, True)
@@ -212,7 +212,7 @@ def predict(payload: PredictionRequest):
 
 def main():
     global predictor
-    parser = argparse.ArgumentParser(description="Executa o SAM localmente para o Poligome.")
+    parser = argparse.ArgumentParser(description="Runs SAM locally for Poligome.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--model-type", choices=["vit_b", "vit_l", "vit_h"], default="vit_b")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda", "mps"], default="auto")
@@ -220,16 +220,16 @@ def main():
     args = parser.parse_args()
     checkpoint = Path(args.checkpoint).expanduser().resolve()
     if not checkpoint.is_file():
-        raise SystemExit(f"Checkpoint nao encontrado: {checkpoint}")
+        raise SystemExit(f"Checkpoint not found: {checkpoint}")
     mps_available = bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
     if args.device == "auto":
         device = "cuda" if torch.cuda.is_available() else "mps" if mps_available else "cpu"
     else:
         device = args.device
     if device == "cuda" and not torch.cuda.is_available():
-        raise SystemExit("CUDA nao esta disponivel. Use --device cpu.")
+        raise SystemExit("CUDA is not available. Use --device cpu.")
     if device == "mps" and not mps_available:
-        raise SystemExit("Apple Silicon/MPS nao esta disponivel. Use --device cpu.")
+        raise SystemExit("Apple Silicon/MPS is not available. Use --device cpu.")
     print(f"Carregando SAM {args.model_type} em {device}...")
     sam = sam_model_registry[args.model_type](checkpoint=str(checkpoint))
     sam.to(device=device)

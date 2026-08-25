@@ -33,6 +33,10 @@ export type LlmSchema = {
   requireComment: boolean;
 };
 export type LlmProject = { format: "poligome-llm-project"; version: 1; name: string; rows: DatasetRow[]; schema: LlmSchema; annotations: Record<string, LlmAnnotation>; orders: Record<string, boolean>; currentIndex: number };
+export type LlmDataErrorCode = "invalid-json-line" | "invalid-json-list" | "invalid-record" | "invalid-project" | "unsupported-project";
+export class LlmDataError extends Error {
+  constructor(public readonly code: LlmDataErrorCode, public readonly index?: number) { super(code); }
+}
 
 function csvRows(text: string) {
   const rows: string[][] = []; let row: string[] = []; let value = ""; let quote = false;
@@ -56,11 +60,11 @@ export async function parseDataset(file: File): Promise<DatasetRow[]> {
   if (lower.endsWith(".csv")) {
     const [header = [], ...data] = csvRows(text); originals = data.map((values) => Object.fromEntries(header.map((name, index) => [name.trim() || `field_${index + 1}`, values[index] ?? ""])));
   } else if (lower.endsWith(".jsonl")) {
-    originals = text.split(/\r?\n/).filter(Boolean).map((line, index) => { try { const record = asRecord(JSON.parse(line)); if (!record) throw new Error(); return record; } catch { throw new Error(`Linha ${index + 1} não contém um objeto JSON válido.`); } });
+    originals = text.split(/\r?\n/).filter(Boolean).map((line, index) => { try { const record = asRecord(JSON.parse(line)); if (!record) throw new Error(); return record; } catch { throw new LlmDataError("invalid-json-line", index + 1); } });
   } else {
     const parsed: unknown = JSON.parse(text); const list = Array.isArray(parsed) ? parsed : asRecord(parsed)?.data ?? asRecord(parsed)?.records;
-    if (!Array.isArray(list)) throw new Error("O JSON deve conter uma lista de registros, ou uma propriedade data/records.");
-    originals = list.map((item, index) => { const record = asRecord(item); if (!record) throw new Error(`Registro ${index + 1} não é um objeto.`); return record; });
+    if (!Array.isArray(list)) throw new LlmDataError("invalid-json-list");
+    originals = list.map((item, index) => { const record = asRecord(item); if (!record) throw new LlmDataError("invalid-record", index + 1); return record; });
   }
   return originals.map((original, index) => {
     const external = original.id ?? original.uuid ?? original.sample_id ?? index + 1;
@@ -92,8 +96,8 @@ export async function saveLlmProject(project: LlmProject) {
   downloadBlob("poligome-llm.pllm", await zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/vnd.poligome.llm-project+zip" }));
 }
 export async function openLlmProject(file: File): Promise<LlmProject> {
-  const zip = await JSZip.loadAsync(file); const entry = zip.file("project.json"); if (!entry) throw new Error("Arquivo de projeto inválido.");
+  const zip = await JSZip.loadAsync(file); const entry = zip.file("project.json"); if (!entry) throw new LlmDataError("invalid-project");
   const project = JSON.parse(await entry.async("string")) as LlmProject;
-  if (project.format !== "poligome-llm-project" || project.version !== 1 || !Array.isArray(project.rows)) throw new Error("Formato de projeto LLM não suportado.");
+  if (project.format !== "poligome-llm-project" || project.version !== 1 || !Array.isArray(project.rows)) throw new LlmDataError("unsupported-project");
   return project;
 }

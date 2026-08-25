@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Check, Combine, Download, FileArchive, Languages, Pentagon, ShieldCheck, Spline, WandSparkles } from "lucide-react";
+import { ArrowRight, Box, Check, Combine, Download, FileArchive, Languages, MessageSquareText, Pentagon, ShieldCheck, Spline, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getCopy, storedLanguage, storedTheme } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
@@ -75,20 +75,34 @@ export default function Landing() {
     </header>
 
     <section className="landing-hero">
-      <p className="landing-eyebrow"><Pentagon size={13} aria-hidden="true" />{copy.landingEyebrow}</p>
-      <h1>{copy.landingHeadline}</h1>
-      <p className="landing-intro">{copy.landingIntro}</p>
-      <div className="landing-actions">
-        <a className="landing-cta" href="/anotar">{copy.landingCta}</a>
-        <a className="landing-cta secondary" href="/texto">LLM / Text Annotation</a>
-        <span className="landing-free-badge"><Check size={13} aria-hidden="true" />{copy.landingBadgeFree}</span>
+      <div className="landing-hero-copy">
+        <p className="landing-eyebrow"><Pentagon size={13} aria-hidden="true" />{copy.landingEyebrow}</p>
+        <h1>{copy.landingHeadline}</h1>
+        <p className="landing-intro">{copy.landingIntro}</p>
+        <div className="landing-actions">
+          <span className="landing-free-badge"><Check size={13} aria-hidden="true" />{copy.landingBadgeFree}</span>
+          <span className="landing-cta-note">{copy.landingCtaNote}</span>
+        </div>
       </div>
-      <p className="landing-cta-note">{copy.landingCtaNote}</p>
+      <div className="landing-identity" aria-hidden="true">
+        <span className="landing-identity-shape"><Pentagon size={42} strokeWidth={1.4} /></span>
+        <span className="landing-identity-core"><BrandLockup height={24} /></span>
+        <span className="landing-identity-text"><MessageSquareText size={42} strokeWidth={1.4} /></span>
+        <i />
+      </div>
     </section>
 
-    <section className="landing-projects" aria-label="Tipos de projeto">
-      <a href="/anotar"><Box size={20} /><div><b>Computer Vision</b><span>Imagens, polígonos, máscaras e bounding boxes.</span></div><span>→</span></a>
-      <a href="/texto"><FileArchive size={20} /><div><b>LLM / Text</b><span>Classificação, avaliação, comparação e correção de respostas.</span></div><span>→</span></a>
+    <section className="landing-projects" aria-label={copy.landingProjectsLabel}>
+      <a href="/anotar">
+        <span className="landing-project-icon"><Box size={22} /></span>
+        <div><small>{copy.landingVisionEyebrow}</small><b>{copy.landingVisionTitle}</b><span>{copy.landingVisionText}</span></div>
+        <ArrowRight size={18} />
+      </a>
+      <a href="/texto">
+        <span className="landing-project-icon"><MessageSquareText size={22} /></span>
+        <div><small>{copy.landingLlmEyebrow}</small><b>{copy.landingLlmTitle}</b><span>{copy.landingLlmText}</span></div>
+        <ArrowRight size={18} />
+      </a>
     </section>
 
     <section className="landing-claims">
@@ -115,7 +129,10 @@ export default function Landing() {
 
     <section className="landing-closing">
       <BrandLockup height={26} />
-      <a className="landing-cta" href="/anotar">{copy.landingCta}</a>
+      <div className="landing-closing-actions">
+        <a className="landing-cta" href="/anotar">{copy.landingVisionCta}</a>
+        <a className="landing-cta secondary" href="/texto">{copy.landingLlmCta}</a>
+      </div>
       <p>{copy.landingCtaNote}</p>
     </section>
 

@@ -3,12 +3,11 @@
 import {
   Check, ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
   Combine, Copy, Download, Eye, EyeOff, FileText, FolderOpen, FolderUp, Hand, HardDriveDownload, ImagePlus, Images, Keyboard, Languages, Link2,
-  Focus, Globe, GripVertical, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
+  Focus, Globe, GripVertical, House, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
   Monitor, Moon, Palette, Pencil, Pentagon, Plus, Power, Redo2, Scissors, Search, Settings2, Sparkles,
   Spline, Square, Sun, Tags, Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut, PenTool,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
   annotationIntersectsRect, boundedAnnotationDelta, deletePolygonVertex, edgeMidpoints,
   insertPolygonVertex, movePolygon, MIN_VERTEX_DISTANCE, pointInPolygon, pointsToSvg,
@@ -1567,6 +1566,13 @@ export default function Home() {
     showToast(copy.newProjectReady);
   }
 
+  function requestHomeNavigation() {
+    setProjectOpen(false);
+    const hasProjectContent = assets.length > 0 || annotations.length > 0 || labels.some((label) => label.id !== UNLABELED_ID) || !saved;
+    if (hasProjectContent && !window.confirm(copy.confirmLeaveHome)) return;
+    window.location.assign("/");
+  }
+
   async function loadProjectFile(file: File) {
     setProjectBusy(true);
     try {
@@ -1708,7 +1714,8 @@ export default function Home() {
       <div className="topbar-main">
       <div className="brand-side">
         <button className="mobile" onClick={() => setLeftOpen(true)} aria-label={copy.openImages}><Menu size={19} /></button>
-        <Link className="brand-home" href="/" aria-label="Ir para a página inicial"><BrandLockup height={28} /></Link><i />
+        <span className="brand-static"><BrandLockup height={28} /></span><i />
+        <button className="home-return" title={copy.homeHint} aria-label={copy.home} onClick={requestHomeNavigation}><House size={15} /><span>{copy.home}</span></button>
         {projectEditing
           ? <input className="project-name-input" ref={projectInputRef} value={projectNameDraft}
               aria-label={copy.renameProject} maxLength={80}

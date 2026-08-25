@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowRight, Box, Check, Combine, Download, FileArchive, Languages, MessageSquareText, Pentagon, ShieldCheck, Spline, WandSparkles } from "lucide-react";
+import { ArrowRight, Box, Check, CodeXml, Combine, Download, FileArchive, Languages, MessageSquareText, Pentagon, ShieldCheck, Spline, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getCopy, storedLanguage, storedTheme } from "./lib/i18n";
+import { SOURCE_URL, getCopy, storedLanguage, storedTheme } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
 
 // Símbolo geométrico nativo da marca; o texto segue a fonte já carregada pelo app.
@@ -139,6 +139,7 @@ export default function Landing() {
     <footer className="landing-foot">
       <span className="landing-free-badge"><Check size={12} aria-hidden="true" />{copy.landingBadgeFree}</span>
       <p>{copy.landingFooterNote}</p>
+      <a className="source-link" href={SOURCE_URL} target="_blank" rel="noreferrer"><CodeXml size={13} aria-hidden="true" />{copy.sourceCode}</a>
     </footer>
   </main>;
 }

@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Download, FileJson, FileSpreadsheet, FileUp, Flag, FolderOpen, HardDriveDownload, House, Languages, LockKeyhole, MessageSquareText, Monitor, Moon, Pencil, Plus, RotateCcw, Save, Settings2, ShieldCheck, SkipForward, Sun, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, CodeXml, Download, FileJson, FileSpreadsheet, FileUp, Flag, FolderOpen, HardDriveDownload, House, Languages, LockKeyhole, MessageSquareText, Monitor, Moon, Pencil, Plus, RotateCcw, Save, Settings2, ShieldCheck, SkipForward, Sun, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getLlmCopy, llmLocales, llmModes } from "../lib/llm-i18n";
 import type { LlmCopy } from "../lib/llm-i18n";
 import { exportLlm, fieldsOf, LlmDataError, openLlmProject, parseDataset, saveLlmProject, suggestedField, textValue } from "../lib/llm";
 import type { DatasetRow, LlmAnnotation, LlmProject, LlmSchema, RecordStatus } from "../lib/llm";
-import { fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
+import { SOURCE_URL, fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
 import type { Language, ThemeMode } from "../lib/i18n";
 
 function BrandLockup({ height = 30 }: { height?: number }) {
@@ -272,6 +272,7 @@ export default function TextAnnotationPage() {
           <button className="new-project-main" title={platformCopy.newProjectHint} onClick={requestNewProject}><Plus size={15} /><span>{platformCopy.newProject}</span></button>
           <span className="save done" title={copy.localSessionHint}><HardDriveDownload size={14} />{copy.localSession}</span>
           <span className="local-mode" title={platformCopy.localOnlyHint}><ShieldCheck size={14} />{platformCopy.localOnly}</span>
+          <a className="source-link" href={SOURCE_URL} target="_blank" rel="noreferrer" title={platformCopy.sourceCode}><CodeXml size={14} /><span>{platformCopy.sourceCode}</span></a>
           {step === "work" && rows.length > 0 && <button className="llm-head-export" onClick={() => setExportOpen(true)}><Download size={15} />{copy.export}</button>}
         </div>
       </div>

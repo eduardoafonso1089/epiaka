@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
+  Check, ChevronDown, CodeXml, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
   Combine, Copy, Download, Eye, EyeOff, FileText, FolderOpen, FolderUp, Hand, HardDriveDownload, ImagePlus, Images, Keyboard, Languages, Link2,
   Focus, Globe, GripVertical, House, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
   Monitor, Moon, Palette, Pencil, Pentagon, Plus, Power, Redo2, Scissors, Search, Settings2, Sparkles,
@@ -15,7 +15,7 @@ import {
   splitPolygon, transformPolygon, translateAnnotation, unionPolygons, updatePolygonVertex,
 } from "../lib/geometry";
 import { exportCoco, exportGeoJson, exportYoloZip } from "../lib/exporters";
-import { fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
+import { SOURCE_URL, fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
 import { openPoligomeProject, savePoligomeProject } from "../lib/project";
 import type { ProjectLayout, ProjectSaveMode } from "../lib/project";
 import { requestSamMask } from "../lib/sam";
@@ -1726,7 +1726,7 @@ export default function Home() {
       </div>
       {/* Abrir, salvar, exportar e preferências vivem no menu Arquivo; aqui ficam apenas o
           estado da sessão, a conexão do SAM e o selo de execução local. */}
-      <div className="head-actions"><button className="new-project-main" disabled={projectBusy} title={copy.newProjectHint} onClick={requestNewProject}><Plus size={15} /><span>{copy.newProject}</span></button><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${samEndpoint ? "connected" : ""}`} onClick={openSamSettings}><Link2 size={14} />{samEndpoint ? copy.samActive : copy.activateSam}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
+      <div className="head-actions"><button className="new-project-main" disabled={projectBusy} title={copy.newProjectHint} onClick={requestNewProject}><Plus size={15} /><span>{copy.newProject}</span></button><span className={`save ${saved ? "done" : ""}`}>{projectBusy ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{saved ? copy.saved : copy.saving}</span><button className={`sam-connection ${samEndpoint ? "connected" : ""}`} onClick={openSamSettings}><Link2 size={14} />{samEndpoint ? copy.samActive : copy.activateSam}</button><span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span><a className="source-link" href={SOURCE_URL} target="_blank" rel="noreferrer" title={copy.sourceCode}><CodeXml size={14} /><span>{copy.sourceCode}</span></a><button className="mobile" onClick={() => setRightOpen(true)} aria-label={copy.classes}><MoreHorizontal size={19} /></button></div>
       </div>
       <nav className="menubar" aria-label={copy.fileMenu}>
         <div className="menu" ref={projectSwitcherRef}>

@@ -466,3 +466,11 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
   padding:1px 5px;border-radius:4px;font-size:11px}
 /* A aplicação principal bloqueia a rolagem do body; a tela de texto tem seu próprio scroll. */
 .llm-shell{height:100vh;overflow:auto;overscroll-behavior:contain}
+
+/* Oferta de código-fonte exigida pela seção 13 da AGPL-3.0: precisa estar visível para
+   quem usa o app pela rede, inclusive no mobile, onde o selo de execução local se esconde. */
+.source-link{height:30px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:var(--control-bg);color:var(--tool-ink);display:flex;align-items:center;gap:5px;font-size:11px;font-weight:650;text-decoration:none;white-space:nowrap}
+.source-link:hover{background:var(--theme-hover);color:var(--tool-active-ink);border-color:var(--tool-active-border)}
+.landing-foot .source-link{height:26px;font-size:12px;font-weight:400;background:transparent;border-color:transparent;color:var(--tool-hint-ink);padding:0}
+.landing-foot .source-link:hover{color:var(--tool-active-ink);text-decoration:underline;background:transparent}
+@media(max-width:860px){.source-link span{display:none}.source-link{padding:0 8px}}

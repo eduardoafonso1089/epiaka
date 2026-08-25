@@ -1,6 +1,10 @@
 export type Language = "pt" | "en" | "fr" | "es";
 export type ThemeMode = "system" | "light" | "dark";
 
+// Seção 13 da AGPL-3.0: quem oferece este programa por uma rede precisa oferecer o
+// código-fonte correspondente a quem o usa. O link vive aqui para ter uma fonte única.
+export const SOURCE_URL = "https://github.com/eduardoafonso1089/poligome";
+
 const pt = {
   saved: "Sessão local pronta", saving: "Alterações não salvas", samActive: "SAM local ativo", activateSam: "Ativar SAM local",
   export: "Exportar", exportFormat: "Formato de exportação", cocoDesc: "caixas, polígonos e pontos-chave", yoloDesc: "um label por imagem + data.yaml", projectBackup: "projeto portátil com imagens e anotações",
@@ -119,6 +123,7 @@ fileMenu: "Arquivo", renameProject: "Renomear projeto", projectImages: "imagens"
   landingFeatWorkspaceTitle: "Feito para horas de trabalho",
   landingFeatWorkspaceText: "Tema claro e escuro, quatro idiomas, atalhos de teclado para cada ferramenta e zoom que acompanha o ponteiro.",
   landingFooterNote: "Ferramenta gratuita de anotação de imagens e textos. Executa no navegador, sem servidor.",
+  sourceCode: "Código-fonte (AGPL-3.0)",
   landingLanguageLabel: "Idioma",
   // --- fluxo de GeoTIFF/COG ---
   cogOpenTiff: "Abrir GeoTIFF/COG",
@@ -284,6 +289,7 @@ fileMenu: "File", renameProject: "Rename project", projectImages: "images", proj
     landingFeatWorkspaceTitle: "Built for long sessions",
     landingFeatWorkspaceText: "Light and dark themes, four languages, keyboard shortcuts for every tool and zoom that follows the pointer.",
     landingFooterNote: "Free image and text annotation tool. Runs in the browser, with no server.",
+    sourceCode: "Source code (AGPL-3.0)",
     landingLanguageLabel: "Language",
     // --- fluxo de GeoTIFF/COG ---
     cogOpenTiff: "Open GeoTIFF/COG",
@@ -444,6 +450,7 @@ fileMenu: "Fichier", renameProject: "Renommer le projet", projectImages: "images
     landingFeatWorkspaceTitle: "Pensé pour de longues sessions",
     landingFeatWorkspaceText: "Thèmes clair et sombre, quatre langues, raccourcis clavier pour chaque outil et zoom qui suit le pointeur.",
     landingFooterNote: "Outil gratuit d’annotation d’images et de textes. Fonctionne dans le navigateur, sans serveur.",
+    sourceCode: "Code source (AGPL-3.0)",
     landingLanguageLabel: "Langue",
     // --- fluxo de GeoTIFF/COG ---
     cogOpenTiff: "Ouvrir un GeoTIFF/COG",
@@ -604,6 +611,7 @@ fileMenu: "Archivo", renameProject: "Renombrar proyecto", projectImages: "imáge
     landingFeatWorkspaceTitle: "Hecho para jornadas largas",
     landingFeatWorkspaceText: "Tema claro y oscuro, cuatro idiomas, atajos de teclado para cada herramienta y zoom que sigue al puntero.",
     landingFooterNote: "Herramienta gratuita de anotación de imágenes y textos. Funciona en el navegador, sin servidor.",
+    sourceCode: "Código fuente (AGPL-3.0)",
     landingLanguageLabel: "Idioma",
     // --- fluxo de GeoTIFF/COG ---
     cogOpenTiff: "Abrir GeoTIFF/COG",

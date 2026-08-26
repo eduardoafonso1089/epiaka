@@ -9,6 +9,43 @@ veja [byom.md](byom.md).
 
 ---
 
+## O que exige ação manual
+
+Vale saber antes de instalar: **o conector precisa estar rodando** sempre que
+você quiser usar IA. Ele é um processo local, e nenhuma página web pode iniciá-lo
+— o editor consegue encontrá-lo sozinho, nunca ligá-lo.
+
+Na prática, isso significa:
+
+| Situação | O que acontece | O que fazer |
+| --- | --- | --- |
+| Primeira instalação | o instalador sobe o conector e segura o terminal | manter o terminal aberto |
+| Fechou o terminal | o conector morre junto | rodar o iniciador de novo |
+| Reiniciou o computador | o conector não volta sozinho | rodar o iniciador de novo |
+| Trocou de modelo pelo editor | o conector se reinicia sozinho | nada |
+
+O iniciador é:
+
+```bash
+bash poligome-sam-start-macos-linux.sh
+```
+
+Ele sobe o modelo salvo em `~/.poligome-sam/selected-model.txt`, sem reinstalar
+nada.
+
+**Para não repetir isso todo dia**, no Linux existe o serviço de usuário:
+
+```bash
+bash poligome-sam-service-linux.sh install
+```
+
+Com ele o conector sobe no login e o passo manual desaparece. **Em Windows e
+macOS ainda não há equivalente** — nesses sistemas o iniciador precisa ser
+executado a cada sessão.
+
+Sem conector, o editor continua abrindo e a anotação manual continua funcionando;
+só as ferramentas de IA ficam indisponíveis.
+
 ## Os modelos
 
 | Modelo | ID | Checkpoint | Acesso |
@@ -171,8 +208,21 @@ O que estava em uso volta a estar, desde que continue registrado e no ar; com um
 único contêiner disponível e nenhuma escolha anterior, ele é adotado. Com vários,
 escolher por conta seria chutar, então a escolha fica com você.
 
+A sondagem se repete quando a aba volta ao foco, porque é aí que algo pode ter
+mudado do lado de fora — o caso típico é sair da aba para iniciar o conector e
+voltar. Nessa segunda passada, uma aba que **já está conectada** não readota o
+modelo nem reativa a seleção, o que desfaria um "desselecionar todos"; ela apenas
+reconfere a saúde e atualiza a lista de contêineres. Se o conector tiver morrido
+nesse intervalo, o estado passa a offline em vez de continuar afirmando que há
+modelo carregado.
+
 Não encontrar o conector é o caso normal de quem não instalou nada, então nada é
 dito na tela e a anotação manual segue funcionando.
+
+O que a página **não** faz é iniciar o conector ou os contêineres: nenhuma página
+web pode criar processo local. Para que eles estejam sempre no ar, use o serviço
+de usuário (`poligome-sam-service-linux.sh install`) e o comando `examples` do
+BYOM.
 
 ## Trocar de modelo
 

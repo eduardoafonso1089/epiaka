@@ -14,6 +14,53 @@ que o próprio modelo indicou, prontas para revisão.
 
 ---
 
+## O que exige ação manual
+
+O BYOM depende de **duas** coisas rodando na sua máquina, e nenhuma delas sobe
+sozinha. O editor descobre as duas ao abrir e ao voltar o foco da aba, mas não
+pode iniciar nem uma nem outra: nenhuma página web cria processo local nem sobe
+contêiner.
+
+| Precisa estar no ar | Por quê | Se estiver parado |
+| --- | --- | --- |
+| **Conector do Poligome** (`127.0.0.1:7860`) | o editor não fala direto com o contêiner; tudo passa por ele | o BYOM nem aparece na lista |
+| **Contêiner do modelo** (`127.0.0.1:8080`, …) | é ele que roda a inferência | o card mostra "contêiner parado" e o botão de rodar fica desabilitado |
+
+O conector é assunto do [sam.md](sam.md) — inclusive o serviço de login, que
+resolve o lado dele.
+
+**Os contêineres não voltam sozinhos.** Eles são criados com `docker run` sem
+política de reinício, então reiniciar o computador ou o Docker os deixa em
+`Exited`. O registro em `~/.poligome-sam/byom` sobrevive; o processo não. Para
+subir tudo de novo:
+
+```bash
+# os exemplos oficiais
+bash poligome-byom-macos-linux.sh examples
+
+# um modelo específico
+bash poligome-byom-macos-linux.sh start --model-id byom-meu-modelo
+```
+
+Os dois comandos são seguros de repetir: `examples` preserva registros que você
+já tenha ajustado, e `start` não sobe um segundo contêiner se o `/ping` já
+responde.
+
+Se preferir que um contêiner volte sozinho junto com o Docker, dá para marcar
+isso à mão, uma vez:
+
+```bash
+docker update --restart unless-stopped poligome-byom-otsu
+```
+
+O `start` continua funcionando normalmente depois disso.
+
+Para conferir o estado sem abrir o editor:
+
+```bash
+bash poligome-byom-macos-linux.sh list
+```
+
 ## O contrato
 
 | Requisito | Valor |

@@ -107,8 +107,14 @@ const BYOM_STEPS = [
   {
     title: "4. Suba o contêiner",
     body:
-      "O comando publica a porta apenas em 127.0.0.1 e espera o /ping responder antes de declarar sucesso. Depois disso o modelo aparece na lista abaixo.",
+      "O comando publica a porta apenas em 127.0.0.1 e espera o /ping responder antes de declarar sucesso. Depois disso o modelo aparece na lista ao lado.",
     command: "bash poligome-byom-macos-linux.sh start --model-id byom-meu-modelo",
+  },
+  {
+    title: "5. Depois de reiniciar, suba de novo",
+    body:
+      "Os contêineres são criados sem política de reinício, então reiniciar o computador ou o Docker os deixa parados. O registro sobrevive, o processo não — e o editor descobre o que está no ar, mas não pode ligar nada. Repetir o comando é seguro: ele não sobe um segundo contêiner se o /ping já responde.",
+    command: "bash poligome-byom-macos-linux.sh examples",
   },
 ] as const;
 
@@ -289,6 +295,18 @@ function ByomPanel({
         : <p className="byom-import-hint">{models.length === 1 ? "1 modelo registrado" : `${models.length} modelos registrados`} — a lista fica à esquerda, e clicar em um deles abre a ficha com o que ele exporta.</p>}
     </section>
 
+    <section className="byom-limits">
+      <AlertTriangle size={15} />
+      <div>
+        <b>Duas coisas precisam estar no ar</b>
+        <p>
+          O conector do Poligome, em <code>127.0.0.1:7860</code>, e o contêiner do modelo. Nenhum dos dois sobe
+          sozinho, e nenhuma página web pode iniciá-los — o editor encontra o que já está rodando, e só. Se o
+          conector estiver parado, o BYOM nem aparece na lista.
+        </p>
+      </div>
+    </section>
+
     <section className="sam-privacy"><ShieldCheck size={16} /><div><b>Inferência local</b><p>O contêiner só é aceito em <code>127.0.0.1</code> ou <code>localhost</code>: um endereço remoto sairia da sua máquina, que é justamente o que o Poligome evita. A licença do modelo que você empacota é responsabilidade sua.</p></div></section>
   </div>;
 }
@@ -441,6 +459,7 @@ export default function SamSetupModal({
               <a className={model.family === "sam3" ? "limited" : ""} href="/poligome-sam-windows.bat" download><Download size={15} /><span><strong>{windowsPlatformLabel}</strong><small>{windowsCommand}</small></span></a>
             </div>
             <code>{unixCommand}</code>
+            <p className="sam-manual-note">O conector é um processo local e precisa estar rodando sempre que você usar IA: fechar o terminal ou reiniciar o computador o derruba, e o editor consegue encontrá-lo sozinho, nunca ligá-lo. No Linux, <code>poligome-sam-service-linux.sh install</code> o sobe no login e dispensa esse passo.</p>
             <div className="sam-launch-actions"><span>Já instalado?</span><a href="/poligome-sam-start-macos-linux.sh" download>Baixar iniciador {unixPlatformLabel}</a><a href="/poligome-sam-start-windows.bat" download>Baixar iniciador {windowsPlatformLabel}</a></div>
             <p className="sam-platform-note"><b>Linux:</b> {model.platformSupport.linux.notes} <b>Windows:</b> {model.platformSupport.windows.notes} <b>macOS:</b> {model.platformSupport.macos.notes}</p>
           </section>

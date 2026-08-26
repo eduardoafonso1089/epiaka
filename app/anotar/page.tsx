@@ -420,61 +420,95 @@ export default function Home() {
   // carregado, esse é o modelo em uso — adotá-lo evita uma troca de três a nove
   // segundos que ninguém pediu. Falhar é o caso normal de quem não instalou
   // nada, então nada é dito na tela.
+  /** Lê o /health do conector. `adopt` liga o modelo encontrado ao editor. */
+  async function discoverConnector(adopt: boolean): Promise<boolean> {
+    const endpoint = samEndpoint || "http://127.0.0.1:7860/predict";
+    const base = samBaseUrl(endpoint);
+    if (!base) return false;
+    let health: { status?: string; model_id?: string; device?: string };
+    try {
+      const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4_000) });
+      if (!response.ok) throw new Error();
+      health = await response.json();
+    } catch {
+      // Conector ausente. Se a aba se achava conectada, o cabeçalho passaria a
+      // mentir até a primeira tentativa de uso; melhor corrigir agora.
+      if (samConnectionState === "ready") {
+        setSamConnectionState("offline");
+        setSamRuntime("");
+        setSamLoadedModelId(null);
+      }
+      return false;
+    }
+    if (health.status !== "ready" || !health.model_id) return false;
+    if (!adopt) return true;
+    setSamEndpoint(endpoint);
+    localStorage.setItem("poligome-sam-endpoint", endpoint);
+    setSamLoadedModelId(health.model_id);
+    setSamConnectionState("ready");
+    setSamRuntime([getSamModel(health.model_id)?.name ?? health.model_id, health.device].filter(Boolean).join(" · "));
+    if (isSamModelId(health.model_id)) setSamModelId(health.model_id);
+    setSamSelected(true);
+    return true;
+  }
+
+  // Os contêineres BYOM seguem o mesmo princípio: são descobertos sozinhos, e o
+  // que estava em uso volta a estar, desde que ainda esteja registrado e no ar.
+  // Com um único contêiner disponível e nenhuma escolha anterior, ele é adotado;
+  // com vários, escolher por conta seria chutar.
+  async function discoverByom() {
+    const base = samBaseUrl(samEndpoint || "http://127.0.0.1:7860/predict");
+    if (!base) return;
+    try {
+      const response = await fetch(`${base}/byom/models`, { signal: AbortSignal.timeout(6_000) });
+      if (!response.ok) return;
+      const body = await response.json() as { models?: ByomModel[] };
+      const found = (body.models ?? []).filter((entry) => typeof entry.model_id === "string");
+      setByomModels(found);
+      const ready = found.filter((entry) => entry.ready);
+      setByomModelId((current) => {
+        if (current && ready.some((entry) => entry.model_id === current)) return current;
+        if (!current && ready.length === 1) return ready[0].model_id;
+        return current && found.some((entry) => entry.model_id === current) ? current : null;
+      });
+    } catch {
+      // Sem conector não há como falar com os contêineres.
+    }
+  }
+
+  async function discoverLocalModels() {
+    // Quem já está conectado tem a saúde reconferida, mas não readota o modelo
+    // nem reativa a seleção: isso desfaria um "desselecionar todos" a cada volta
+    // de foco e poderia reverter uma troca de modelo em curso. A lista de
+    // contêineres é sempre atualizada, porque eles podem ter subido no intervalo.
+    const alreadyConnected = samConnectionState === "ready" && samLoadedModelId !== null;
+    const alive = await discoverConnector(!alreadyConnected);
+    if (alive) await discoverByom();
+    else setByomModels([]);
+  }
+
+  // O efeito de montagem não bastava: quem sai da aba para ligar o conector e
+  // volta encontrava a página ainda dizendo que não há nada, porque a sondagem
+  // rodava uma única vez. Voltar o foco é exatamente o momento em que algo pode
+  // ter mudado do lado de fora.
+  const discoverRef = useRef(discoverLocalModels);
+  // Atualizar o ref durante a renderização não é permitido; num efeito sem
+  // dependências ele acompanha cada render e o listener nunca vê um closure velho.
+  useEffect(() => { discoverRef.current = discoverLocalModels; });
+
   useEffect(() => {
-    let cancelled = false;
-    async function reconnect() {
-      const endpoint = samEndpoint || "http://127.0.0.1:7860/predict";
-      const base = samBaseUrl(endpoint);
-      if (!base) return;
-      try {
-        const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4_000) });
-        if (!response.ok) return;
-        const health = await response.json() as { status?: string; model_id?: string; device?: string };
-        if (cancelled || health.status !== "ready" || !health.model_id) return;
-
-        setSamEndpoint(endpoint);
-        localStorage.setItem("poligome-sam-endpoint", endpoint);
-        setSamLoadedModelId(health.model_id);
-        setSamConnectionState("ready");
-        setSamRuntime([getSamModel(health.model_id)?.name ?? health.model_id, health.device].filter(Boolean).join(" · "));
-        if (isSamModelId(health.model_id)) setSamModelId(health.model_id);
-        setSamSelected(true);
-      } catch {
-        // Conector ausente: a página segue funcionando sem IA.
-      }
-      if (!cancelled) await reconnectByom(endpoint);
+    void discoverRef.current();
+    function onVisible() {
+      if (document.visibilityState === "visible") void discoverRef.current();
     }
-
-    // Os contêineres BYOM seguem o mesmo princípio: são descobertos sozinhos, e
-    // o que estava em uso volta a estar, desde que ainda esteja registrado e no
-    // ar. Com um único contêiner disponível e nenhuma escolha anterior, ele é
-    // adotado; com vários, escolher por conta seria chutar.
-    async function reconnectByom(endpoint: string) {
-      const base = samBaseUrl(endpoint);
-      if (!base) return;
-      try {
-        const response = await fetch(`${base}/byom/models`, { signal: AbortSignal.timeout(6_000) });
-        if (!response.ok) return;
-        const body = await response.json() as { models?: ByomModel[] };
-        const found = (body.models ?? []).filter((entry) => typeof entry.model_id === "string");
-        if (cancelled) return;
-        setByomModels(found);
-        const ready = found.filter((entry) => entry.ready);
-        setByomModelId((current) => {
-          if (current && ready.some((entry) => entry.model_id === current)) return current;
-          if (!current && ready.length === 1) return ready[0].model_id;
-          return current && found.some((entry) => entry.model_id === current) ? current : null;
-        });
-      } catch {
-        // Sem conector não há como falar com os contêineres.
-      }
-    }
-
-    void reconnect();
-    return () => { cancelled = true; };
-    // Roda uma vez, ao abrir o editor.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, []);
+
 
   useEffect(() => {
     localStorage.removeItem("poligome-labels");

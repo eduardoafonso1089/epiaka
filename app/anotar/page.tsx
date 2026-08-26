@@ -20,7 +20,7 @@ import { fill, getCopy, storedLanguage, storedTheme } from "../lib/i18n";
 import { openPoligomeProject, savePoligomeProject } from "../lib/project";
 import type { ProjectSaveMode } from "../lib/project";
 import { assetAsDataUrl, requestSamPredictions } from "../lib/sam";
-import { DEFAULT_SAM_MODEL_ID, getSamModel, isSamModelId } from "../lib/sam-models";
+import { DEFAULT_SAM_MODEL_ID, getSamModel, isByomModelId, isSamModelId } from "../lib/sam-models";
 import type { ByomModel } from "../lib/sam-models";
 import type { Language, ThemeMode } from "../lib/i18n";
 import type { Annotation, Asset, Label, SamBoxPrompt, SamMaskPrediction, SamPrompt, Tool } from "../lib/types";
@@ -235,7 +235,11 @@ export default function Home() {
   // BYOM não entra no catálogo do SAM: são contêineres registrados na máquina do
   // usuário, descobertos pelo conector, que anotam a imagem inteira de uma vez.
   const [byomModels, setByomModels] = useState<readonly ByomModel[]>([]);
-  const [byomModelId, setByomModelId] = useState<string | null>(null);
+  const [byomModelId, setByomModelId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const stored = localStorage.getItem("poligome-byom-model");
+    return isByomModelId(stored) ? stored : null;
+  });
   const [byomBusy, setByomBusy] = useState(false);
   const [samSelected, setSamSelected] = useState(false);
   // O resultado do BYOM fica como proposta até o usuário salvar, do mesmo jeito
@@ -250,7 +254,10 @@ export default function Home() {
   } | null>(null);
   const [samModelId, setSamModelId] = useState<string>(() => {
     if (typeof window === "undefined") return DEFAULT_SAM_MODEL_ID;
-    const stored = localStorage.getItem("visionlabel-sam-model");
+    const stored = localStorage.getItem("poligome-sam-model")
+      // Chave anterior à renomeação para poligome: lida uma vez para não perder
+      // a escolha de quem já usava o editor.
+      ?? localStorage.getItem("visionlabel-sam-model");
     return isSamModelId(stored) ? stored : DEFAULT_SAM_MODEL_ID;
   });
   const [samPromptMode, setSamPromptMode] = useState<0 | 1>(1);
@@ -402,6 +409,72 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("poligome-sam-model", samModelId);
   }, [samModelId]);
+
+  useEffect(() => {
+    if (byomModelId) localStorage.setItem("poligome-byom-model", byomModelId);
+    else localStorage.removeItem("poligome-byom-model");
+  }, [byomModelId]);
+
+  // Reencontra o conector local ao abrir a página, em vez de esperar o usuário
+  // abrir o modal e clicar em conectar. Se ele está no ar com um modelo
+  // carregado, esse é o modelo em uso — adotá-lo evita uma troca de três a nove
+  // segundos que ninguém pediu. Falhar é o caso normal de quem não instalou
+  // nada, então nada é dito na tela.
+  useEffect(() => {
+    let cancelled = false;
+    async function reconnect() {
+      const endpoint = samEndpoint || "http://127.0.0.1:7860/predict";
+      const base = samBaseUrl(endpoint);
+      if (!base) return;
+      try {
+        const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(4_000) });
+        if (!response.ok) return;
+        const health = await response.json() as { status?: string; model_id?: string; device?: string };
+        if (cancelled || health.status !== "ready" || !health.model_id) return;
+
+        setSamEndpoint(endpoint);
+        localStorage.setItem("poligome-sam-endpoint", endpoint);
+        setSamLoadedModelId(health.model_id);
+        setSamConnectionState("ready");
+        setSamRuntime([getSamModel(health.model_id)?.name ?? health.model_id, health.device].filter(Boolean).join(" · "));
+        if (isSamModelId(health.model_id)) setSamModelId(health.model_id);
+        setSamSelected(true);
+      } catch {
+        // Conector ausente: a página segue funcionando sem IA.
+      }
+      if (!cancelled) await reconnectByom(endpoint);
+    }
+
+    // Os contêineres BYOM seguem o mesmo princípio: são descobertos sozinhos, e
+    // o que estava em uso volta a estar, desde que ainda esteja registrado e no
+    // ar. Com um único contêiner disponível e nenhuma escolha anterior, ele é
+    // adotado; com vários, escolher por conta seria chutar.
+    async function reconnectByom(endpoint: string) {
+      const base = samBaseUrl(endpoint);
+      if (!base) return;
+      try {
+        const response = await fetch(`${base}/byom/models`, { signal: AbortSignal.timeout(6_000) });
+        if (!response.ok) return;
+        const body = await response.json() as { models?: ByomModel[] };
+        const found = (body.models ?? []).filter((entry) => typeof entry.model_id === "string");
+        if (cancelled) return;
+        setByomModels(found);
+        const ready = found.filter((entry) => entry.ready);
+        setByomModelId((current) => {
+          if (current && ready.some((entry) => entry.model_id === current)) return current;
+          if (!current && ready.length === 1) return ready[0].model_id;
+          return current && found.some((entry) => entry.model_id === current) ? current : null;
+        });
+      } catch {
+        // Sem conector não há como falar com os contêineres.
+      }
+    }
+
+    void reconnect();
+    return () => { cancelled = true; };
+    // Roda uma vez, ao abrir o editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     localStorage.removeItem("poligome-labels");

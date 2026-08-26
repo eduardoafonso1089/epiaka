@@ -159,6 +159,21 @@ caixa funciona melhor que o ponto.
 
 ---
 
+## Conexão automática
+
+Ao abrir o editor, a página procura o conector em `127.0.0.1:7860` sozinha. Se
+ele responder `ready`, a conexão é estabelecida sem passar pelo modal, e o modelo
+que **já está carregado** vira o modelo em uso — adotá-lo evita uma troca de três
+a nove segundos que ninguém pediu.
+
+Os contêineres BYOM seguem o mesmo princípio: são descobertos na mesma passada.
+O que estava em uso volta a estar, desde que continue registrado e no ar; com um
+único contêiner disponível e nenhuma escolha anterior, ele é adotado. Com vários,
+escolher por conta seria chutar, então a escolha fica com você.
+
+Não encontrar o conector é o caso normal de quem não instalou nada, então nada é
+dito na tela e a anotação manual segue funcionando.
+
 ## Trocar de modelo
 
 A troca acontece pela própria interface. `GET /models` lista o que está

@@ -270,6 +270,27 @@ export function isValidPolygon(points: number[]) {
   return true;
 }
 
+export function canAddPolygonHole(outer: number[], hole: number[], existingHoles: number[][] = []) {
+  if (!isValidPolygon(outer) || !isValidPolygon(hole)) return false;
+  for (let index = 0; index < hole.length; index += 2) {
+    if (!pointInPolygon({ x: hole[index], y: hole[index + 1] }, outer)) return false;
+  }
+  const ringCrosses = (first: number[], second: number[]) => {
+    for (let i = 0; i < first.length; i += 2) {
+      const a: [number, number] = [first[i], first[i + 1]];
+      const b: [number, number] = [first[(i + 2) % first.length], first[(i + 3) % first.length]];
+      for (let j = 0; j < second.length; j += 2) {
+        const c: [number, number] = [second[j], second[j + 1]];
+        const d: [number, number] = [second[(j + 2) % second.length], second[(j + 3) % second.length]];
+        if (segmentIntersection(a, b, c, d)) return true;
+      }
+    }
+    return false;
+  };
+  if (ringCrosses(outer, hole)) return false;
+  return existingHoles.every((existing) => !ringCrosses(existing, hole) && !pointInPolygon({ x: hole[0], y: hole[1] }, existing));
+}
+
 export type ReshapeResult = {
   points: number[] | null;
   mode: "add" | "delete" | null;

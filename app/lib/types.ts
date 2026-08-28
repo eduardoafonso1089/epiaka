@@ -6,6 +6,7 @@ export type Tool =
   | "freehand"
   | "line"
   | "point"
+  | "ring"
   | "sam"
   | "split"
   | "transform"
@@ -66,6 +67,8 @@ export type Annotation = {
   w?: number;
   h?: number;
   pts?: number[];
+  /** Interior rings (holes) of a polygon. Legacy annotations simply omit this field. */
+  holes?: number[][];
 };
 
 export type SamPrompt = {

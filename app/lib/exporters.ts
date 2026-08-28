@@ -46,13 +46,13 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
       width,
       height,
     );
-    const segmentation =
-      annotation.type === "polygon" ? [scalePoints(annotation.pts ?? [], width, height)] : [];
+    const segmentation = annotation.type === "polygon"
+      ? [annotation.pts ?? [], ...(annotation.holes ?? [])].map((ring) => scalePoints(ring, width, height)) : [];
     // A polyline does not enclose a region: it goes out in `line` (an extension), with area 0
     // and empty segmentation, so no consumer interprets it as a mask.
     const line = annotation.type === "line" ? scalePoints(annotation.pts ?? [], width, height) : [];
     const area = annotation.type === "polygon"
-      ? polygonArea(scalePoints(annotation.pts ?? [], width, height))
+      ? polygonArea(scalePoints(annotation.pts ?? [], width, height)) - (annotation.holes ?? []).reduce((sum, ring) => sum + polygonArea(scalePoints(ring, width, height)), 0)
       : annotation.type === "line"
         ? 0
         : (scaledBounds[2] - scaledBounds[0]) * (scaledBounds[3] - scaledBounds[1]);
@@ -174,7 +174,9 @@ function geometriaDe(asset: Asset, annotation: Annotation) {
   if (pontos.length < 2) return null;
   if (annotation.type === "line") return { type: "LineString", coordinates: pontos };
   // A GeoJSON polygon ring has to close by repeating the first vertex.
-  return pontos.length >= 3 ? { type: "Polygon", coordinates: [[...pontos, pontos[0]]] } : null;
+  if (pontos.length < 3) return null;
+  const holes = (annotation.holes ?? []).map((hole) => anel(asset, hole)).filter((hole) => hole.length >= 3);
+  return { type: "Polygon", coordinates: [[...pontos, pontos[0]], ...holes.map((hole) => [...hole, hole[0]])] };
 }
 
 export function annotationsToGeoJson(assets: Asset[], labels: Label[], annotations: Annotation[]) {

@@ -1408,7 +1408,7 @@ export default function Home() {
     const document = data as LandmarkDocument;
     const cephId = document.ceph_id;
     if (typeof cephId !== "string" || !Array.isArray(document.landmarks)) throw new Error();
-    const targetAsset = assets.find((item) => item.name.split(/[\\/]/).at(-1)!.replace(/\.[^.]+$/, "").toLocaleLowerCase() === cephId.toLocaleLowerCase());
+    const targetAsset = assets.find((item) => (selectedAssetIds.length === 0 || selectedAssetIds.includes(item.id)) && item.name.split(/[\\/]/).at(-1)!.replace(/\.[^.]+$/, "").toLocaleLowerCase() === cephId.toLocaleLowerCase());
     if (!targetAsset) {
       showToast(`A imagem ${cephId} não está carregada.`);
       return;
@@ -1452,7 +1452,8 @@ export default function Home() {
         showToast(cocoFormatMessage(language));
         return;
       }
-      const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
+      const importAssets = selectedAssetIds.length ? assets.filter((item) => selectedAssetIds.includes(item.id)) : assets;
+      const assetByName = new Map(importAssets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
       const images = new Map(data.images.filter((item) => typeof item.id === "number" && typeof item.file_name === "string")
         .map((item) => [item.id!, { ...item, asset: assetByName.get(item.file_name!.split(/[\\/]/).at(-1)!.toLocaleLowerCase()) }]));
       // Records the real dimensions before inserting the masks. Without this, switching to
@@ -1563,6 +1564,7 @@ export default function Home() {
       // available when a single COCO file is selected.
       await importCocoAnnotations(file, undefined, undefined, true);
     }
+    if (selectedAssetIds.length) showToast(`Importação concluída apenas para as ${selectedAssetIds.length} imagens selecionadas.`);
   }
 
   // The crop enters as a regular image: that is what makes every existing tool, SAM

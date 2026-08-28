@@ -4,7 +4,7 @@ import {
   Check, ChevronDown, CodeXml, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
   Combine, Copy, Download, Eye, EyeOff, FileText, FolderOpen, FolderUp, Hand, HardDriveDownload, ImagePlus, Images, Keyboard, Languages, Link2,
   Focus, Globe, GripVertical, House, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
-  Monitor, Moon, Palette, Pencil, Pentagon, Plus, Power, Redo2, Scissors, Search, Settings2, Sparkles,
+  Monitor, Moon, Palette, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Pentagon, Plus, Power, Redo2, Scissors, Search, Settings2, Sparkles,
   Spline, Square, Sun, Tags, Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut, PenTool,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +22,7 @@ import { requestSamMask } from "../lib/sam";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
 import type { Recorte } from "../lib/cog";
-import type { Language, ThemeMode } from "../lib/i18n";
+import type { Copy as TranslationCopy, Language, ThemeMode } from "../lib/i18n";
 import type { Annotation, Asset, Label, SamPrompt, Tool } from "../lib/types";
 
 // useLayoutEffect does not run on the server; swapping avoids the React warning during SSR.
@@ -81,12 +81,88 @@ type TransformDrag = {
 type PanelSide = "left" | "right";
 type PanelResize = { side: PanelSide; pointerId: number; startX: number; startWidth: number };
 type ReorderDrag = { sourceId: string; targetId: string | null; position: "before" | "after" };
+type CocoImage = { id?: number; file_name?: string; width?: number; height?: number };
+type CocoCategory = { id?: number; name?: string; keypoints?: unknown };
+type CocoAnnotation = { image_id?: number; category_id?: number; bbox?: number[]; segmentation?: unknown; keypoints?: unknown; landmarks?: unknown; keypoint_names?: unknown; landmark_names?: unknown };
+type CocoGeometry = "polygon" | "box" | "point";
+type CocoImportCandidate = { index: number; imageName: string; labelName: string; geometries: CocoGeometry[] };
+type CocoImportPlan = { file: File; candidates: CocoImportCandidate[] };
+
+function CocoImportDialog({ plan, copy: sourceCopy, selectedIndexes, selectedGeometryTypes, tab, onClose, onImport, onIndexesChange, onGeometryTypesChange, onTabChange }: {
+  plan: CocoImportPlan; copy: TranslationCopy; selectedIndexes: number[]; selectedGeometryTypes: CocoGeometry[]; tab: "categories" | "annotations";
+  onClose: () => void; onImport: () => void; onIndexesChange: (indexes: number[]) => void; onGeometryTypesChange: (types: CocoGeometry[]) => void; onTabChange: (tab: "categories" | "annotations") => void;
+}) {
+  const copy = { ...sourceCopy, clearCategorySelection: sourceCopy.clearClassSelection, annotationTypes: sourceCopy.annotationCategories };
+  const geometryTypes: CocoGeometry[] = ["box", "point", "polygon"];
+  const visibleCandidates = plan.candidates.filter((candidate) => candidate.geometries.some((type) => selectedGeometryTypes.includes(type)));
+  const selectAllCategories = () => { onGeometryTypesChange(geometryTypes); onIndexesChange(plan.candidates.map((candidate) => candidate.index)); };
+  const clearCategories = () => { onGeometryTypesChange([]); onIndexesChange([]); };
+  const toggleCategory = (type: CocoGeometry) => {
+    const enabled = !selectedGeometryTypes.includes(type);
+    const candidateIndexes = plan.candidates.filter((candidate) => candidate.geometries.includes(type)).map((candidate) => candidate.index);
+    onGeometryTypesChange(enabled ? [...selectedGeometryTypes, type] : selectedGeometryTypes.filter((item) => item !== type));
+    if (enabled) onIndexesChange(Array.from(new Set([...selectedIndexes, ...candidateIndexes])));
+  };
+  const toggleAnnotation = (index: number) => onIndexesChange(selectedIndexes.includes(index) ? selectedIndexes.filter((item) => item !== index) : [...selectedIndexes, index]);
+  const selectVisibleAnnotations = () => onIndexesChange(Array.from(new Set([...selectedIndexes, ...visibleCandidates.map((candidate) => candidate.index)])));
+  const clearVisibleAnnotations = () => onIndexesChange(selectedIndexes.filter((index) => !visibleCandidates.some((candidate) => candidate.index === index)));
+  const geometry = (type: CocoGeometry) => type === "polygon" ? copy.polygon : type === "point" ? copy.point : copy.box;
+  return <div className="modal-backdrop"><section className="sam-modal coco-import-modal" role="dialog" aria-modal="true" aria-labelledby="coco-import-title"><header><div><span><FileText size={18} /></span><div><h2 id="coco-import-title">{copy.chooseAnnotations}</h2><p>{copy.chooseAnnotationsHint}</p></div></div><button onClick={onClose} aria-label={copy.close}><X size={19} /></button></header><div className="coco-import-tabs"><button className={tab === "categories" ? "active" : ""} onClick={() => onTabChange("categories")}>{copy.annotationTypes} <b>{geometryTypes.length}</b></button><button className={tab === "annotations" ? "active" : ""} onClick={() => onTabChange("annotations")}>{copy.annotations} <b>{visibleCandidates.length}</b></button></div>{tab === "categories" ? <><div className="coco-import-actions"><button onClick={selectAllCategories}>{copy.selectAllCategories}</button><button onClick={clearCategories}>{copy.clearCategorySelection}</button></div><div className="coco-import-list">{geometryTypes.map((type) => { const checked = selectedGeometryTypes.includes(type); const count = plan.candidates.filter((candidate) => candidate.geometries.includes(type)).length; return <button key={type} className={checked ? "selected" : ""} aria-pressed={checked} onClick={() => toggleCategory(type)}><i>{checked && <Check size={13} />}</i><span><b>{geometry(type)}</b><small>{count} {copy.annotationsToLoad}</small></span></button>; })}</div></> : <><div className="coco-import-actions"><button onClick={selectVisibleAnnotations}>{copy.selectAllAnnotations}</button><button onClick={clearVisibleAnnotations}>{copy.clearAnnotationSelection}</button></div><div className="coco-import-list">{visibleCandidates.map((candidate) => { const checked = selectedIndexes.includes(candidate.index); return <button key={candidate.index} className={checked ? "selected" : ""} aria-pressed={checked} onClick={() => toggleAnnotation(candidate.index)}><i>{checked && <Check size={13} />}</i><span><b>{candidate.labelName}</b><small>{candidate.imageName} Â· {candidate.geometries.filter((type) => selectedGeometryTypes.includes(type)).map(geometry).join(" + ")}</small></span></button>; })}{!visibleCandidates.length && <p className="coco-import-empty">{copy.noCategoriesSelected}</p>}</div></>}<footer><button onClick={onClose}>{copy.cancel}</button><button className="connect" disabled={!selectedIndexes.length || !selectedGeometryTypes.length} onClick={onImport}>{copy.importSelectedAnnotations}</button></footer></section></div>;
+}
 
 const LEFT_PANEL_MIN_WIDTH = 190;
 const LEFT_PANEL_MAX_WIDTH = 520;
 const RIGHT_PANEL_MIN_WIDTH = 220;
 const RIGHT_PANEL_MAX_WIDTH = 560;
 const EDITOR_MIN_WIDTH = 440;
+
+function landmarkCoordinates(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  if (value.every((item) => typeof item === "number")) {
+    const points: number[] = [];
+    for (let index = 0; index + 1 < value.length; index += value.length % 3 === 0 ? 3 : 2) {
+      const x = Number(value[index]); const y = Number(value[index + 1]); const visibility = value.length % 3 === 0 ? Number(value[index + 2]) : 1;
+      if (Number.isFinite(x) && Number.isFinite(y) && visibility > 0) points.push(x, y);
+    }
+    return points;
+  }
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const landmark = item as { x?: unknown; y?: unknown; visibility?: unknown; v?: unknown };
+    const x = Number(landmark.x); const y = Number(landmark.y); const visibility = Number(landmark.visibility ?? landmark.v ?? 1);
+    return Number.isFinite(x) && Number.isFinite(y) && visibility > 0 ? [x, y] : [];
+  });
+}
+
+function landmarkPoints(value: unknown): Array<{ x: number; y: number; index: number }> {
+  if (!Array.isArray(value)) return [];
+  if (value.every((item) => typeof item === "number")) {
+    const stride = value.length % 3 === 0 ? 3 : 2;
+    const points: Array<{ x: number; y: number; index: number }> = [];
+    for (let offset = 0; offset + 1 < value.length; offset += stride) {
+      const x = Number(value[offset]); const y = Number(value[offset + 1]); const visibility = stride === 3 ? Number(value[offset + 2]) : 1;
+      if (Number.isFinite(x) && Number.isFinite(y) && visibility > 0) points.push({ x, y, index: offset / stride });
+    }
+    return points;
+  }
+  return value.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const landmark = item as { x?: unknown; y?: unknown; visibility?: unknown; v?: unknown };
+    const x = Number(landmark.x); const y = Number(landmark.y); const visibility = Number(landmark.visibility ?? landmark.v ?? 1);
+    return Number.isFinite(x) && Number.isFinite(y) && visibility > 0 ? [{ x, y, index }] : [];
+  });
+}
+
+function keypointNames(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((name) => typeof name === "string" ? name.trim() : "") : [];
+}
+
+function cocoFormatMessage(language: Language) {
+  if (language === "en") return "This file does not follow the expected COCO JSON structure (images, categories and annotations).";
+  if (language === "fr") return "Ce fichier ne respecte pas la structure COCO JSON attendue (images, categories et annotations).";
+  if (language === "es") return "Este archivo no sigue la estructura COCO JSON esperada (images, categories y annotations).";
+  return "Este arquivo não segue a estrutura COCO JSON esperada (images, categories e annotations).";
+}
 
 function defaultPanelLayout(): ProjectLayout {
   const compact = typeof window !== "undefined" && window.innerWidth <= 1080;
@@ -132,8 +208,8 @@ function BrandLockup({ height = 30 }: { height?: number }) {
   </span>;
 }
 
-function ToolButton({ title, active, disabled, onClick, children, keyHint }: { title: string; active?: boolean; disabled?: boolean; onClick?: () => void; children: React.ReactNode; keyHint?: string }) {
-  return <button className={`tool-btn ${active ? "active" : ""}`} aria-label={title} title={title} disabled={disabled} onClick={onClick}>{children}{keyHint && <small>{keyHint}</small>}</button>;
+function ToolButton({ title, active, disabled, onClick, children, keyHint, className }: { title: string; active?: boolean; disabled?: boolean; onClick?: () => void; children: React.ReactNode; keyHint?: string; className?: string }) {
+  return <button className={`tool-btn ${active ? "active" : ""} ${className ?? ""}`} aria-label={title} title={title} disabled={disabled} onClick={onClick}>{children}{keyHint && <small>{keyHint}</small>}</button>;
 }
 
 // Base radius of every canvas marker, in viewBox units: polygon nodes, keypoints,
@@ -227,6 +303,8 @@ export default function Home() {
   const [batchLabel, setBatchLabel] = useState(UNLABELED_ID);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [panelLayout, setPanelLayout] = useState<ProjectLayout>(defaultPanelLayout);
   const [resizingPanel, setResizingPanel] = useState<PanelSide | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
@@ -256,6 +334,10 @@ export default function Home() {
   const [annotationReorder, setAnnotationReorder] = useState<ReorderDrag | null>(null);
   const [pendingDeleteClassIds, setPendingDeleteClassIds] = useState<string[]>([]);
   const [pendingDeleteAnnotationIds, setPendingDeleteAnnotationIds] = useState<string[]>([]);
+  const [cocoImportPlan, setCocoImportPlan] = useState<CocoImportPlan | null>(null);
+  const [selectedCocoAnnotationIndexes, setSelectedCocoAnnotationIndexes] = useState<number[]>([]);
+  const [selectedCocoGeometryTypes, setSelectedCocoGeometryTypes] = useState<CocoGeometry[]>([]);
+  const [cocoImportTab, setCocoImportTab] = useState<"categories" | "annotations">("categories");
   const [samOpen, setSamOpen] = useState(false);
   const [samEndpoint, setSamEndpoint] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -1300,21 +1382,17 @@ export default function Home() {
     showToast(`${imported.length} landmarks carregados: ${file.name}`);
   }
 
-  async function importCocoAnnotations(file: File | File[]) {
-    if (Array.isArray(file)) {
-      for (const annotationFile of file) await importCocoAnnotations(annotationFile);
-      return;
-    }
-    type CocoImage = { id?: number; file_name?: string; width?: number; height?: number };
-    type CocoCategory = { id?: number; name?: string };
-    type CocoAnnotation = { image_id?: number; category_id?: number; bbox?: number[]; segmentation?: unknown };
+  async function importCocoAnnotations(file: File, selectedIndexes?: number[], selectedGeometryTypes?: CocoGeometry[]) {
     try {
       const data = JSON.parse(await file.text()) as { images?: CocoImage[]; categories?: CocoCategory[]; annotations?: CocoAnnotation[]; ceph_id?: unknown; landmarks?: unknown };
       if (typeof data.ceph_id === "string" && Array.isArray(data.landmarks)) {
         await importCephalometricLandmarks(file, data);
         return;
       }
-      if (!Array.isArray(data.images) || !Array.isArray(data.annotations)) throw new Error();
+      if (!Array.isArray(data.images) || !Array.isArray(data.categories) || !Array.isArray(data.annotations)) {
+        showToast(cocoFormatMessage(language));
+        return;
+      }
       const assetByName = new Map(assets.map((item) => [item.name.split(/[\\/]/).at(-1)!.toLocaleLowerCase(), item]));
       const images = new Map(data.images.filter((item) => typeof item.id === "number" && typeof item.file_name === "string")
         .map((item) => [item.id!, { ...item, asset: assetByName.get(item.file_name!.split(/[\\/]/).at(-1)!.toLocaleLowerCase()) }]));
@@ -1331,6 +1409,31 @@ export default function Home() {
       });
       const categoryById = new Map((data.categories ?? []).filter((item) => typeof item.id === "number" && typeof item.name === "string")
         .map((item) => [item.id!, item.name!.trim()]));
+      const keypointNamesByCategory = new Map((data.categories ?? []).filter((item) => typeof item.id === "number")
+        .map((item) => [item.id!, keypointNames(item.keypoints)]));
+      const candidates = data.annotations.flatMap((item, index) => {
+        const image = typeof item.image_id === "number" ? images.get(item.image_id) : undefined;
+        if (!image?.asset) return [];
+        const segmentationRings = Array.isArray(item.segmentation)
+          ? item.segmentation.every((value) => typeof value === "number") ? [item.segmentation] : item.segmentation.filter(Array.isArray)
+          : [];
+        const hasPolygon = segmentationRings.some((ring) => ring.length >= 6);
+        const hasLandmarks = landmarkCoordinates(item.keypoints ?? item.landmarks).length > 0;
+        const hasBox = Array.isArray(item.bbox) && item.bbox.length >= 4 && item.bbox.slice(0, 4).every((value) => Number.isFinite(Number(value)));
+        if (!hasPolygon && !hasLandmarks && !hasBox) return [];
+        const geometries: CocoGeometry[] = [hasBox ? "box" : null, hasLandmarks ? "point" : null, hasPolygon ? "polygon" : null].filter((type): type is CocoGeometry => type !== null);
+        return [{ index, imageName: image.file_name ?? image.asset.name, labelName: typeof item.category_id === "number" ? categoryById.get(item.category_id) ?? copy.unlabeled : copy.unlabeled, geometries } satisfies CocoImportCandidate];
+      });
+      if (!candidates.length) { showToast("Nenhuma anotaÃ§Ã£o COCO corresponde Ã s imagens carregadas."); return; }
+      if (!selectedIndexes && candidates.length > 1) {
+        setCocoImportPlan({ file, candidates });
+        setSelectedCocoAnnotationIndexes(candidates.map((candidate) => candidate.index));
+        setSelectedCocoGeometryTypes(["box", "point", "polygon"]);
+        setCocoImportTab("categories");
+        return;
+      }
+      const selectedIndexesSet = new Set(selectedIndexes ?? candidates.map((candidate) => candidate.index));
+      const geometryTypes = new Set<CocoGeometry>(selectedGeometryTypes ?? ["box", "point", "polygon"]);
       const nextLabels = [...labelsRef.current];
       const labelByCategory = new Map<number, string>();
       categoryById.forEach((name, categoryId) => {
@@ -1340,12 +1443,12 @@ export default function Home() {
         labelByCategory.set(categoryId, label.id);
       });
       const imported: Annotation[] = [];
-      data.annotations.forEach((item) => {
+      data.annotations.forEach((item, index) => {
+        if (!selectedIndexesSet.has(index)) return;
         const image = typeof item.image_id === "number" ? images.get(item.image_id) : undefined;
         const targetAsset = image?.asset;
-        if (!targetAsset || !Array.isArray(item.bbox) || item.bbox.length < 4) return;
-        const [x, y, width, height] = item.bbox.map(Number);
-        if (![x, y, width, height].every(Number.isFinite)) return;
+        if (!targetAsset) return;
+        const [x, y, width, height] = Array.isArray(item.bbox) ? item.bbox.slice(0, 4).map(Number) : [NaN, NaN, NaN, NaN];
         const sourceWidth = Number(image.width) || targetAsset.width || 1000;
         const sourceHeight = Number(image.height) || targetAsset.height || 650;
         const sx = 1000 / sourceWidth; const sy = 650 / sourceHeight;
@@ -1353,16 +1456,33 @@ export default function Home() {
         // COCO allows several rings in one annotation. The editor works with one ring per
         // polygon, so each valid contour becomes its own annotation — that way a main part
         // in the second ring does not disappear, as it did in 13.jpg.
-        const polygons = Array.isArray(item.segmentation)
-          ? item.segmentation.filter(Array.isArray).map((ring) => ring.map(Number))
-            .filter((ring) => ring.length >= 6 && ring.length % 2 === 0 && ring.every(Number.isFinite))
+        const segmentationRings = Array.isArray(item.segmentation)
+          ? item.segmentation.every((value) => typeof value === "number") ? [item.segmentation] : item.segmentation.filter(Array.isArray)
           : [];
-        if (polygons.length) {
+        const polygons = segmentationRings
+            .map((ring) => ring.map(Number))
+            .filter((ring) => ring.length >= 6 && ring.length % 2 === 0 && ring.every(Number.isFinite))
+          ;
+        const landmarks = landmarkPoints(item.keypoints ?? item.landmarks);
+        if (!polygons.length && !landmarks.length && ![x, y, width, height].every(Number.isFinite)) return;
+        if (polygons.length && geometryTypes.has("polygon")) {
           polygons.forEach((polygon) => imported.push({
             id: makeId("coco"), asset: targetAsset.id, label, type: "polygon",
             pts: polygon.map((value, index) => value * (index % 2 ? sy : sx)),
           }));
-        } else {
+        }
+        if (landmarks.length && geometryTypes.has("point")) {
+          const annotationNames = keypointNames(item.keypoint_names ?? item.landmark_names);
+          const categoryNames = typeof item.category_id === "number" ? keypointNamesByCategory.get(item.category_id) ?? [] : [];
+          landmarks.forEach((landmark) => {
+            const name = annotationNames[landmark.index] || categoryNames[landmark.index];
+            const existing = name ? nextLabels.find((candidate) => candidate.name.toLocaleLowerCase() === name.toLocaleLowerCase()) : undefined;
+            const pointLabel = existing ?? (name ? { id: makeId("label"), name, color: nextLabelColor(nextLabels), key: "" } : null);
+            if (pointLabel && !existing) nextLabels.push(pointLabel);
+            imported.push({ id: makeId("coco"), asset: targetAsset.id, label: pointLabel?.id ?? label, type: "point", x: landmark.x * sx, y: landmark.y * sy });
+          });
+        }
+        if ([x, y, width, height].every(Number.isFinite) && geometryTypes.has("box")) {
           imported.push({ id: makeId("coco"), asset: targetAsset.id, label, type: "box", x: x * sx, y: y * sy, w: width * sx, h: height * sy });
         }
       });
@@ -1469,6 +1589,11 @@ export default function Home() {
     setHiddenAnnotations((items) => items.filter((id) => !ids.includes(id)));
     setSelected(null); setMultiSelected([]); setSelectedVertex(null); setPendingDeleteAnnotationIds([]); setSaved(false);
     showToast(`${ids.length} ${copy.annotationsDeleted}`);
+  }
+
+  function requestDeleteAllAnnotations() {
+    if (!annotations.length) return;
+    setPendingDeleteAnnotationIds(annotations.map((annotation) => annotation.id));
   }
 
   function deletePendingClasses() {
@@ -1750,13 +1875,15 @@ export default function Home() {
       </nav>
     </header>
 
-    <div className={`workspace ${resizingPanel ? "resizing-panels" : ""}`} style={{ gridTemplateColumns: `${panelLayout.leftPanelWidth}px minmax(0,1fr) ${panelLayout.rightPanelWidth}px` }}>
-      <aside className={`assets ${leftOpen ? "open" : ""}`}>
+    <div className={`workspace ${resizingPanel ? "resizing-panels" : ""}`} style={{ gridTemplateColumns: `${leftPanelCollapsed ? 34 : panelLayout.leftPanelWidth}px minmax(0,1fr) ${rightPanelCollapsed ? 34 : panelLayout.rightPanelWidth}px` }}>
+      <aside className={`assets ${leftOpen ? "open" : ""} ${leftPanelCollapsed ? "collapsed" : ""}`}>
+        <button className="sidebar-restore sidebar-restore-left" title={copy.showImagesPanel} aria-label={copy.showImagesPanel} onClick={() => setLeftPanelCollapsed(false)}><PanelLeftOpen size={17} /></button>
         <div className="drawer-head"><b>{copy.images}</b><button onClick={() => setLeftOpen(false)}><X size={19} /></button></div>
         <button type="button" className="panel-resizer panel-resizer-left" aria-label={copy.resizeImagesPanel} title={copy.resizeImagesPanel} onPointerDown={(event) => beginPanelResize(event, "left")} onPointerMove={movePanelResize} onPointerUp={finishPanelResize} onPointerCancel={finishPanelResize} onKeyDown={(event) => resizePanelWithKeyboard(event, "left")} />
         <div className="aside-title"><span>{copy.images} <b>{assets.length}</b></span><div><button title={copy.importImages} aria-label={copy.importImages} onClick={() => input.current?.click()}><Plus size={16} /></button><button title="Selecionar todas as imagens" aria-label="Selecionar todas as imagens" disabled={!assets.length} onClick={() => { const ids = assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item) => item.id); setSelectedAssetIds((items) => ids.every((id) => items.includes(id)) ? items.filter((id) => !ids.includes(id)) : Array.from(new Set([...items, ...ids]))); }}><Check size={16} /></button><button title="Carregar anotações COCO ou landmarks" aria-label="Carregar anotações COCO ou landmarks" disabled={!assets.length} onClick={() => cocoInputRef.current?.click()}><FileText size={16} /></button><button title="Excluir imagens selecionadas" aria-label="Excluir imagens selecionadas" disabled={!asset && !selectedAssetIds.length} onClick={deleteSelectedImages}><Trash2 size={16} /></button></div></div>
+        <button className="panel-collapse panel-collapse-left" title={copy.hideImagesPanel} aria-label={copy.hideImagesPanel} onClick={() => { setLeftPanelCollapsed(true); setLeftOpen(false); }}><PanelLeftClose size={16} /></button>
         <input hidden ref={input} type="file" accept="image/*,.tif,.tiff" multiple onChange={(event) => files(event.target.files)} />
-        <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; if (annotationFiles.length) void importCocoAnnotations(annotationFiles); }} />
+        <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" onChange={(event) => { const annotationFile = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (annotationFile) void importCocoAnnotations(annotationFile); }} />
         <button className="import" onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>
@@ -1784,7 +1911,7 @@ export default function Home() {
           <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} onClick={() => setTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => setTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => setTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => setTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => setTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
           <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => setTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "transform"} onClick={() => setTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => setTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
           <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
-          <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton>
+          <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton><ToolButton title={copy.removeLoadedAnnotations} disabled={!annotations.length} className="clear-annotations-control" onClick={requestDeleteAllAnnotations}><Trash2 size={16} /></ToolButton>
         </div>
 
         <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
@@ -1844,7 +1971,9 @@ export default function Home() {
         <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p><Sparkles size={14} />{annotationDrag ? `${copy.moving} (${annotationDrag.originals.length})` : selectionMarquee ? copy.selecting : transformDrag ? copy.transforming : reshapeDrawing ? copy.reshaping : selectedVertex ? fill(copy.statusVertexSelected, { status: snapping ? copy.snapStateOn : copy.snapStateOff }) : polygonDraft.length || lineDraft.length ? fill(copy.statusDraftPoints, { n: (polygonDraft.length + lineDraft.length) / 2 }) : multiSelected.length > 1 ? `${multiSelected.length} ${copy.selectedObjects}` : currentAnnotations.length ? `${currentAnnotations.length} ${copy.imageAnnotations}` : asset ? copy.ready : copy.emptyProjectTitle}</p><button><Keyboard size={15} /> {copy.shortcuts}</button></div>
       </section>
 
-      <aside className={`labels ${rightOpen ? "open" : ""}`}>
+      <aside className={`labels ${rightOpen ? "open" : ""} ${rightPanelCollapsed ? "collapsed" : ""}`}>
+        <button className="sidebar-restore sidebar-restore-right" title={copy.showAnnotationsPanel} aria-label={copy.showAnnotationsPanel} onClick={() => setRightPanelCollapsed(false)}><PanelRightOpen size={17} /></button>
+        <button className="panel-collapse panel-collapse-right" title={copy.hideAnnotationsPanel} aria-label={copy.hideAnnotationsPanel} onClick={() => { setRightPanelCollapsed(true); setRightOpen(false); }}><PanelRightClose size={16} /></button>
         <div className="drawer-head"><b>{copy.annotations}</b><button onClick={() => setRightOpen(false)}><X size={19} /></button></div>
         <button type="button" className="panel-resizer panel-resizer-right" aria-label={copy.resizeAnnotationsPanel} title={copy.resizeAnnotationsPanel} onPointerDown={(event) => beginPanelResize(event, "right")} onPointerMove={movePanelResize} onPointerUp={finishPanelResize} onPointerCancel={finishPanelResize} onKeyDown={(event) => resizePanelWithKeyboard(event, "right")} />
         <div className="tabs"><button className={!quality ? "active" : ""} onClick={() => setQuality(false)}>{copy.annotations}</button><button className={quality ? "active" : ""} onClick={() => setQuality(true)}>{copy.quality} <b>{currentAnnotations.length ? 1 : 0}</b></button></div>
@@ -1880,6 +2009,7 @@ export default function Home() {
     {classManagerOpen && <div className="modal-backdrop class-manager-backdrop"><section className="class-manager-page" role="dialog" aria-modal="true" aria-labelledby="class-manager-title"><header><div><span><Palette size={20} /></span><div><h2 id="class-manager-title">{copy.classManagerTitle}</h2><p>{copy.classManagerHint}</p></div></div><button onClick={() => { setClassManagerOpen(false); setSelectedClassIds([]); }} aria-label={copy.close}><X size={21} /></button></header><div className="class-manager-body"><div className="class-manager-sidebar"><section className="label-creator"><div><Palette size={14} /><span><b>{copy.labelStudio}</b><small>{copy.labelStudioHint}</small></span></div><div className="label-create-row"><input ref={labelInputRef} aria-label={copy.className} placeholder={copy.className} value={newLabel} onChange={(event) => setNewLabel(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addClass()} /><input className="label-color" type="color" aria-label={copy.labelColor} title={copy.labelColor} value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} /><button aria-label={copy.createLabel} title={copy.createLabel} disabled={!newLabel.trim()} onClick={addClass}><Plus size={15} /></button></div></section><section className="class-manager-active"><div><Tags size={14} /><span><b>{copy.newAnnotationClass}</b><small>{copy.newShapesClass}</small></span></div><select aria-label={copy.newAnnotationClass} value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.id === UNLABELED_ID ? copy.unlabeled : label.name}</option>)}</select></section></div><section className="class-manager-classes"><div className="class-manager-list-head"><div><b>{copy.classList}</b><span>{labels.length} {copy.classes.toLocaleLowerCase()}</span></div>{selectableClasses.length > 0 && <button onClick={() => setSelectedClassIds(selectedClassIds.length === selectableClasses.length ? [] : selectableClasses.map((label) => label.id))}>{selectedClassIds.length === selectableClasses.length ? copy.clearClassSelection : copy.selectAllClasses}</button>}</div>{selectedClassIds.length > 0 && <div className="class-selection-summary"><span>{selectedClassIds.length} {copy.classesSelected}</span><button onClick={() => requestClassDeletion(selectedClassIds)}><Trash2 size={12} />{copy.deleteSelectedClasses}</button></div>}<div className="label-list class-manager-list">{labels.map((label) => { const isHidden = hiddenLabels.includes(label.id); const isUnlabeled = label.id === UNLABELED_ID; const isChecked = selectedClassIds.includes(label.id); const isEditing = editingLabelId === label.id; return <div key={label.id} className={`label-row ${isHidden ? "hidden" : ""} ${isChecked ? "checked" : ""}`}>{isUnlabeled ? <span className="label-selector-spacer" /> : <button className={`label-selector ${isChecked ? "selected" : ""}`} aria-label={`${copy.selectClass}: ${label.name}`} aria-pressed={isChecked} onClick={() => setSelectedClassIds((items) => items.includes(label.id) ? items.filter((id) => id !== label.id) : [...items, label.id])}>{isChecked && <Check size={11} />}</button>}<div className={`label-main ${isEditing ? "editing" : ""}`}><i style={{ background: label.color }} />{isEditing ? <input autoFocus aria-label={copy.renameClass} value={editingLabelName} onChange={(event) => setEditingLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveLabelRename(label.id); if (event.key === "Escape") cancelLabelRename(); }} /> : <span>{isUnlabeled ? copy.unlabeled : label.name}</span>}<em>{annotations.filter((annotation) => annotation.label === label.id).length}</em>{label.key ? <kbd>{label.key}</kbd> : <span />}</div><button className="rename-label" disabled={isUnlabeled} title={isUnlabeled ? copy.unlabeledProtected : isEditing ? copy.saveClassName : copy.renameClass} aria-label={`${isEditing ? copy.saveClassName : copy.renameClass}: ${label.name}`} onClick={() => isEditing ? saveLabelRename(label.id) : beginLabelRename(label)}>{isEditing ? <Check size={13} /> : <Pencil size={13} />}</button><button className="visibility-toggle" title={isHidden ? copy.showClass : copy.hideClass} aria-label={`${isHidden ? copy.showClass : copy.hideClass}: ${label.name}`} onClick={() => toggleLabelVisibility(label.id)}>{isHidden ? <EyeOff size={14} /> : <Eye size={14} />}</button><button className="delete-label" disabled={isUnlabeled} title={isUnlabeled ? copy.unlabeledProtected : copy.deleteClass} aria-label={`${copy.deleteClass}: ${label.name}`} onClick={() => requestClassDeletion([label.id])}><Trash2 size={13} /></button></div>; })}</div></section></div><footer><button onClick={() => { setClassManagerOpen(false); setSelectedClassIds([]); }}><Check size={14} />{copy.close}</button></footer></section></div>}
     {projectSaveOpen && <div className="modal-backdrop"><section className="sam-modal project-save-modal" role="dialog" aria-modal="true" aria-labelledby="project-save-title"><header><div><span><Save size={18} /></span><div><h2 id="project-save-title">{copy.saveProjectTitle}</h2><p>{copy.saveProjectDescription}</p></div></div><button onClick={() => setProjectSaveOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="project-save-options" role="radiogroup" aria-label={copy.saveProjectTitle}><button className={projectSaveMode === "annotations" ? "active" : ""} role="radio" aria-checked={projectSaveMode === "annotations"} onClick={() => setProjectSaveMode("annotations")}><span><FileText size={20} /></span><div><b>{copy.annotationsOnly}</b><p>{copy.annotationsOnlyHint}</p><small>{formatBytes(annotationProjectBytes)} · {assets.length} {copy.imageReferences}</small></div><Check size={16} /></button><button className={projectSaveMode === "complete" ? "active" : ""} role="radio" aria-checked={projectSaveMode === "complete"} disabled={missingProjectImages > 0} onClick={() => setProjectSaveMode("complete")}><span><Images size={20} /></span><div><b>{copy.imagesAndAnnotations}</b><p>{copy.imagesAndAnnotationsHint}</p><small>{knownProjectImageBytes ? `${formatBytes(knownProjectImageBytes)} + ${formatBytes(annotationProjectBytes)}` : copy.sizeCalculatedOnSave}</small>{missingProjectImages > 0 && <em>{missingProjectImages} {copy.projectImagesNeedReload}</em>}</div><Check size={16} /></button></div><div className="project-save-privacy"><ShieldCheck size={16} /><div><b>{copy.localOnly}</b><p>{copy.projectSavePrivacy}</p></div></div><footer><button onClick={() => setProjectSaveOpen(false)}>{copy.cancel}</button><button className="connect" disabled={projectBusy || (projectSaveMode === "complete" && missingProjectImages > 0)} onClick={() => void savePortableProject(projectSaveMode)}>{projectBusy ? <LoaderCircle className="spin" size={15} /> : <Download size={15} />}{copy.generateProjectFile}</button></footer></section></div>}
     {pendingDeleteAnnotations.length > 0 && <div className="modal-backdrop"><section className="sam-modal delete-class-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-annotations-title" aria-describedby="delete-annotations-description"><header><div><span><Trash2 size={18} /></span><div><h2 id="delete-annotations-title">{copy.confirmDeleteAnnotations}</h2><p>{pendingDeleteAnnotations.length} {copy.annotationsToDelete}</p></div></div><button onClick={() => setPendingDeleteAnnotationIds([])} aria-label={copy.close}><X size={19} /></button></header><p id="delete-annotations-description" className="delete-class-warning">{copy.deleteAnnotationsWarning}</p><div className="delete-class-impact"><span>{copy.annotationsToDelete}</span><b>{pendingDeleteAnnotations.length}</b></div><footer><button onClick={() => setPendingDeleteAnnotationIds([])}>{copy.cancel}</button><button className="danger" onClick={deletePendingAnnotations}><Trash2 size={14} />{copy.confirmDelete}</button></footer></section></div>}
+    {cocoImportPlan && <CocoImportDialog plan={cocoImportPlan} copy={copy} selectedIndexes={selectedCocoAnnotationIndexes} selectedGeometryTypes={selectedCocoGeometryTypes} tab={cocoImportTab} onClose={() => setCocoImportPlan(null)} onIndexesChange={setSelectedCocoAnnotationIndexes} onGeometryTypesChange={setSelectedCocoGeometryTypes} onTabChange={setCocoImportTab} onImport={() => { void importCocoAnnotations(cocoImportPlan.file, selectedCocoAnnotationIndexes, selectedCocoGeometryTypes); setCocoImportPlan(null); }} />}
     {pendingDeleteClasses.length > 0 && <div className="modal-backdrop"><section className="sam-modal delete-class-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-class-title" aria-describedby="delete-class-description"><header><div><span><Trash2 size={18} /></span><div><h2 id="delete-class-title">{pendingDeleteClasses.length === 1 ? copy.confirmDeleteClass : copy.confirmDeleteClasses}</h2><p>{pendingDeleteClasses.map((label) => label.name).join(", ")}</p></div></div><button onClick={() => setPendingDeleteClassIds([])} aria-label={copy.close}><X size={19} /></button></header><p id="delete-class-description" className="delete-class-warning">{copy.deleteClassWarning} <strong>{copy.unlabeled}</strong>.</p><div className="delete-class-impact"><span>{copy.affectedAnnotations}</span><b>{pendingAffectedAnnotations}</b></div><footer><button onClick={() => setPendingDeleteClassIds([])}>{copy.cancel}</button><button className="danger" onClick={deletePendingClasses}><Trash2 size={14} />{copy.confirmDelete}</button></footer></section></div>}
     {preferencesOpen && <div className="modal-backdrop"><section className="sam-modal preferences-modal" role="dialog" aria-modal="true" aria-labelledby="preferences-title"><header><div><span><Settings2 size={18} /></span><div><h2 id="preferences-title">{copy.preferences}</h2><p>poligome.com</p></div></div><button onClick={() => setPreferencesOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="preferences-tabs"><button className={preferencesTab === "appearance" ? "active" : ""} onClick={() => setPreferencesTab("appearance")}><Sun size={14} />{copy.appearance}</button><button className={preferencesTab === "language" ? "active" : ""} onClick={() => setPreferencesTab("language")}><Languages size={14} />{copy.language}</button></div>{preferencesTab === "appearance" ? <div className="preference-options"><button className={themeMode === "system" ? "active" : ""} onClick={() => setThemeMode("system")}><Monitor size={20} /><b>{copy.system}</b></button><button className={themeMode === "light" ? "active" : ""} onClick={() => setThemeMode("light")}><Sun size={20} /><b>{copy.light}</b></button><button className={themeMode === "dark" ? "active" : ""} onClick={() => setThemeMode("dark")}><Moon size={20} /><b>{copy.dark}</b></button></div> : <div className="language-options"><button className={language === "pt" ? "active" : ""} onClick={() => setLanguage("pt")}><b>Português</b><span>PT-BR</span></button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}><b>English</b><span>EN</span></button><button className={language === "fr" ? "active" : ""} onClick={() => setLanguage("fr")}><b>Français</b><span>FR</span></button><button className={language === "es" ? "active" : ""} onClick={() => setLanguage("es")}><b>Español</b><span>ES</span></button></div>}<footer><button className="connect" onClick={() => setPreferencesOpen(false)}><Check size={15} /> {copy.close}</button></footer></section></div>}
     {samOpen && <div className="modal-backdrop"><section className="sam-modal sam-local-modal" role="dialog" aria-modal="true" aria-labelledby="sam-title"><header><div><span><WandSparkles size={18} /></span><div><h2 id="sam-title">{copy.samTitle}</h2><p>{copy.samSubtitle}</p></div></div><button onClick={() => setSamOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="hardware-warning"><b>{copy.beforeRun}</b><p><strong>{copy.samHardwareRecommended}</strong> {copy.samHardwareDetail}</p><p>{copy.samInstallerDetail}</p></div><div className="sam-oneclick"><b>{copy.oneClickSetup}</b><p>{copy.oneClickHint}</p><div><a className="primary" href="/poligome-sam-windows.bat" download><Download size={15} /><span><strong>{copy.windowsInstaller}</strong><small>Windows 10/11</small></span></a><a href="/poligome-sam-macos-linux.sh" download><Download size={15} /><span><strong>{copy.unixInstaller}</strong><small>macOS · Linux</small></span></a></div><small>{copy.autoDownloadModel}</small></div><div className="sam-relaunch"><div><b>{copy.installedAlready}</b><p>{copy.restartServerHint}</p></div><div><a className="windows" href="/poligome-sam-start-windows.bat" download><Power size={14} />{copy.restartWindows}</a><a href="/poligome-sam-start-macos-linux.sh" download><Power size={14} />{copy.restartUnix}</a></div></div><div className={`sam-status ${samConnectionState}`}><span /> <b>{samConnectionState === "ready" ? copy.samReady : samConnectionState === "loading" ? copy.samLoadingModel : samConnectionState === "checking" ? copy.samChecking : copy.samOffline}</b>{samRuntime && <small>{samRuntime}</small>}</div><details className="sam-advanced"><summary>{copy.advancedSetup}</summary><div className="sam-setup"><b>{copy.manualSetup}</b><ol><li><a href="https://github.com/facebookresearch/segment-anything#model-checkpoints" target="_blank" rel="noreferrer"><Download size={13} /> {copy.checkpointPage}</a></li><li><a href="/poligome-sam-local.py" download><Download size={13} /> {copy.connectorDownload}</a></li><li>{copy.samManualStep} <code>.pth</code>.</li></ol><pre>python poligome-sam-local.py --checkpoint sam_vit_b_01ec64.pth</pre></div><label>{copy.localAddress}<input type="url" placeholder="http://127.0.0.1:7860/predict" value={samEndpointDraft} onChange={(event) => setSamEndpointDraft(event.target.value)} /></label></details><div className="sam-contract"><b>{copy.noUpload}</b><p>{copy.samPrivacyIntro} <code>localhost</code>{copy.samPrivacyDetail}</p></div><footer><button onClick={() => setSamOpen(false)}>{copy.cancel}</button><button className="connect" disabled={samConnectionState === "checking"} onClick={() => void connectSam()}>{samConnectionState === "checking" ? <LoaderCircle className="spin" size={15} /> : <Link2 size={15} />} {copy.verifyUse}</button></footer></section></div>}

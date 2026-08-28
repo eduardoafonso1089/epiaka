@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowRight, Box, Check, CodeXml, Combine, Download, FileArchive, Languages, MessageSquareText, Pentagon, ShieldCheck, Spline, WandSparkles } from "lucide-react";
+import { ArrowRight, Box, Check, CodeXml, Combine, Download, FileArchive, Languages, MessageSquareText, Monitor, Moon, Pentagon, ShieldCheck, Spline, Sun, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SOURCE_URL, getCopy, storedLanguage, storedTheme } from "./lib/i18n";
-import type { Language } from "./lib/i18n";
+import type { Language, ThemeMode } from "./lib/i18n";
 
 // Geometric symbol native to the brand; the text follows the font the app already loads.
 function BrandLockup({ height = 34 }: { height?: number }) {
@@ -28,13 +28,18 @@ export default function Landing() {
   // saved preference one frame later. The content goes whole into the HTML: the landing has
   // to be readable by search engines and without JavaScript.
   const [language, setLanguage] = useState<Language>("pt");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
   const copy = getCopy(language);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = storedTheme();
+    const theme = storedTheme();
+    document.documentElement.dataset.theme = theme;
     const stored = storedLanguage();
-    if (stored === "pt") return;
-    const frame = window.requestAnimationFrame(() => setLanguage(stored));
+    if (stored === "pt" && theme === "system") return;
+    const frame = window.requestAnimationFrame(() => {
+      setThemeMode(theme);
+      if (stored !== "pt") setLanguage(stored);
+    });
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
@@ -50,10 +55,16 @@ export default function Landing() {
     localStorage.setItem("poligome-language", next);
   }
 
+  function chooseTheme(next: ThemeMode) {
+    setThemeMode(next);
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("poligome-theme", next);
+  }
+
   const features = [
     { icon: <Box size={19} />, title: copy.landingFeatShapesTitle, text: copy.landingFeatShapesText },
+    { icon: <MessageSquareText size={19} />, title: copy.landingFeatVectorTitle, text: copy.landingFeatVectorText },
     { icon: <WandSparkles size={19} />, title: copy.landingFeatSamTitle, text: copy.landingFeatSamText },
-    { icon: <Combine size={19} />, title: copy.landingFeatVectorTitle, text: copy.landingFeatVectorText },
     { icon: <Download size={19} />, title: copy.landingFeatExportTitle, text: copy.landingFeatExportText },
     { icon: <FileArchive size={19} />, title: copy.landingFeatProjectTitle, text: copy.landingFeatProjectText },
     { icon: <Spline size={19} />, title: copy.landingFeatWorkspaceTitle, text: copy.landingFeatWorkspaceText },
@@ -62,16 +73,23 @@ export default function Landing() {
   return <main className="landing">
     <header className="landing-top">
       <BrandLockup height={30} />
-      <nav className="landing-langs" aria-label={copy.landingLanguageLabel}>
-        <Languages size={15} aria-hidden="true" />
-        {LANGUAGES.map((item) => <button
-          key={item.id}
-          className={language === item.id ? "active" : ""}
-          aria-pressed={language === item.id}
-          title={item.code}
-          onClick={() => chooseLanguage(item.id)}
-        >{item.name}</button>)}
-      </nav>
+      <div className="landing-controls">
+        <nav className="landing-theme" aria-label={copy.appearance}>
+          <button className={themeMode === "system" ? "active" : ""} aria-pressed={themeMode === "system"} title={copy.system} onClick={() => chooseTheme("system")}><Monitor size={14} /><span>{copy.system}</span></button>
+          <button className={themeMode === "light" ? "active" : ""} aria-pressed={themeMode === "light"} title={copy.light} onClick={() => chooseTheme("light")}><Sun size={14} /><span>{copy.light}</span></button>
+          <button className={themeMode === "dark" ? "active" : ""} aria-pressed={themeMode === "dark"} title={copy.dark} onClick={() => chooseTheme("dark")}><Moon size={14} /><span>{copy.dark}</span></button>
+        </nav>
+        <nav className="landing-langs" aria-label={copy.landingLanguageLabel}>
+          <Languages size={15} aria-hidden="true" />
+          {LANGUAGES.map((item) => <button
+            key={item.id}
+            className={language === item.id ? "active" : ""}
+            aria-pressed={language === item.id}
+            title={item.code}
+            onClick={() => chooseLanguage(item.id)}
+          >{item.name}</button>)}
+        </nav>
+      </div>
     </header>
 
     <section className="landing-hero">
@@ -113,6 +131,14 @@ export default function Landing() {
       <article>
         <span className="landing-claim-mark"><ShieldCheck size={17} aria-hidden="true" /></span>
         <div><h2>{copy.landingPrivacyTitle}</h2><p>{copy.landingPrivacyText}</p></div>
+      </article>
+      <article>
+        <span className="landing-claim-mark"><Combine size={17} aria-hidden="true" /></span>
+        <div><h2>{copy.landingUnifiedTitle}</h2><p>{copy.landingUnifiedText}</p></div>
+      </article>
+      <article>
+        <span className="landing-claim-mark"><WandSparkles size={17} aria-hidden="true" /></span>
+        <div><h2>{copy.landingAiTitle}</h2><p>{copy.landingAiText}</p></div>
       </article>
     </section>
 

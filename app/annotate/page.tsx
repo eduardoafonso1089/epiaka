@@ -30,6 +30,9 @@ const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : us
 
 const UNLABELED_ID = "unlabeled";
 const UNLABELED_COLOR = "#929a95";
+// Boolean cuts are represented by a very thin strip, so the two generated nodes can be
+// a couple of editor units apart. Treat that as a shared topological vertex.
+const TOPOLOGY_VERTEX_TOLERANCE = 3;
 const unlabeledLabel = (name = "Sem label"): Label => ({ id: UNLABELED_ID, name, color: UNLABELED_COLOR, key: "" });
 
 const colors = [
@@ -1092,10 +1095,10 @@ export default function Home() {
     event.preventDefault(); event.stopPropagation(); remember(); setSelected(annotation.id); setMultiSelected([annotation.id]); setSnapGuide(null);
     const x = annotation.pts?.[vertexIndex * 2] ?? 0;
     const y = annotation.pts?.[vertexIndex * 2 + 1] ?? 0;
-    // Vertices that already share an exact location remain shared as one is moved,
-    // which prevents gaps between adjacent annotations without forcing topology.
+    // Vertices from a split can land on the two sides of its infinitesimal cutter.
+    // Move those near-coincident nodes together to keep the resulting border seamless.
     const linked = visibleAnnotations.flatMap((item) => (item.type === "polygon" || item.type === "line") && item.pts
-      ? item.pts.flatMap((coordinate, index) => index % 2 === 0 && Math.abs(coordinate - x) < .01 && Math.abs((item.pts?.[index + 1] ?? 0) - y) < .01
+      ? item.pts.flatMap((coordinate, index) => index % 2 === 0 && Math.hypot(coordinate - x, (item.pts?.[index + 1] ?? 0) - y) <= TOPOLOGY_VERTEX_TOLERANCE
         ? [{ annotationId: item.id, vertexIndex: index / 2 }] : [])
       : []);
     const drag = { annotationId: annotation.id, vertexIndex, linked };

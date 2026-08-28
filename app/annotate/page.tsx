@@ -10,7 +10,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   annotationIntersectsRect, boundedAnnotationDelta, deletePolygonVertex, edgeMidpoints,
-  insertPolygonVertex, movePolygon, MIN_VERTEX_DISTANCE, pointInPolygon, pointsToSvg,
+  insertPolygonVertex, isValidPolygon, movePolygon, MIN_VERTEX_DISTANCE, pointInPolygon, pointsToSvg,
   polygonBounds, polygonCenter, reshapePolygon, simplifyPolygon, snapPointToPolygons,
   splitPolygon, transformPolygon, translateAnnotation, unionPolygons, updatePolygonVertex,
 } from "../lib/geometry";
@@ -66,7 +66,7 @@ function nextLabelColor(existing: Label[]) {
 }
 
 type AnnotationDrag = { startX: number; startY: number; originals: Annotation[] };
-type VertexDrag = { annotationId: string; vertexIndex: number };
+type VertexDrag = { annotationId: string; vertexIndex: number; linked?: Array<{ annotationId: string; vertexIndex: number }> };
 type SelectionMarquee = {
   startX: number; startY: number; currentX: number; currentY: number; additiveIds: string[];
 };
@@ -264,6 +264,7 @@ export default function Home() {
   const [activeLabel, setActiveLabel] = useState(UNLABELED_ID);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [history, setHistory] = useState<Annotation[][]>([]);
+  const [redoHistory, setRedoHistory] = useState<Annotation[][]>([]);
   const [tool, setTool] = useState<Tool>("select");
   const [selected, setSelected] = useState<string | null>(null);
   const [multiSelected, setMultiSelected] = useState<string[]>([]);
@@ -440,7 +441,12 @@ export default function Home() {
   const selectedPolygons = annotations.filter((annotation) => multiSelected.includes(annotation.id) && annotation.type === "polygon");
   const getLabel = useCallback((id: string) => labels.find((label) => label.id === id) ?? labels[0] ?? unlabeledLabel(copy.unlabeled), [copy.unlabeled, labels]);
   const completed = useMemo(() => new Set(annotations.map((annotation) => annotation.asset)).size, [annotations]);
-  const remember = useCallback(() => { setHistory((items) => [...items.slice(-24), annotations]); setSaved(false); }, [annotations]);
+  const remember = useCallback(() => {
+    setHistory((items) => [...items.slice(-24), annotations]);
+    // Any new edit forks the timeline, so states that were redoable no longer apply.
+    setRedoHistory([]);
+    setSaved(false);
+  }, [annotations]);
 
   useEffect(() => { labelsRef.current = labels; }, [labels]);
 
@@ -514,10 +520,19 @@ export default function Home() {
 
   const undo = useCallback(() => {
     if (!history.length) return;
+    setRedoHistory((items) => [...items.slice(-24), annotations]);
     setAnnotations(history.at(-1)!);
     setHistory((items) => items.slice(0, -1));
     setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSnapGuide(null); setSaved(false);
-  }, [history]);
+  }, [annotations, history]);
+
+  const redo = useCallback(() => {
+    if (!redoHistory.length) return;
+    setHistory((items) => [...items.slice(-24), annotations]);
+    setAnnotations(redoHistory.at(-1)!);
+    setRedoHistory((items) => items.slice(0, -1));
+    setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSnapGuide(null); setSaved(false);
+  }, [annotations, redoHistory]);
 
   const deleteSelection = useCallback(() => {
     if (polygonDraft.length) {
@@ -557,11 +572,12 @@ export default function Home() {
 
   const finishPolygon = useCallback(() => {
     if (polygonDraft.length < 6) return;
+    if (!isValidPolygon(polygonDraft)) { showToast("O polígono se cruza ou não tem área. Ajuste os vértices antes de concluir."); return; }
     remember();
     const id = makeId("annotation");
     setAnnotations((items) => [...items, { id, asset: current, label: activeLabel, type: "polygon", pts: polygonDraft }]);
     setPolygonDraft([]); setSelected(id); setMultiSelected([id]);
-  }, [polygonDraft, remember, current, activeLabel]);
+  }, [polygonDraft, remember, current, activeLabel, showToast]);
 
   // A line needs only two points; the outline stays open.
   const finishLine = useCallback(() => {
@@ -575,7 +591,12 @@ export default function Home() {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.target as HTMLElement).tagName === "INPUT") return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); undo(); return; }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
       if (event.key === "Enter" && tool === "polygon") finishPolygon();
       if (event.key === "Enter" && tool === "line") finishLine();
       if (event.key === "Escape") {
@@ -617,7 +638,7 @@ export default function Home() {
     };
     addEventListener("keydown", keydown);
     return () => removeEventListener("keydown", keydown);
-  }, [canEditImage, deleteSelection, finishLine, finishPolygon, labels, samEndpoint, tool, undo]);
+  }, [canEditImage, deleteSelection, finishLine, finishPolygon, labels, redo, samEndpoint, tool, undo]);
 
   function resetDrafts() {
     setPolygonDraft([]); setLineDraft([]); setFreehandDraft([]); setFreehandDrawing(false); setDraft(null);
@@ -763,7 +784,10 @@ export default function Home() {
       return;
     }
     if (event.button !== 0) return;
-    const point = editorPoint(event.clientX, event.clientY);
+    const rawPoint = editorPoint(event.clientX, event.clientY);
+    const point = snapping && ["polygon", "line", "freehand", "split", "reshape", "point"].includes(tool)
+      ? snapPointToPolygons(rawPoint, visibleAnnotations, "")
+      : rawPoint;
     if (tool === "select") {
       const marquee: SelectionMarquee = {
         startX: point.x, startY: point.y, currentX: point.x, currentY: point.y,
@@ -814,7 +838,11 @@ export default function Home() {
         ? snapPointToPolygons(point, visibleAnnotations, activeVertexDrag.annotationId)
         : { ...point, snapped: false };
       setSnapGuide(target.snapped ? { x: target.x, y: target.y } : null);
-      setAnnotations((items) => items.map((annotation) => annotation.id === activeVertexDrag.annotationId ? { ...annotation, pts: updatePolygonVertex(annotation.pts ?? [], activeVertexDrag.vertexIndex, target.x, target.y) } : annotation)); setSaved(false); return;
+      const linked = activeVertexDrag.linked ?? [activeVertexDrag];
+      setAnnotations((items) => items.map((annotation) => {
+        const vertex = linked.find((item) => item.annotationId === annotation.id);
+        return vertex ? { ...annotation, pts: updatePolygonVertex(annotation.pts ?? [], vertex.vertexIndex, target.x, target.y) } : annotation;
+      })); setSaved(false); return;
     }
     if (panStart && scrollRef.current) {
       scrollRef.current.scrollLeft = panStart.left - (event.clientX - panStart.x); scrollRef.current.scrollTop = panStart.top - (event.clientY - panStart.y); return;
@@ -851,8 +879,10 @@ export default function Home() {
   function finishFreehand() {
     setFreehandDrawing(false);
     if (freehandDraft.length < 6) { setFreehandDraft([]); return; }
+    const polygon = simplifyPolygon(freehandDraft, 2.2);
+    if (!isValidPolygon(polygon)) { setFreehandDraft([]); showToast("O contorno se cruza ou não tem área. Desenhe-o novamente."); return; }
     remember(); const id = makeId("freehand");
-    setAnnotations((items) => [...items, { id, asset: current, label: activeLabel, type: "polygon", pts: simplifyPolygon(freehandDraft, 2.2) }]);
+    setAnnotations((items) => [...items, { id, asset: current, label: activeLabel, type: "polygon", pts: polygon }]);
     setFreehandDraft([]); setSelected(id); setMultiSelected([id]); showToast(copy.toastFreehandDone);
   }
 
@@ -1024,8 +1054,14 @@ export default function Home() {
     const drag = vertexDragRef.current;
     if (!drag) return;
     event.preventDefault(); event.stopPropagation();
-    const point = editorPoint(event.clientX, event.clientY);
-    setAnnotations((items) => items.map((annotation) => annotation.id === drag.annotationId ? { ...annotation, pts: updatePolygonVertex(annotation.pts ?? [], drag.vertexIndex, point.x, point.y) } : annotation));
+    const rawPoint = editorPoint(event.clientX, event.clientY);
+    const point = snapping ? snapPointToPolygons(rawPoint, visibleAnnotations, drag.annotationId) : rawPoint;
+    setSnapGuide(point.snapped ? { x: point.x, y: point.y } : null);
+    const linked = drag.linked ?? [drag];
+    setAnnotations((items) => items.map((annotation) => {
+      const vertex = linked.find((item) => item.annotationId === annotation.id);
+      return vertex ? { ...annotation, pts: updatePolygonVertex(annotation.pts ?? [], vertex.vertexIndex, point.x, point.y) } : annotation;
+    }));
     setSaved(false);
   }
 
@@ -1042,7 +1078,15 @@ export default function Home() {
   function beginVertexDrag(event: React.PointerEvent<SVGElement>, annotation: Annotation, vertexIndex: number) {
     if (event.button !== 0 || tool !== "select") return;
     event.preventDefault(); event.stopPropagation(); remember(); setSelected(annotation.id); setMultiSelected([annotation.id]); setSnapGuide(null);
-    const drag = { annotationId: annotation.id, vertexIndex };
+    const x = annotation.pts?.[vertexIndex * 2] ?? 0;
+    const y = annotation.pts?.[vertexIndex * 2 + 1] ?? 0;
+    // Vertices that already share an exact location remain shared as one is moved,
+    // which prevents gaps between adjacent annotations without forcing topology.
+    const linked = visibleAnnotations.flatMap((item) => (item.type === "polygon" || item.type === "line") && item.pts
+      ? item.pts.flatMap((coordinate, index) => index % 2 === 0 && Math.abs(coordinate - x) < .01 && Math.abs((item.pts?.[index + 1] ?? 0) - y) < .01
+        ? [{ annotationId: item.id, vertexIndex: index / 2 }] : [])
+      : []);
+    const drag = { annotationId: annotation.id, vertexIndex, linked };
     setSelectedVertex(drag); captureVertexPointer(event, drag);
   }
 
@@ -1680,7 +1724,7 @@ export default function Home() {
     idCounter.current = 0;
     setProjectName(copy.newProject); setProjectNameDraft("");
     setAssets([]); setCurrent(""); setAnnotations([]); setLabels([unlabeledLabel(copy.unlabeled)]);
-    setActiveLabel(UNLABELED_ID); setBatchLabel(UNLABELED_ID); setHistory([]); setNewLabelColor(colors[0]);
+    setActiveLabel(UNLABELED_ID); setBatchLabel(UNLABELED_ID); setHistory([]); setRedoHistory([]); setNewLabelColor(colors[0]);
     annotationSelectionAnchorRef.current = null;
     setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSelectedClassIds([]); setSelectedAssetIds([]);
     setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
@@ -1709,7 +1753,7 @@ export default function Home() {
       setCurrent(loaded.assets[0].id); setActiveLabel(firstLabel.id); setBatchLabel(firstLabel.id);
       setPanelLayout(normalizePanelLayout(loaded.layout));
       setNewLabelColor(nextLabelColor(loaded.labels));
-      setHistory([]); setSelected(null); setMultiSelected([]); setSelectedVertex(null); setHiddenAnnotations([]); setHiddenLabels([]);
+      setHistory([]); setRedoHistory([]); setSelected(null); setMultiSelected([]); setSelectedVertex(null); setHiddenAnnotations([]); setHiddenLabels([]);
       setSearch(""); setTool("select"); resetDrafts(); setProjectOpen(false); setLeftOpen(loaded.missingImages > 0); setSaved(true);
       showToast(loaded.missingImages
         ? `${copy.projectOpened}. ${loaded.missingImages} ${copy.projectImagesNeedReload}`
@@ -1910,7 +1954,7 @@ export default function Home() {
           <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => setTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
           <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} onClick={() => setTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => setTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => setTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => setTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => setTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
           <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => setTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "transform"} onClick={() => setTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => setTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
-          <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
+          <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled={!canEditImage || !redoHistory.length} onClick={redo}><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
           <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton><ToolButton title={copy.removeLoadedAnnotations} disabled={!annotations.length} className="clear-annotations-control" onClick={requestDeleteAllAnnotations}><Trash2 size={16} /></ToolButton>
         </div>
 

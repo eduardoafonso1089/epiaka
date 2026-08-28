@@ -190,14 +190,15 @@ export function snapPointToPolygons(
 ) {
   let best = { ...point, snapped: false, distance: tolerance };
   for (const annotation of annotations) {
-    if (annotation.id === excludeId || annotation.type !== "polygon" || !annotation.pts?.length) continue;
+    if (annotation.id === excludeId || (annotation.type !== "polygon" && annotation.type !== "line") || !annotation.pts?.length) continue;
     const points = annotation.pts;
     for (let index = 0; index < points.length; index += 2) {
       const vertexDistance = Math.hypot(point.x - points[index], point.y - points[index + 1]);
       if (vertexDistance < best.distance) {
         best = { x: points[index], y: points[index + 1], snapped: true, distance: vertexDistance };
       }
-      const next = (index + 2) % points.length;
+      const next = annotation.type === "line" && index + 2 >= points.length ? -1 : (index + 2) % points.length;
+      if (next < 0) continue;
       const projection = segmentProjection(
         point,
         { x: points[index], y: points[index + 1] },
@@ -246,6 +247,27 @@ function segmentIntersection(
   const edgeT = (acx * aby - acy * abx) / denominator;
   if (pathT < 0 || pathT > 1 || edgeT < 0 || edgeT > 1) return null;
   return { x: a[0] + pathT * abx, y: a[1] + pathT * aby, pathT, edgeT };
+}
+
+/** Returns whether a ring can safely be exported as a simple polygon. */
+export function isValidPolygon(points: number[]) {
+  if (points.length < 6 || points.length % 2 !== 0 || polygonArea(points) < 0.01) return false;
+  const count = points.length / 2;
+  for (let edge = 0; edge < count; edge += 1) {
+    const next = (edge + 1) % count;
+    const a: [number, number] = [points[edge * 2], points[edge * 2 + 1]];
+    const b: [number, number] = [points[next * 2], points[next * 2 + 1]];
+    if (a[0] === b[0] && a[1] === b[1]) return false;
+    for (let other = edge + 1; other < count; other += 1) {
+      const otherNext = (other + 1) % count;
+      // Neighboring segments meet at their common endpoint by design.
+      if (edge === other || next === other || otherNext === edge) continue;
+      const c: [number, number] = [points[other * 2], points[other * 2 + 1]];
+      const d: [number, number] = [points[otherNext * 2], points[otherNext * 2 + 1]];
+      if (segmentIntersection(a, b, c, d)) return false;
+    }
+  }
+  return true;
 }
 
 export type ReshapeResult = {

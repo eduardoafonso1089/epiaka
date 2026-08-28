@@ -1441,7 +1441,7 @@ export default function Home() {
     showToast(`${imported.length} landmarks carregados: ${file.name}`);
   }
 
-  async function importCocoAnnotations(file: File, selectedIndexes?: number[], selectedGeometryTypes?: CocoGeometry[]) {
+  async function importCocoAnnotations(file: File, selectedIndexes?: number[], selectedGeometryTypes?: CocoGeometry[], skipChooser = false) {
     try {
       const data = JSON.parse(await file.text()) as { images?: CocoImage[]; categories?: CocoCategory[]; annotations?: CocoAnnotation[]; ceph_id?: unknown; landmarks?: unknown };
       if (typeof data.ceph_id === "string" && Array.isArray(data.landmarks)) {
@@ -1484,7 +1484,7 @@ export default function Home() {
         return [{ index, imageName: image.file_name ?? image.asset.name, labelName: typeof item.category_id === "number" ? categoryById.get(item.category_id) ?? copy.unlabeled : copy.unlabeled, geometries } satisfies CocoImportCandidate];
       });
       if (!candidates.length) { showToast("Nenhuma anotaÃ§Ã£o COCO corresponde Ã s imagens carregadas."); return; }
-      if (!selectedIndexes && candidates.length > 1) {
+      if (!selectedIndexes && !skipChooser && candidates.length > 1) {
         setCocoImportPlan({ file, candidates });
         setSelectedCocoAnnotationIndexes(candidates.map((candidate) => candidate.index));
         setSelectedCocoGeometryTypes(["box", "point", "polygon"]);
@@ -1554,6 +1554,16 @@ export default function Home() {
       setLabels(nextLabels); setAnnotations((items) => [...items, ...imported]); setSaved(false);
       showToast(`${imported.length} anotações COCO carregadas.`);
     } catch { showToast("Não foi possível ler o arquivo COCO JSON."); }
+  }
+
+  async function importAnnotationFiles(files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+    if (!selectedFiles.length) return;
+    for (const file of selectedFiles) {
+      // A batch is an explicit request to load everything. The per-file chooser remains
+      // available when a single COCO file is selected.
+      await importCocoAnnotations(file, undefined, undefined, true);
+    }
   }
 
   // The crop enters as a regular image: that is what makes every existing tool, SAM
@@ -1942,7 +1952,7 @@ export default function Home() {
         <div className="aside-title"><span>{copy.images} <b>{assets.length}</b></span><div><button title={copy.importImages} aria-label={copy.importImages} onClick={() => input.current?.click()}><Plus size={16} /></button><button title="Selecionar todas as imagens" aria-label="Selecionar todas as imagens" disabled={!assets.length} onClick={() => { const ids = assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item) => item.id); setSelectedAssetIds((items) => ids.every((id) => items.includes(id)) ? items.filter((id) => !ids.includes(id)) : Array.from(new Set([...items, ...ids]))); }}><Check size={16} /></button><button title="Carregar anotações COCO ou landmarks" aria-label="Carregar anotações COCO ou landmarks" disabled={!assets.length} onClick={() => cocoInputRef.current?.click()}><FileText size={16} /></button><button title="Excluir imagens selecionadas" aria-label="Excluir imagens selecionadas" disabled={!asset && !selectedAssetIds.length} onClick={deleteSelectedImages}><Trash2 size={16} /></button></div></div>
         <button className="panel-collapse panel-collapse-left" title={copy.hideImagesPanel} aria-label={copy.hideImagesPanel} onClick={() => { setLeftPanelCollapsed(true); setLeftOpen(false); }}><PanelLeftClose size={16} /></button>
         <input hidden ref={input} type="file" accept="image/*,.tif,.tiff" multiple onChange={(event) => files(event.target.files)} />
-        <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" onChange={(event) => { const annotationFile = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (annotationFile) void importCocoAnnotations(annotationFile); }} />
+        <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = event.currentTarget.files; event.currentTarget.value = ""; void importAnnotationFiles(annotationFiles); }} />
         <button className="import" onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>

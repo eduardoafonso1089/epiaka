@@ -1662,8 +1662,14 @@ export default function Home() {
   }
 
   function requestDeleteAllAnnotations() {
-    if (!annotations.length) return;
-    setPendingDeleteAnnotationIds(annotations.map((annotation) => annotation.id));
+    const scoped = selectedAssetIds.length
+      ? annotations.filter((annotation) => selectedAssetIds.includes(annotation.asset))
+      : annotations;
+    if (!scoped.length) {
+      showToast(selectedAssetIds.length ? "As imagens selecionadas não têm anotações para excluir." : "Não há anotações para excluir.");
+      return;
+    }
+    setPendingDeleteAnnotationIds(scoped.map((annotation) => annotation.id));
   }
 
   function deletePendingClasses() {

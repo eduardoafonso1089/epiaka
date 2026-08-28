@@ -221,9 +221,9 @@ body:has(.landing){overflow:auto}
 .landing-identity>i{position:absolute;left:73px;right:73px;top:50%;height:1px;background:var(--tool-active-border);transform:rotate(34deg)}
 
 .landing-claims{display:grid;gap:15px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));
-  padding:12px 0 30px}
+  padding:12px 0 42px}
 .landing-claims article{display:flex;gap:14px;padding:20px;border:1px solid var(--line);
-  border-radius:14px;background:var(--surface)}
+  border-radius:14px;background:var(--surface);min-height:142px;align-items:flex-start}
 .landing-claim-mark{width:36px;height:36px;flex:none;border-radius:10px;display:grid;place-items:center;
   background:var(--tool-active-bg);color:var(--tool-active-ink)}
 .landing-claims h2{margin:0 0 6px;font-size:15px;font-weight:700;letter-spacing:-.2px}
@@ -251,6 +251,8 @@ body:has(.landing){overflow:auto}
 @media(max-width:560px){
   .landing{padding:0 15px}
   .landing-hero{padding:38px 0 30px}
+  .landing-controls{width:100%;justify-content:stretch}
+  .landing-theme{flex:1;justify-content:center;border-radius:12px}
   .landing-langs{width:100%;justify-content:center;border-radius:12px}
 }
 

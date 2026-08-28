@@ -1556,8 +1556,7 @@ export default function Home() {
     } catch { showToast("Não foi possível ler o arquivo COCO JSON."); }
   }
 
-  async function importAnnotationFiles(files: FileList | null) {
-    const selectedFiles = Array.from(files ?? []);
+  async function importAnnotationFiles(selectedFiles: File[]) {
     if (!selectedFiles.length) return;
     for (const file of selectedFiles) {
       // A batch is an explicit request to load everything. The per-file chooser remains
@@ -1952,7 +1951,7 @@ export default function Home() {
         <div className="aside-title"><span>{copy.images} <b>{assets.length}</b></span><div><button title={copy.importImages} aria-label={copy.importImages} onClick={() => input.current?.click()}><Plus size={16} /></button><button title="Selecionar todas as imagens" aria-label="Selecionar todas as imagens" disabled={!assets.length} onClick={() => { const ids = assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item) => item.id); setSelectedAssetIds((items) => ids.every((id) => items.includes(id)) ? items.filter((id) => !ids.includes(id)) : Array.from(new Set([...items, ...ids]))); }}><Check size={16} /></button><button title="Carregar anotações COCO ou landmarks" aria-label="Carregar anotações COCO ou landmarks" disabled={!assets.length} onClick={() => cocoInputRef.current?.click()}><FileText size={16} /></button><button title="Excluir imagens selecionadas" aria-label="Excluir imagens selecionadas" disabled={!asset && !selectedAssetIds.length} onClick={deleteSelectedImages}><Trash2 size={16} /></button></div></div>
         <button className="panel-collapse panel-collapse-left" title={copy.hideImagesPanel} aria-label={copy.hideImagesPanel} onClick={() => { setLeftPanelCollapsed(true); setLeftOpen(false); }}><PanelLeftClose size={16} /></button>
         <input hidden ref={input} type="file" accept="image/*,.tif,.tiff" multiple onChange={(event) => files(event.target.files)} />
-        <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = event.currentTarget.files; event.currentTarget.value = ""; void importAnnotationFiles(annotationFiles); }} />
+        <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importAnnotationFiles(annotationFiles); }} />
         <button className="import" onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>

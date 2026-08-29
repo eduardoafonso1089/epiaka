@@ -11,6 +11,7 @@ import argparse
 import base64
 import hashlib
 import io
+import os
 import threading
 from pathlib import Path
 
@@ -35,7 +36,12 @@ class PredictionRequest(BaseModel):
 app = FastAPI(title="Poligome SAM local", version="1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Do not turn a service on localhost into a public API for every site the user
+    # visits. Self-hosted Poligome instances can provide their own anchored regex.
+    allow_origin_regex=os.environ.get(
+        "POLIGOME_ALLOWED_ORIGIN_REGEX",
+        r"^(https://(www\.)?poligome\.com|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
+    ),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

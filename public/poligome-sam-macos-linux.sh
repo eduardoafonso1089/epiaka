@@ -5,8 +5,9 @@ APP_DIR="${HOME}/.poligome-sam"
 VENV_DIR="${APP_DIR}/venv"
 CONNECTOR="${APP_DIR}/poligome-sam-local.py"
 CHECKPOINT="${APP_DIR}/sam_vit_b_01ec64.pth"
-READY_FILE="${APP_DIR}/dependencies-v2.ok"
+READY_FILE="${APP_DIR}/dependencies-v3.ok"
 MODEL_URL="https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+SAM_ARCHIVE_URL="https://github.com/facebookresearch/segment-anything/archive/dca509fe793f601edb92606367a655c15ac00fdf.zip"
 SITE_URL="https://www.poligome.com"
 
 printf '\n==========================================\n'
@@ -33,7 +34,7 @@ if [[ ! -f "${READY_FILE}" ]]; then
   printf 'Installing PyTorch and the SAM dependencies. Please wait...\n'
   "${PYTHON}" -m pip install --upgrade pip
   "${PYTHON}" -m pip install torch torchvision fastapi uvicorn pillow opencv-python-headless numpy
-  "${PYTHON}" -m pip install "https://github.com/facebookresearch/segment-anything/archive/refs/heads/main.zip"
+  "${PYTHON}" -m pip install "${SAM_ARCHIVE_URL}"
   touch "${READY_FILE}"
 fi
 
@@ -66,6 +67,7 @@ import argparse
 import base64
 import hashlib
 import io
+import os
 import threading
 from pathlib import Path
 
@@ -90,7 +92,10 @@ class PredictionRequest(BaseModel):
 app = FastAPI(title="Poligome SAM local", version="2.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=os.environ.get(
+        "POLIGOME_ALLOWED_ORIGIN_REGEX",
+        r"^(https://(www\.)?poligome\.com|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
+    ),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

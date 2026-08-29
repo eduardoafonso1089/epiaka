@@ -19,6 +19,10 @@ Both keep a project you can save and reopen later: a single portable file with
 images, labels, and annotations, so work resumes on another machine without a
 server.
 
+The YOLO export is a complete dataset archive: it includes paired images and
+labels, a deterministic training/validation split, `classes.txt`, and
+`data.yaml`. With a single image, the training image is also used as validation.
+
 ## Geospatial input
 
 The image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly,
@@ -49,6 +53,11 @@ raster and build the overview pyramid, and a gigapixel GeoTIFF does not fit in a
 tab's memory. The converter also serves the finished COG with Range support, so
 the app reads the result by tiles without downloading it again. The manual route
 is `public/poligome-cog-local.py`.
+
+Both connectors only accept browser requests from the official Poligome origins
+and local development by default. A trusted self-hosted instance can set
+`POLIGOME_ALLOWED_ORIGIN_REGEX` to an anchored regular expression for its own
+origins. Keep both services bound to loopback; they are not public APIs.
 
 ## Interface
 
@@ -89,6 +98,13 @@ OpenLayers for map rendering, and optional Cloudflare D1 through Drizzle.
 Hosting details, Cloudflare bindings, workspace auth headers, and the optional
 ChatGPT sign-in helpers inherited from the starter live in
 [docs/PLATFORM.md](docs/PLATFORM.md).
+
+## Contributing and security
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow
+the [code of conduct](CODE_OF_CONDUCT.md), and use the issue templates for bugs
+and feature proposals. Please report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md).
 
 ## License
 

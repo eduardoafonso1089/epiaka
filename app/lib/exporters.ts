@@ -88,8 +88,15 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
 
 export async function exportYoloZip(assets: Asset[], labels: Label[], annotations: Annotation[], readme: string) {
   const zip = new JSZip();
-  const labelFolder = zip.folder("labels");
-  assets.forEach((asset, imageIndex) => {
+  const trainCount = assets.length > 1
+    ? Math.min(assets.length - 1, Math.max(1, Math.round(assets.length * 0.8)))
+    : assets.length;
+
+  for (const [imageIndex, asset] of assets.entries()) {
+    if (!asset.src || asset.missing) throw new Error(`Image unavailable for YOLO export: ${asset.name}`);
+    const split = imageIndex < trainCount ? "train" : "val";
+    const numberedBaseName = `${String(imageIndex + 1).padStart(4, "0")}-${baseName(asset.name, `image_${imageIndex + 1}`)}`;
+    const extension = asset.name.match(/\.[a-zA-Z0-9]+$/)?.[0].toLowerCase() ?? ".png";
     const lines = annotations
       .filter((annotation) => annotation.asset === asset.id)
       .flatMap((annotation) => {
@@ -107,12 +114,16 @@ export async function exportYoloZip(assets: Asset[], labels: Label[], annotation
         }
         return [];
       });
-    labelFolder?.file(`${baseName(asset.name, `image_${imageIndex + 1}`)}.txt`, lines.join("\n"));
-  });
+    const response = await fetch(asset.src);
+    if (!response.ok) throw new Error(`Could not read image for YOLO export: ${asset.name}`);
+    zip.file(`images/${split}/${numberedBaseName}${extension}`, await response.arrayBuffer());
+    zip.file(`labels/${split}/${numberedBaseName}.txt`, lines.join("\n"));
+  }
   zip.file("classes.txt", labels.map((label) => label.name).join("\n"));
+  const validationPath = assets.length > 1 ? "images/val" : "images/train";
   zip.file(
     "data.yaml",
-    `path: .\ntrain: images/train\nval: images/val\nnc: ${labels.length}\nnames:\n${labels.map((label, index) => `  ${index}: ${JSON.stringify(label.name)}`).join("\n")}\n`,
+    `path: .\ntrain: images/train\nval: ${validationPath}\nnc: ${labels.length}\nnames:\n${labels.map((label, index) => `  ${index}: ${JSON.stringify(label.name)}`).join("\n")}\n`,
   );
   zip.file(
     "README.txt",

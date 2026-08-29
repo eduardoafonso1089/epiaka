@@ -121,7 +121,10 @@ from rio_cogeo.profiles import cog_profiles
 app = FastAPI(title="Poligome local COG", version="1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=os.environ.get(
+        "POLIGOME_ALLOWED_ORIGIN_REGEX",
+        r"^(https://(www\.)?poligome\.com|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
+    ),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

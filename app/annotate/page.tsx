@@ -223,19 +223,6 @@ function ToolButton({ title, active, disabled, onClick, children, keyHint, class
 // SAM prompts, handles and guides all derive from it. Being part of the drawing, they scale with the image.
 const MARKER_RADIUS = 4.6;
 
-// Rasterised masks can have thousands of points. For display, a deviation under one pixel
-// is not perceptible but cuts the SVG's work drastically. The original geometry is never
-// changed: it is still what selecting, editing and exporting use.
-const maskPreviewCache = new WeakMap<number[], string>();
-function maskPreviewPoints(points: number[] = []) {
-  if (points.length <= 400) return pointsToSvg(points);
-  const cached = maskPreviewCache.get(points);
-  if (cached) return cached;
-  const preview = pointsToSvg(simplifyPolygon(points, 0.8));
-  maskPreviewCache.set(points, preview);
-  return preview;
-}
-
 // Polygon nodes shrink as vertex density grows so they do not overlap, but never exceed the
 // base radius — so a simple polygon has nodes the same size as the other markers.
 function polygonHandleRadius(zoomScale: number) {
@@ -1070,7 +1057,9 @@ export default function Home() {
     if (!drag) return;
     event.preventDefault(); event.stopPropagation();
     const rawPoint = editorPoint(event.clientX, event.clientY);
-    const point = snapping ? snapPointToPolygons(rawPoint, visibleAnnotations, drag.annotationId) : rawPoint;
+    const point = snapping
+      ? snapPointToPolygons(rawPoint, visibleAnnotations, drag.annotationId)
+      : { ...rawPoint, snapped: false };
     setSnapGuide(point.snapped ? { x: point.x, y: point.y } : null);
     const linked = drag.linked ?? [drag];
     setAnnotations((items) => items.map((annotation) => {

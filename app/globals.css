@@ -78,6 +78,8 @@ html[data-theme="light"]{--ink:#111614;--muted:#55635C;--line:#D5DED8;--green:#1
 .stage.panning svg{cursor:grabbing!important}.stage.panning .canvas{user-select:none}
 .coordinate-guide line{stroke:var(--green);stroke-width:1;stroke-dasharray:4 5;vector-effect:non-scaling-stroke;opacity:.72}.coordinate-guide rect{fill:rgba(17,22,20,.88);stroke:var(--green);stroke-width:.8;vector-effect:non-scaling-stroke}.coordinate-guide text{fill:#fff;font-family:var(--mono),monospace;font-size:10px;font-weight:700}
 .coordinate-guide.obscured>g{opacity:.18}
+.status p{min-width:0;flex:1;justify-content:center;padding:0 10px}.status p>svg{flex:none}.status p>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status p.notice{color:var(--notice-ink)}
+@media(max-width:560px){.status p{display:flex}.status>button{display:none}}
 
 /* Semantic states: the text never depends on an auxiliary colour over an alert background. */
 html{--notice-bg:#252039;--notice-border:#6554B9;--notice-ink:#F4F1FF;--overlay:rgba(13,11,20,.52);--tooltip-bg:#211C32;--tooltip-ink:#F4F1FF;--thumb-overlay:rgba(13,11,20,.78)}
@@ -416,3 +418,4 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .landing-foot .source-link{height:26px;font-size:12px;font-weight:400;background:transparent;border-color:transparent;color:var(--tool-hint-ink);padding:0}
 .landing-foot .source-link:hover{color:var(--tool-active-ink);text-decoration:underline;background:transparent}
 @media(max-width:860px){.source-link span{display:none}.source-link{padding:0 8px}}
+.empty-project button:disabled{opacity:.58;cursor:wait}

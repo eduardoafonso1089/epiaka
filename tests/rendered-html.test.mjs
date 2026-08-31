@@ -29,5 +29,12 @@ test("renders development preview metadata", async () => {
     response.headers.get("content-type") ?? "",
     /^text\/html\b/i,
   );
-  assert.match(await response.text(), developmentPreviewMeta);
+  const html = await response.text();
+  assert.match(html, developmentPreviewMeta);
+
+  const themeScript = html.indexOf('localStorage.getItem("poligome-theme")');
+  const body = html.indexOf("<body");
+  assert.notEqual(themeScript, -1, "the initial theme script must be rendered");
+  assert.ok(themeScript < body, "the saved theme must be applied before the body is painted");
+  assert.match(html, /href=["']\/annotate\?demo=1["']/, "the landing page must expose the browser demo");
 });

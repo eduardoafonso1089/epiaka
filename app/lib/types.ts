@@ -66,6 +66,8 @@ export type Annotation = {
   y?: number;
   w?: number;
   h?: number;
+  /** Clockwise rotation in radians around the centre of a bounding box. */
+  rotation?: number;
   pts?: number[];
   /** Interior rings (holes) of a polygon. Legacy annotations simply omit this field. */
   holes?: number[][];

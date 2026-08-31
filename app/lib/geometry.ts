@@ -166,6 +166,26 @@ export function transformPolygon(
   return fitPointsToEditor(transformed);
 }
 
+/** Four corners of a box after applying its optional centre rotation. */
+export function boxCorners(annotation: Annotation) {
+  const x = annotation.x ?? 0;
+  const y = annotation.y ?? 0;
+  const width = annotation.w ?? 0;
+  const height = annotation.h ?? 0;
+  const rotation = annotation.rotation ?? 0;
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const cosine = Math.cos(rotation);
+  const sine = Math.sin(rotation);
+  return [
+    [x, y], [x + width, y], [x + width, y + height], [x, y + height],
+  ].flatMap(([cornerX, cornerY]) => {
+    const dx = cornerX - centerX;
+    const dy = cornerY - centerY;
+    return [centerX + dx * cosine - dy * sine, centerY + dx * sine + dy * cosine];
+  });
+}
+
 function segmentProjection(
   point: { x: number; y: number },
   start: { x: number; y: number },
@@ -387,11 +407,14 @@ export function reshapePolygon(points: number[], path: number[]): ReshapeResult 
 
 export function annotationBounds(annotation: Annotation) {
   if (annotation.type === "box") {
+    const corners = boxCorners(annotation);
+    const xs = corners.filter((_, index) => index % 2 === 0);
+    const ys = corners.filter((_, index) => index % 2 === 1);
     return {
-      x: annotation.x ?? 0,
-      y: annotation.y ?? 0,
-      width: annotation.w ?? 0,
-      height: annotation.h ?? 0,
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      width: Math.max(...xs) - Math.min(...xs),
+      height: Math.max(...ys) - Math.min(...ys),
     };
   }
   if (annotation.type === "polygon" || annotation.type === "line") return polygonBounds(annotation.pts ?? []);

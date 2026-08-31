@@ -98,6 +98,7 @@ export default function Landing() {
         <h1>{copy.landingHeadline}</h1>
         <p className="landing-intro">{copy.landingIntro}</p>
         <div className="landing-actions">
+          <a className="landing-cta" href="/annotate?demo=1"><WandSparkles size={17} />{copy.tryDemo}</a>
           <span className="landing-free-badge"><Check size={13} aria-hidden="true" />{copy.landingBadgeFree}</span>
           <span className="landing-cta-note">{copy.landingCtaNote}</span>
         </div>

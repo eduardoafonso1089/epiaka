@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { annotationBounds, polygonArea, scalePoints } from "./geometry";
+import { annotationBounds, boxCorners, polygonArea, scalePoints } from "./geometry";
 import { EDITOR_HEIGHT, EDITOR_WIDTH } from "./geometry";
 import type { Annotation, Asset, Label } from "./types";
 
@@ -47,7 +47,10 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
       height,
     );
     const segmentation = annotation.type === "polygon"
-      ? [annotation.pts ?? [], ...(annotation.holes ?? [])].map((ring) => scalePoints(ring, width, height)) : [];
+      ? [annotation.pts ?? [], ...(annotation.holes ?? [])].map((ring) => scalePoints(ring, width, height))
+      : annotation.type === "box" && Math.abs(annotation.rotation ?? 0) > 0.0001
+        ? [scalePoints(boxCorners(annotation), width, height)]
+        : [];
     // A polyline does not enclose a region: it goes out in `line` (an extension), with area 0
     // and empty segmentation, so no consumer interprets it as a mask.
     const line = annotation.type === "line" ? scalePoints(annotation.pts ?? [], width, height) : [];
@@ -55,7 +58,9 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
       ? polygonArea(scalePoints(annotation.pts ?? [], width, height)) - (annotation.holes ?? []).reduce((sum, ring) => sum + polygonArea(scalePoints(ring, width, height)), 0)
       : annotation.type === "line"
         ? 0
-        : (scaledBounds[2] - scaledBounds[0]) * (scaledBounds[3] - scaledBounds[1]);
+        : annotation.type === "box"
+          ? (annotation.w ?? 0) * width / 1000 * (annotation.h ?? 0) * height / 650
+          : (scaledBounds[2] - scaledBounds[0]) * (scaledBounds[3] - scaledBounds[1]);
     return {
       id: index + 1,
       image_id: imageIndex + 1,
@@ -74,6 +79,7 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
           : [],
       num_keypoints: annotation.type === "point" ? 1 : 0,
       area,
+      rotation: annotation.type === "box" ? annotation.rotation ?? 0 : undefined,
       iscrowd: 0,
     };
   });
@@ -102,9 +108,12 @@ export async function exportYoloZip(assets: Asset[], labels: Label[], annotation
       .flatMap((annotation) => {
         const classIndex = labels.findIndex((label) => label.id === annotation.label);
         if (annotation.type === "box") {
-          const centerX = ((annotation.x ?? 0) + (annotation.w ?? 0) / 2) / 1000;
-          const centerY = ((annotation.y ?? 0) + (annotation.h ?? 0) / 2) / 650;
-          return [`${classIndex} ${centerX.toFixed(6)} ${centerY.toFixed(6)} ${((annotation.w ?? 0) / 1000).toFixed(6)} ${((annotation.h ?? 0) / 650).toFixed(6)}`];
+          // The common YOLO detection format is axis-aligned. For an oriented box we export
+          // its enclosing rectangle; the exact angle remains in .plgm and COCO segmentation.
+          const bounds = annotationBounds(annotation);
+          const centerX = (bounds.x + bounds.width / 2) / 1000;
+          const centerY = (bounds.y + bounds.height / 2) / 650;
+          return [`${classIndex} ${centerX.toFixed(6)} ${centerY.toFixed(6)} ${(bounds.width / 1000).toFixed(6)} ${(bounds.height / 650).toFixed(6)}`];
         }
         if (annotation.type === "polygon") {
           const normalized = (annotation.pts ?? []).map((coordinate, index) =>
@@ -174,11 +183,7 @@ function geometriaDe(asset: Asset, annotation: Annotation) {
     return { type: "Point", coordinates: paraCoordenada(asset, annotation.x ?? 0, annotation.y ?? 0) };
   }
   if (annotation.type === "box") {
-    const x = annotation.x ?? 0;
-    const y = annotation.y ?? 0;
-    const w = annotation.w ?? 0;
-    const h = annotation.h ?? 0;
-    const caixa = anel(asset, [x, y, x + w, y, x + w, y + h, x, y + h]);
+    const caixa = anel(asset, boxCorners(annotation));
     return { type: "Polygon", coordinates: [[...caixa, caixa[0]]] };
   }
   const pontos = anel(asset, annotation.pts ?? []);
@@ -207,6 +212,7 @@ export function annotationsToGeoJson(assets: Asset[], labels: Label[], annotatio
         classe_id: annotation.label,
         cor: label?.color ?? null,
         forma: annotation.type,
+        rotacao: annotation.type === "box" ? annotation.rotation ?? 0 : undefined,
         recorte: asset.name,
         origem: asset.geo!.source,
         crs: asset.geo!.crs,

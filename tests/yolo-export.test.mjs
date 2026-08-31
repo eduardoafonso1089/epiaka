@@ -37,6 +37,16 @@ test("exports a complete YOLO dataset with paired, collision-safe files", async 
       y: 65,
       w: 200,
       h: 130,
+    }, {
+      id: "box-b",
+      asset: "image-b",
+      label: "object",
+      type: "box",
+      x: 400,
+      y: 260,
+      w: 200,
+      h: 130,
+      rotation: Math.PI / 2,
     }];
 
     await exportYoloZip(assets, labels, annotations, "Test export");
@@ -52,6 +62,10 @@ test("exports a complete YOLO dataset with paired, collision-safe files", async 
       await zip.file("labels/train/0001-same.txt").async("string"),
       "0 0.200000 0.200000 0.200000 0.200000",
     );
+    assert.equal(
+      await zip.file("labels/val/0002-same.txt").async("string"),
+      "0 0.500000 0.500000 0.130000 0.307692",
+    );
     assert.match(await zip.file("data.yaml").async("string"), /train: images\/train\nval: images\/val/);
   } finally {
     URL.createObjectURL = originalCreateObjectUrl;
@@ -60,4 +74,3 @@ test("exports a complete YOLO dataset with paired, collision-safe files", async 
     globalThis.window = originalWindow;
   }
 });
-

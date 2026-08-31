@@ -19,6 +19,11 @@ Both keep a project you can save and reopen later: a single portable file with
 images, labels, and annotations, so work resumes on another machine without a
 server.
 
+The landing page also offers a one-click computer-vision demo. Its three
+synthetic aerial photographs are bundled with the public frontend and arrive
+with boxes, polygons, a polyline, a keypoint, and localized classes ready to
+edit or export. No example dataset is processed or stored by a backend.
+
 The YOLO export is a complete dataset archive: it includes paired images and
 labels, a deterministic training/validation split, `classes.txt`, and
 `data.yaml`. With a single image, the training image is also used as validation.

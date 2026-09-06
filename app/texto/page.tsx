@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
-
-// Kept for the same reason as /anotar: the old Portuguese path stays reachable.
 export default function TextoRedirect() {
-  redirect("/text");
+  return <main style={{ fontFamily: "sans-serif", padding: "2rem" }}>
+    <meta httpEquiv="refresh" content="0;url=/text" />
+    <link rel="canonical" href="/text" />
+    <p>Esta rota mudou para <a href="/text">/text</a>.</p>
+  </main>;
 }

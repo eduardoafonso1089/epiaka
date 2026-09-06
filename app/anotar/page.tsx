@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
-
-// The route used to be /anotar, in Portuguese, while the rest of the repository is in
-// English. It is kept as a redirect because the app has been public since 2026-08-13 and
-// the path may already be bookmarked, shared or indexed.
 export default function AnotarRedirect() {
-  redirect("/annotate");
+  return <main style={{ fontFamily: "sans-serif", padding: "2rem" }}>
+    <meta httpEquiv="refresh" content="0;url=/annotate" />
+    <link rel="canonical" href="/annotate" />
+    <p>Esta rota mudou para <a href="/annotate">/annotate</a>.</p>
+  </main>;
 }

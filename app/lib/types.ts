@@ -24,7 +24,12 @@ export type Label = {
  * maps the annotation — drawn in the editor's 1000 × 650 space — back to a pixel of the
  * original file and to a ground coordinate.
  */
+/** X = a*x + b*y + c; Y = d*x + e*y + f, measured at pixel edges. */
+export type RasterTransform = [number, number, number, number, number, number];
+
 export type GeoRef = {
+  /** Full affine transform; optional for backwards compatibility with v2 projects. */
+  transform?: RasterTransform;
   /** Nome ou URL do COG de origem. */
   source: string;
   /** EPSG code of the file, or "sem CRS". */

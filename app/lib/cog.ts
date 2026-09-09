@@ -1,55 +1,26 @@
-// Reading GeoTIFF/COG and generating crops for the annotator.
-//
-// The annotator works on an <img> in a 1000 × 650 space. A gigapixel COG does not fit there
-// for two independent reasons: the browser does not decode TIFF, and the bitmap would not
-// fit in memory. The way out is not to try: the COG is read by tiles only so the user can
-// choose the region, and what enters the annotator is a crop of that region, already PNG and
-// size-limited. With that, every existing tool — including SAM, which sends the whole image
-// as a data URL — keeps working unchanged.
-//
-// The price is keeping the reference: origin, scale and the cropped window. It is what maps
-// the annotation back to a pixel of the original file and to a ground coordinate.
+// Local, bounded TIFF decoding shared by the preview and annotation crops.
+import type { GeoTIFF, GeoTIFFImage, Pool } from 'geotiff';
+import type { GeoRef, RasterTransform } from './types';
+import { geoReference, validateTransform } from './georeference';
+import type { RasterReference } from './georeference';
 
-import type { GeoRef } from "./types";
-
-/** A crop larger than this does not help: the annotator draws in a 1000 × 650 space, and
- *  SAM receives the whole image as a data URL. Beyond that only memory and latency grow. */
 export const RECORTE_LADO_MAX = 4096;
 export const RECORTE_MP_MAX = 12;
-
-/** Stored as a key, not as a label: the wording is translated at render time. */
-export type PerfilCog = "complete" | "tiled-no-overviews" | "striped";
-
+const READ_BUDGET = 128 * 1024 * 1024;
+export type PerfilCog = 'complete' | 'tiled-no-overviews' | 'striped';
+export type JanelaRaster = { x: number; y: number; w: number; h: number };
 export type MetadadosCog = {
-  largura: number;
-  altura: number;
-  bandas: number;
-  crs: string;
-  origemX: number;
-  origemY: number;
-  escalaX: number;
-  escalaY: number;
-  larguraTile: number;
-  alturaTile: number;
-  overviews: number;
-  /** Indices of the IFDs that are real images, from finest to coarsest. */
-  niveis: number[];
-  tiled: boolean;
-  semDado: number | null;
-  perfil: PerfilCog;
+  largura: number; altura: number; bandas: number; crs: string;
+  origemX: number; origemY: number; escalaX: number; escalaY: number;
+  transform?: RasterTransform;
+  larguraTile: number; alturaTile: number; overviews: number; niveis: number[];
+  tiled: boolean; semDado: number | null; perfil: PerfilCog;
 };
-
-/** Only the first 4 bytes. A File gives slice, a URL gives a range request: it is the
- *  cheapest possible check and avoids handing error HTML to the TIFF reader, which hangs
- *  trying to interpret random bytes. */
-export async function primeirosBytes(origem: File | string) {
-  if (typeof origem !== "string") {
-    return new Uint8Array(await origem.slice(0, 4).arrayBuffer());
-  }
-  const resposta = await fetch(origem, { headers: { Range: "bytes=0-3" } });
-  if (!resposta.ok) throw new Error(`O servidor respondeu HTTP ${resposta.status}.`);
-  return new Uint8Array(await resposta.arrayBuffer());
-}
+export type SessaoRaster = MetadadosCog & {
+  tiff: GeoTIFF; pool: Pool; signal: AbortSignal; masks: number[];
+  ranges?: Array<{ min: number; max: number }>;
+  close: () => void;
+};
 
 export function assinaturaTiff(bytes: Uint8Array) {
   if (bytes.length < 4) return null;
@@ -57,259 +28,264 @@ export function assinaturaTiff(bytes: Uint8Array) {
   const big = bytes[0] === 0x4d && bytes[1] === 0x4d;
   if (!little && !big) return null;
   const magic = little ? bytes[2] | (bytes[3] << 8) : (bytes[2] << 8) | bytes[3];
-  return magic === 42 ? "TIFF" : magic === 43 ? "BigTIFF" : null;
+  return magic === 42 ? 'TIFF' : magic === 43 ? 'BigTIFF' : null;
+}
+
+export async function primeirosBytes(origem: File | string, signal?: AbortSignal) {
+  if (typeof origem !== 'string') return new Uint8Array(await origem.slice(0, 4).arrayBuffer());
+  const response = await fetch(origem, { headers: { Range: 'bytes=0-3' }, signal });
+  // Never download an entire orthomosaic when a server ignores Range.
+  if (response.status !== 206) {
+    await response.body?.cancel();
+    throw new Error('rasterRangeRequired');
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('rasterInvalidTiff');
+  const bytes = new Uint8Array(4);
+  let count = 0;
+  try {
+    while (count < 4) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = value.subarray(0, 4 - count);
+      bytes.set(chunk, count); count += chunk.length;
+    }
+  } finally { await reader.cancel(); }
+  return bytes.subarray(0, count);
 }
 
 export function ehArquivoTiff(nome: string, tipo?: string) {
-  return /\.tiff?$/i.test(nome) || tipo === "image/tiff" || tipo === "image/x-tiff";
+  return /\.(?:tiff?|geotiff?|btf|tf8|btf8)$/i.test(nome) || /image\/(?:x-)?tiff/i.test(tipo ?? '');
 }
 
-type Geotiff = Awaited<ReturnType<typeof abre>>["tiff"];
-type ImagemTiff = Awaited<ReturnType<Geotiff["getImage"]>>;
-
-/** Opens the file and returns the handle along with the metadata both screens need. */
-export async function abre(origem: File | string) {
-  const { fromBlob, fromUrl } = await import("geotiff");
-  const tiff = typeof origem === "string" ? await fromUrl(origem) : await fromBlob(origem);
-  return { tiff, imagem: await tiff.getImage(0) };
+function tag(image: GeoTIFFImage, name: Parameters<GeoTIFFImage["fileDirectory"]["getValue"]>[0]): unknown {
+  return image.getFileDirectory().getValue(name);
+}
+function numbers(value: unknown): number[] {
+  return typeof value === 'number' ? [value] : value && typeof value === 'object' && 'length' in value
+    ? Array.from(value as ArrayLike<number>) : [];
 }
 
-/**
- * A COG holds more IFDs than the pyramid levels: internal masks come in as reduced
- * resolution images, with the same dimensions as an overview. Picking one of them by mistake
- * makes the reader return "Invalid or unsupported photometric interpretation", because a
- * mask is PhotometricInterpretation 4. Bit 4 of NewSubfileType is what identifies them.
- */
-function ehMascara(imagem: ImagemTiff) {
-  const diretorio = (imagem as unknown as {
-    fileDirectory?: { getValue?: (nome: string) => unknown } & Record<string, unknown>;
-  }).fileDirectory;
-  const tipo = typeof diretorio?.getValue === "function"
-    ? diretorio.getValue("NewSubfileType")
-    : diretorio?.NewSubfileType;
-  const valor = Array.isArray(tipo) ? tipo[0] : tipo;
-  return typeof valor === "number" && (valor & 4) === 4;
-}
-
-export async function leMetadados(origem: File | string): Promise<MetadadosCog & { tiff: Geotiff }> {
-  const assinatura = assinaturaTiff(await primeirosBytes(origem));
-  if (!assinatura) throw new Error("Os primeiros bytes não são de um TIFF: esperado II* ou MM*.");
-  const { tiff, imagem } = await abre(origem);
-  const total = await tiff.getImageCount();
-  const niveis: number[] = [];
-  for (let indice = 0; indice < total; indice += 1) {
-    if (!ehMascara(await tiff.getImage(indice))) niveis.push(indice);
+export function referenceFromImage(image: GeoTIFFImage): RasterReference {
+  const keys = image.getGeoKeys();
+  const code = numbers(keys?.ProjectedCSTypeGeoKey ?? keys?.GeographicTypeGeoKey)[0];
+  const crs = code > 0 && code < 32767 ? `EPSG:${code}` : undefined;
+  const matrix = numbers(tag(image, 'ModelTransformation'));
+  const scale = numbers(tag(image, 'ModelPixelScale'));
+  const tie = numbers(tag(image, 'ModelTiepoint'));
+  let transform: RasterTransform | undefined;
+  if (matrix.length === 16) transform = validateTransform([matrix[0], matrix[1], matrix[3], matrix[4], matrix[5], matrix[7]]);
+  else if (scale.length >= 2 && tie.length >= 6) {
+    transform = validateTransform([scale[0], 0, tie[3] - tie[0] * scale[0], 0, -scale[1], tie[4] + tie[1] * scale[1]]);
   }
-  // In a striped TIFF geotiff.js returns the image width as the "tile", so getTileWidth()
-  // does not distinguish tiled from striped. The isTiled flag is false when the file has
-  // StripOffsets instead of TileWidth.
-  const tiled = Boolean((imagem as unknown as { isTiled?: boolean }).isTiled);
-  const [escalaX, escalaY] = imagem.getResolution() as number[];
-  const origemModelo = imagem.getOrigin() as number[];
-  return {
-    tiff,
-    largura: imagem.getWidth(),
-    altura: imagem.getHeight(),
-    bandas: imagem.getSamplesPerPixel(),
-    crs: codigoCrs(imagem),
-    origemX: origemModelo[0],
-    origemY: origemModelo[1],
-    escalaX: Math.abs(escalaX),
-    escalaY: Math.abs(escalaY),
-    larguraTile: imagem.getTileWidth(),
-    alturaTile: imagem.getTileHeight(),
-    overviews: Math.max(0, niveis.length - 1),
-    niveis,
-    tiled,
-    semDado: imagem.getGDALNoData(),
-    perfil: tiled && niveis.length > 1 ? "complete" : tiled ? "tiled-no-overviews" : "striped",
-  };
-}
-
-function codigoCrs(imagem: ImagemTiff) {
-  // geotiff.js 3.x exposes the GeoKeys through getGeoKeys(); in the 2.x versions they were
-  // a `geoKeys` property of the object. Both forms are accepted.
-  const alvo = imagem as unknown as {
-    getGeoKeys?: () => Record<string, unknown> | null;
-    geoKeys?: Record<string, unknown>;
-  };
-  const chaves = (typeof alvo.getGeoKeys === "function" ? alvo.getGeoKeys() : null) ?? alvo.geoKeys;
-  const bruto = chaves?.ProjectedCSTypeGeoKey ?? chaves?.GeographicTypeGeoKey;
-  // Some tags arrive as a single-element array.
-  const codigo = Array.isArray(bruto) ? bruto[0] : bruto;
-  return typeof codigo === "number" && codigo > 0 && codigo < 32767 ? `EPSG:${codigo}` : "sem CRS";
-}
-
-/**
- * Decides the crop size. The requested window can have tens of thousands of pixels; the
- * result is capped per side and per megapixel, preserving the proportion. It never scales
- * up: cropping 300 px does not produce a 4096 image.
- */
-export function dimensionaRecorte(janelaLargura: number, janelaAltura: number) {
-  const porLado = Math.min(1, RECORTE_LADO_MAX / Math.max(janelaLargura, janelaAltura));
-  const porArea = Math.min(1, Math.sqrt(RECORTE_MP_MAX * 1e6 / (janelaLargura * janelaAltura)));
-  const fator = Math.min(1, porLado, porArea);
-  return {
-    largura: Math.max(1, Math.round(janelaLargura * fator)),
-    altura: Math.max(1, Math.round(janelaAltura * fator)),
-    // How many pixels of the file fit in 1 px of the crop. 1 means native resolution.
-    reducao: fator ? 1 / fator : 1,
-  };
-}
-
-/**
- * Picks the coarsest pyramid level that still does not force upscaling. Reading the full
- * resolution only to downscale in software would transfer the whole file; that is exactly
- * what overviews exist to avoid.
- */
-async function nivelPara(tiff: Geotiff, niveis: number[], larguraTotal: number, reducao: number) {
-  let escolhido = niveis[0] ?? 0;
-  let fatorEscolhido = 1;
-  for (const indice of niveis) {
-    const imagem = await tiff.getImage(indice);
-    const fator = larguraTotal / imagem.getWidth();
-    if (fator <= reducao + 1e-6 && fator > fatorEscolhido) {
-      escolhido = indice;
-      fatorEscolhido = fator;
-    }
+  // RasterPixelIsPoint tie points are pixel centres, not pixel edges (GeoTIFF 1.1).
+  if (transform && numbers(keys?.GTRasterTypeGeoKey)[0] === 2) {
+    transform[2] -= (transform[0] + transform[1]) / 2;
+    transform[5] -= (transform[3] + transform[4]) / 2;
   }
-  return { imagem: await tiff.getImage(escolhido), fator: fatorEscolhido, indice: escolhido };
+  return { crs, transform };
 }
 
-/** Ramp for single-band images, the same as the viewer's — the crop has to come out looking
- *  like the preview, otherwise the user annotates one thing and sees another. */
-function rampa(valor: number, min: number, max: number) {
-  const t = max > min ? Math.min(1, Math.max(0, (valor - min) / (max - min))) : 0;
-  const paradas: Array<[number, number, number]> = [[16, 22, 19], [104, 148, 124], [242, 246, 243]];
-  const pos = t * (paradas.length - 1);
-  const i = Math.min(paradas.length - 2, Math.floor(pos));
-  const f = pos - i;
-  return [
-    paradas[i][0] + (paradas[i + 1][0] - paradas[i][0]) * f,
-    paradas[i][1] + (paradas[i + 1][1] - paradas[i][1]) * f,
-    paradas[i][2] + (paradas[i + 1][2] - paradas[i][2]) * f,
-  ];
-}
-
-export type Recorte = {
-  blob: Blob;
-  largura: number;
-  altura: number;
-  geo: GeoRef;
-};
-
-/**
- * Reads the requested window and returns a PNG ready to become an annotator asset, along
- * with the reference that ties each pixel of the crop back to the file and to the ground.
- *
- * `janela` is in pixels of the original file, with y growing downwards.
- */
-export async function geraRecorte(
-  origem: File | string,
-  nomeOrigem: string,
-  janela: { x: number; y: number; w: number; h: number },
-  faixaBanda?: { min: number; max: number } | null,
-): Promise<Recorte> {
-  const meta = await leMetadados(origem);
-  const { tiff } = meta;
-
-  // Clips against the file bounds: dragging the view outside the image is common, and
-  // asking for a nonexistent pixel makes geotiff.js return garbage instead of an error.
-  const x0 = Math.max(0, Math.floor(janela.x));
-  const y0 = Math.max(0, Math.floor(janela.y));
-  const x1 = Math.min(meta.largura, Math.ceil(janela.x + janela.w));
-  const y1 = Math.min(meta.altura, Math.ceil(janela.y + janela.h));
-  if (x1 <= x0 || y1 <= y0) throw new Error("A área escolhida está fora da imagem.");
-
-  const larguraJanela = x1 - x0;
-  const alturaJanela = y1 - y0;
-  const alvo = dimensionaRecorte(larguraJanela, alturaJanela);
-  const nivel = await nivelPara(tiff, meta.niveis, meta.largura, alvo.reducao);
-
-  // The window has to go to the scale of the chosen level before reading.
-  const janelaNivel = [
-    Math.floor(x0 / nivel.fator), Math.floor(y0 / nivel.fator),
-    Math.ceil(x1 / nivel.fator), Math.ceil(y1 / nivel.fator),
-  ] as [number, number, number, number];
-
-  const opcoes = {
-    window: janelaNivel,
-    width: alvo.largura,
-    height: alvo.altura,
-    resampleMethod: "bilinear" as const,
-  };
-
-  const pixels = new Uint8ClampedArray(alvo.largura * alvo.altura * 4);
-  if (meta.bandas >= 3) {
-    // readRGB resolves photometric on its own — including YCbCr, the dominant format in
-    // drone orthophotos, which readRasters would hand back with raw Y, Cb and Cr in the three
-    // channels. `interleave` defaults to false in readRGB, and without it the return is three
-    // separate arrays instead of one — the loop below would read undefined and the crop would
-    // come out black.
-    const dados = await nivel.imagem.readRGB({
-      ...opcoes, interleave: true, enableAlpha: false,
-    }) as unknown as ArrayLike<number>;
-    for (let i = 0, p = 0; p < pixels.length; i += 3, p += 4) {
-      pixels[p] = dados[i];
-      pixels[p + 1] = dados[i + 1];
-      pixels[p + 2] = dados[i + 2];
-      pixels[p + 3] = 255;
+export async function leMetadados(origem: File | string, reference: RasterReference = {}, signal?: AbortSignal): Promise<SessaoRaster> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  let tiff: GeoTIFF | undefined;
+  let pool: Pool | undefined;
+  const close = () => { controller.abort(); signal?.removeEventListener('abort', abort); pool?.destroy(); void tiff?.close(); };
+  try {
+    if (!assinaturaTiff(await primeirosBytes(origem, controller.signal))) throw new Error('rasterInvalidTiff');
+    const library = await import('geotiff');
+    tiff = typeof origem === 'string'
+      ? await library.fromUrl(origem, { allowFullFile: false, cacheSize: 64 }, controller.signal)
+      : await library.fromBlob(origem, controller.signal);
+    const image = await tiff.getImage(0);
+    const largura = image.getWidth(), altura = image.getHeight();
+    const bands = image.getSamplesPerPixel();
+    if (!(largura > 0 && altura > 0 && bands > 0)) throw new Error('rasterInvalidTiff');
+    const niveis = [0], masks: number[] = [];
+    for (let i = 1, total = await tiff.getImageCount(); i < total; i++) {
+      const level = await tiff.getImage(i);
+      const flags = numbers(tag(level, 'NewSubfileType'))[0] ?? 0;
+      if (flags & 4) masks.push(i);
+      // Only reduced-resolution images, never masks or unrelated multipage TIFF pages.
+      if ((flags & 1) && !(flags & 4) && level.getSamplesPerPixel() === bands &&
+          level.getWidth() < largura && level.getHeight() <= altura &&
+          Math.abs(level.getWidth() / largura - level.getHeight() / altura) <= 1 / Math.min(largura, altura)) niveis.push(i);
     }
-  } else {
-    const rasters = await nivel.imagem.readRasters(opcoes) as unknown as Array<ArrayLike<number>>;
-    const banda = rasters[0];
-    const faixa = faixaBanda ?? medeFaixa(banda, meta.semDado);
-    for (let i = 0, p = 0; i < banda.length; i += 1, p += 4) {
-      const valor = banda[i];
-      if (!Number.isFinite(valor) || valor === meta.semDado) {
-        pixels[p + 3] = 0;
-        continue;
+    const embedded = referenceFromImage(image);
+    const ref = { transform: embedded.transform ?? reference.transform, crs: embedded.crs ?? reference.crs };
+    const geo = geoReference(typeof origem === 'string' ? origem : origem.name, largura, altura, ref);
+    const tiled = image.isTiled;
+    pool = new library.Pool(typeof Worker === 'undefined' ? 0 : Math.min(2, navigator.hardwareConcurrency || 2));
+    return { tiff, pool, masks, signal: controller.signal, close,
+      largura, altura, bandas: bands, crs: geo?.crs ?? ref.crs ?? 'sem CRS', transform: geo?.transform,
+      origemX: geo?.originX ?? 0, origemY: geo?.originY ?? 0, escalaX: geo?.scaleX ?? 1, escalaY: geo?.scaleY ?? 1,
+      larguraTile: image.getTileWidth(), alturaTile: image.getTileHeight(), niveis, overviews: niveis.length - 1,
+      tiled, semDado: image.getGDALNoData(), perfil: tiled ? (niveis.length > 1 ? 'complete' : 'tiled-no-overviews') : 'striped',
+    };
+  } catch (error) { close(); throw error; }
+}
+
+export function dimensionaRecorte(w: number, h: number) {
+  if (![w, h].every(v => Number.isFinite(v) && v > 0)) throw new Error('rasterInvalidWindow');
+  const factor = Math.min(1, RECORTE_LADO_MAX / Math.max(w, h), Math.sqrt(RECORTE_MP_MAX * 1e6 / (w * h)));
+  return { largura: Math.max(1, Math.floor(w * factor)), altura: Math.max(1, Math.floor(h * factor)), reducao: 1 / factor };
+}
+
+export function clipWindow(j: JanelaRaster, width: number, height: number): JanelaRaster {
+  if (![j.x, j.y, j.w, j.h].every(Number.isFinite) || j.w <= 0 || j.h <= 0) throw new Error('rasterInvalidWindow');
+  const x = Math.max(0, Math.floor(j.x)), y = Math.max(0, Math.floor(j.y));
+  const right = Math.min(width, Math.ceil(j.x + j.w)), bottom = Math.min(height, Math.ceil(j.y + j.h));
+  if (right <= x || bottom <= y) throw new Error('rasterInvalidWindow');
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+export async function nivelPara(meta: SessaoRaster, reductionX: number, reductionY: number) {
+  let image = await meta.tiff.getImage(0), sx = 1, sy = 1;
+  for (const i of meta.niveis) {
+    const candidate = await meta.tiff.getImage(i);
+    const x = meta.largura / candidate.getWidth(), y = meta.altura / candidate.getHeight();
+    if (x <= reductionX && y <= reductionY && x >= sx && y >= sy) { image = candidate; sx = x; sy = y; }
+  }
+  return { image, sx, sy };
+}
+
+export function checkReadBudget(image: GeoTIFFImage, window: number[]) {
+  const tw = image.getTileWidth(), th = image.getTileHeight();
+  const blockPixels = (Math.ceil(window[2] / tw) - Math.floor(window[0] / tw)) * tw *
+    (Math.ceil(window[3] / th) - Math.floor(window[1] / th)) * th;
+  const windowPixels = (window[2] - window[0]) * (window[3] - window[1]);
+  const bytes = image.getBytesPerPixel();
+  if ((blockPixels + windowPixels) * bytes > READ_BUDGET) throw new Error('rasterReadTooLarge');
+}
+
+export function medeFaixa(values: ArrayLike<number>, nodata: number | null) {
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (Number.isFinite(v) && v !== nodata) { min = Math.min(min, v); max = Math.max(max, v); }
+  }
+  return Number.isFinite(min) ? { min, max: max > min ? max : min + 1 } : { min: 0, max: 255 };
+}
+
+/** Bounded radiometric sample; stable colour scaling for both preview and crops. */
+export async function prepareDisplay(meta: SessaoRaster) {
+  const { image } = await nivelPara(meta, Infinity, Infinity);
+  const bits = numbers(tag(image, 'BitsPerSample'));
+  const count = Math.min(3, meta.bandas);
+  if (bits.length && bits.every(b => b <= 8)) { meta.ranges = Array.from({ length: count }, (_, i) => ({ min: 0, max: 2 ** (bits[i] ?? bits[0]) - 1 })); return; }
+  const w = Math.min(256, image.getWidth()), h = Math.min(256, image.getHeight());
+  const x = Math.floor((image.getWidth() - w) / 2), y = Math.floor((image.getHeight() - h) / 2);
+  const window = [x, y, x + w, y + h];
+  checkReadBudget(image, window);
+  const data = await image.readRasters({ window, samples: Array.from({ length: count }, (_, i) => i), pool: meta.pool, signal: meta.signal });
+  meta.ranges = Array.from({ length: count }, (_, i) => medeFaixa(data[i], meta.semDado));
+}
+
+/** Nearest-neighbour sampling at exact source pixel centres avoids overview-edge shifts
+ * and blending NoData into valid pixels. Decode only the selected bands/window. */
+export async function readRgba(meta: SessaoRaster, j: JanelaRaster, width: number, height: number, signal = meta.signal) {
+  signal.throwIfAborted();
+  if (![width, height].every(v => Number.isInteger(v) && v > 0 && v <= RECORTE_LADO_MAX) || width * height > RECORTE_MP_MAX * 1e6 ||
+      ![j.x, j.y, j.w, j.h].every(Number.isFinite) || j.w <= 0 || j.h <= 0) throw new Error('rasterInvalidWindow');
+  const { image, sx, sy } = await nivelPara(meta, j.w / width, j.h / height);
+  const window = [Math.max(0, Math.floor(j.x / sx)), Math.max(0, Math.floor(j.y / sy)),
+    Math.min(image.getWidth(), Math.ceil((j.x + j.w) / sx)), Math.min(image.getHeight(), Math.ceil((j.y + j.h) / sy))];
+  const output = new Uint8ClampedArray(width * height * 4);
+  if (window[2] <= window[0] || window[3] <= window[1]) return output;
+  checkReadBudget(image, window);
+  const photo = numbers(tag(image, 'PhotometricInterpretation'))[0];
+  const converted = [3, 5, 6, 8, 9, 10].includes(photo);
+  const extras = numbers(tag(image, 'ExtraSamples'));
+  const colorBands = photo === 2 ? 3 : 1;
+  const alphaIndex = extras.findIndex(v => v === 1 || v === 2);
+  const alpha = alphaIndex < 0 ? -1 : image.getSamplesPerPixel() - extras.length + alphaIndex;
+  const samples = Array.from({ length: Math.min(colorBands, meta.bandas) }, (_, i) => i);
+  if (alpha >= 0 && !samples.includes(alpha)) samples.push(alpha);
+  const options = { window, pool: meta.pool, signal, interleave: true as const };
+  const data = converted ? await image.readRGB(options) : await image.readRasters({ ...options, samples });
+  const stride = converted ? 3 : samples.length;
+  // Converted colour spaces still need their original alpha/NoData samples.
+  const raw = converted && (alpha >= 0 || meta.semDado !== null)
+    ? await image.readRasters({ ...options, samples: Array.from({ length: image.getSamplesPerPixel() }, (_, i) => i) }) : null;
+  let mask: { values: ArrayLike<number>; window: number[]; sx: number; sy: number } | undefined;
+  let maskImage: GeoTIFFImage | undefined;
+  for (const index of meta.masks) {
+    const candidate = await meta.tiff.getImage(index);
+    const mx = meta.largura / candidate.getWidth(), my = meta.altura / candidate.getHeight();
+    if (mx <= j.w / width && my <= j.h / height && (!maskImage || candidate.getWidth() < maskImage.getWidth())) maskImage = candidate;
+  }
+  if (maskImage) {
+    const mx = meta.largura / maskImage.getWidth(), my = meta.altura / maskImage.getHeight();
+    const mw = [Math.max(0, Math.floor(j.x / mx)), Math.max(0, Math.floor(j.y / my)),
+      Math.min(maskImage.getWidth(), Math.ceil((j.x + j.w) / mx)), Math.min(maskImage.getHeight(), Math.ceil((j.y + j.h) / my))];
+    checkReadBudget(maskImage, mw);
+    mask = { values: await maskImage.readRasters({ ...options, window: mw, samples: [0] }), window: mw, sx: mx, sy: my };
+  }
+  const bits = numbers(tag(image, 'BitsPerSample'));
+  const rw = window[2] - window[0];
+  const n = converted || photo === 2 ? 3 : 1;
+  const display = Array.from({ length: 3 }, (_, b) => {
+    const channel = n === 1 ? 0 : b;
+    const range = converted ? { min: 0, max: 255 } : meta.ranges?.[channel] ?? { min: 0, max: 255 };
+    return { channel, min: range.min, factor: 255 / (range.max - range.min) };
+  });
+  for (let y = 0; y < height; y++) {
+    if (y > 0 && y % 128 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); signal.throwIfAborted(); }
+    const sourceY = j.y + (y + 0.5) * j.h / height;
+    for (let x = 0; x < width; x++) {
+      const sourceX = j.x + (x + 0.5) * j.w / width;
+      if (sourceX < 0 || sourceY < 0 || sourceX >= meta.largura || sourceY >= meta.altura) continue;
+      const ix = Math.min(window[2] - 1, Math.max(window[0], Math.floor(sourceX / sx))) - window[0];
+      const iy = Math.min(window[3] - 1, Math.max(window[1], Math.floor(sourceY / sy))) - window[1];
+      const offset = (iy * rw + ix) * stride, p = (y * width + x) * 4;
+      if (mask) {
+        const mx = Math.min(mask.window[2] - 1, Math.max(mask.window[0], Math.floor(sourceX / mask.sx))) - mask.window[0];
+        const my = Math.min(mask.window[3] - 1, Math.max(mask.window[1], Math.floor(sourceY / mask.sy))) - mask.window[1];
+        if (!mask.values[my * (mask.window[2] - mask.window[0]) + mx]) continue;
       }
-      const [r, g, b] = rampa(valor, faixa.min, faixa.max);
-      pixels[p] = r;
-      pixels[p + 1] = g;
-      pixels[p + 2] = b;
-      pixels[p + 3] = 255;
+      const rawOffset = (iy * rw + ix) * image.getSamplesPerPixel();
+      if (raw && meta.semDado !== null) {
+        const rawColors = photo === 3 ? 1 : photo === 5 ? 4 : 3;
+        let missing = true;
+        for (let b = 0; b < rawColors; b++) missing &&= raw[rawOffset + b] === meta.semDado;
+        if (missing) continue;
+      }
+      let valid = true, noData = !converted && meta.semDado !== null;
+      for (let b = 0; b < n; b++) { valid &&= Number.isFinite(data[offset + b]); noData &&= data[offset + b] === meta.semDado; }
+      if (!valid || noData) continue;
+      for (let b = 0; b < 3; b++) {
+        const { channel, min, factor } = display[b];
+        const v = (data[offset + channel] - min) * factor;
+        output[p + b] = photo === 0 ? 255 - v : v;
+      }
+      output[p + 3] = !converted && alpha >= 0 ? 255 * data[offset + samples.indexOf(alpha)] / (2 ** (bits[alpha] ?? bits[0] ?? 8) - 1) : 255;
+      if (raw && alpha >= 0) output[p + 3] = 255 * raw[rawOffset + alpha] / (2 ** (bits[alpha] ?? bits[0] ?? 8) - 1);
+      if (!converted && alpha >= 0 && extras[alphaIndex] === 1 && output[p + 3] > 0) {
+        for (let b = 0; b < 3; b++) output[p + b] = output[p + b] * 255 / output[p + 3];
+      }
     }
   }
-
-  const tela = document.createElement("canvas");
-  tela.width = alvo.largura;
-  tela.height = alvo.altura;
-  const contexto = tela.getContext("2d");
-  if (!contexto) throw new Error("O navegador não forneceu um contexto de canvas 2D.");
-  contexto.putImageData(new ImageData(pixels, alvo.largura, alvo.altura), 0, 0);
-  const blob = await new Promise<Blob | null>((resolve) => tela.toBlob(resolve, "image/png"));
-  if (!blob) throw new Error("Não foi possível gerar o PNG do recorte.");
-
-  return {
-    blob,
-    largura: alvo.largura,
-    altura: alvo.altura,
-    geo: {
-      source: nomeOrigem,
-      crs: meta.crs,
-      originX: meta.origemX,
-      originY: meta.origemY,
-      scaleX: meta.escalaX,
-      scaleY: meta.escalaY,
-      sourceWidth: meta.largura,
-      sourceHeight: meta.altura,
-      window: { x: x0, y: y0, w: larguraJanela, h: alturaJanela },
-      cropWidth: alvo.largura,
-      cropHeight: alvo.altura,
-    },
-  };
+  signal.throwIfAborted();
+  return output;
 }
 
-export function medeFaixa(valores: ArrayLike<number>, semDado: number | null) {
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = 0; i < valores.length; i += 1) {
-    const valor = valores[i];
-    if (!Number.isFinite(valor) || valor === semDado) continue;
-    if (valor < min) min = valor;
-    if (valor > max) max = valor;
-  }
-  return Number.isFinite(min) && max > min ? { min, max } : { min: 0, max: 255 };
+export type Recorte = { blob: Blob; largura: number; altura: number; geo?: GeoRef; window: JanelaRaster };
+
+export async function geraRecorte(meta: SessaoRaster, nome: string, janela: JanelaRaster): Promise<Recorte> {
+  const window = clipWindow(janela, meta.largura, meta.altura);
+  const size = dimensionaRecorte(window.w, window.h);
+  const pixels = await readRgba(meta, window, size.largura, size.altura);
+  const canvas = document.createElement('canvas');
+  canvas.width = size.largura; canvas.height = size.altura;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('rasterCanvasFailed');
+  context.putImageData(new ImageData(pixels, size.largura, size.altura), 0, 0);
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('rasterCanvasFailed');
+  const geo = geoReference(nome, meta.largura, meta.altura, meta);
+  return { blob, largura: size.largura, altura: size.altura, window,
+    geo: geo ? { ...geo, window, cropWidth: size.largura, cropHeight: size.altura } : undefined };
 }

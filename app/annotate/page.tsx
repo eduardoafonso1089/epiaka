@@ -22,6 +22,8 @@ import { requestSamMask } from "../lib/sam";
 import { createDemoProject } from "../lib/demo";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
+import { geoReference, isRasterSidecar, readRasterSidecars } from "../lib/georeference";
+import type { RasterReference } from "../lib/georeference";
 import type { Recorte } from "../lib/cog";
 import type { Copy as TranslationCopy, Language, ThemeMode } from "../lib/i18n";
 import type { Annotation, Asset, Label, SamPrompt, Tool } from "../lib/types";
@@ -296,7 +298,7 @@ export default function Home() {
   const [newLabelColor, setNewLabelColor] = useState(colors[0]);
   // A GeoTIFF does not become an asset directly: each file goes through the crop step
   // before entering the list. The queue exists because the user can drop several at once.
-  const [cogFila, setCogFila] = useState<File[]>([]);
+  const [cogFila, setCogFila] = useState<Array<{ file: File; reference: RasterReference }>>([]);
   const [batchLabel, setBatchLabel] = useState(UNLABELED_ID);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
@@ -1338,18 +1340,24 @@ export default function Home() {
     setSelected(created[0].id); setMultiSelected(created.map((item) => item.id)); showToast(copy.toastMerged);
   }
 
-  function files(list: FileList | null) {
+  async function files(list: FileList | null) {
     const uploadId = makeId("upload");
     const todos = Array.from(list ?? []);
-    // The browser does not decode TIFF, so these go to the crop queue instead of becoming
-    // an asset. The type of a .tif varies between systems, hence also checking by name.
-    const geotiffs = todos.filter((file) => ehArquivoTiff(file.name, file.type));
+    const references = new Map<File, RasterReference>();
+    const supported = todos.filter(file => ehArquivoTiff(file.name, file.type) ||
+      /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(file.name) || file.type.startsWith("image/"));
+    const valid: File[] = [];
+    for (const file of supported) {
+      try { references.set(file, await readRasterSidecars(file, todos)); valid.push(file); }
+      catch { showToast(`${file.name}: ${copy.rasterInvalidReference}`); }
+    }
+    if (todos.some(file => !supported.includes(file) && !isRasterSidecar(file.name))) showToast(copy.rasterUnsupported);
+    const geotiffs = valid.filter(file => ehArquivoTiff(file.name, file.type));
     if (geotiffs.length) {
-      setCogFila((atual) => [...atual, ...geotiffs]);
+      setCogFila(atual => [...atual, ...geotiffs.map(file => ({ file, reference: references.get(file)! }))]);
       setLeftOpen(false);
     }
-    const imageFiles = todos.filter((file) =>
-      file.type.startsWith("image/") && !ehArquivoTiff(file.name, file.type));
+    const imageFiles = valid.filter(file => !ehArquivoTiff(file.name, file.type));
     if (!imageFiles.length) return;
     const missingByName = new Map<string, Asset[]>();
     assets.filter((item) => item.missing).forEach((item) => {
@@ -1358,6 +1366,7 @@ export default function Home() {
     });
     const replacements = new Map<string, Asset>();
     const incoming: Asset[] = [];
+    const referenceById = new Map<string, RasterReference>();
     imageFiles.forEach((file, index) => {
       const src = URL.createObjectURL(file);
       projectObjectUrlsRef.current.push(src);
@@ -1365,17 +1374,21 @@ export default function Home() {
       const target = candidates.shift();
       if (target) replacements.set(target.id, { ...target, src, local: true, missing: false, byteSize: file.size });
       else incoming.push({ id: `${uploadId}-${index}`, name: file.name, src, local: true, byteSize: file.size });
+      referenceById.set(target?.id ?? `${uploadId}-${index}`, references.get(file)!);
     });
     setAssets((items) => [...incoming, ...items.map((item) => replacements.get(item.id) ?? item)]);
     // Decodes everything in the background and records the dimensions before the user navigates.
     // That way switching images does not have to wait for the selected file to load.
     const addedAssets = [...incoming, ...replacements.values()];
-    void Promise.all(addedAssets.map(async (item) => ({ id: item.id, dimensions: await readImageDimensions(item.src) }))).then((resolved) => {
-      const dimensionsById = new Map(resolved.filter((item) => item.dimensions).map((item) => [item.id, item.dimensions!]));
+    void Promise.all(addedAssets.map(async (item) => ({ id: item.id, dimensions: await readImageDimensions(item.src), reference: referenceById.get(item.id) }))).then((resolved) => {
+      const dimensionsById = new Map(resolved.filter((item) => item.dimensions).map((item) => [item.id, { ...item.dimensions!, reference: item.reference }]));
       if (!dimensionsById.size) return;
       setAssets((items) => items.map((item) => {
         const dimensions = dimensionsById.get(item.id);
-        return dimensions ? { ...item, ...dimensions } : item;
+        if (!dimensions) return item;
+        const { reference, ...size } = dimensions;
+        const geo = reference?.transform ? geoReference(item.name, size.width, size.height, reference) : item.geo;
+        return { ...item, ...size, geo };
       }));
     });
     const nextCurrent = replacements.values().next().value?.id ?? incoming[0]?.id;
@@ -1639,7 +1652,7 @@ export default function Home() {
     projectObjectUrlsRef.current.push(src);
     const base = nomeOrigem.split(/[\\/]/).pop() ?? nomeOrigem;
     const semExtensao = base.replace(/\.[^.]+$/, "");
-    const janela = recorte.geo.window;
+    const janela = recorte.window;
     const asset: Asset = {
       id: makeId("cog"),
       name: `${semExtensao}-${Math.round(janela.x)}-${Math.round(janela.y)}.png`,
@@ -1899,7 +1912,7 @@ export default function Home() {
       setProjectOpen(false);
       showToast(kind === "yolo" ? copy.toastExportYolo
         : kind === "geojson" ? copy.toastExportGeoJson : copy.toastExportFile);
-    } catch { showToast(copy.toastExportFailed); }
+    } catch (error) { const key = error instanceof Error ? error.message : ""; showToast(copy[key as keyof TranslationCopy] ?? copy.toastExportFailed); }
     finally { setExporting(false); }
   }
 
@@ -2050,9 +2063,10 @@ export default function Home() {
         <button type="button" className="panel-resizer panel-resizer-left" aria-label={copy.resizeImagesPanel} title={copy.resizeImagesPanel} onPointerDown={(event) => beginPanelResize(event, "left")} onPointerMove={movePanelResize} onPointerUp={finishPanelResize} onPointerCancel={finishPanelResize} onKeyDown={(event) => resizePanelWithKeyboard(event, "left")} />
         <div className="aside-title"><span>{copy.images} <b>{assets.length}</b></span><div><button title={copy.importImages} aria-label={copy.importImages} onClick={() => input.current?.click()}><Plus size={16} /></button><button title="Selecionar todas as imagens" aria-label="Selecionar todas as imagens" disabled={!assets.length} onClick={() => { const ids = assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item) => item.id); setSelectedAssetIds((items) => ids.every((id) => items.includes(id)) ? items.filter((id) => !ids.includes(id)) : Array.from(new Set([...items, ...ids]))); }}><Check size={16} /></button><button title="Carregar anotações COCO ou landmarks" aria-label="Carregar anotações COCO ou landmarks" disabled={!assets.length} onClick={() => cocoInputRef.current?.click()}><FileText size={16} /></button><button title="Excluir imagens selecionadas" aria-label="Excluir imagens selecionadas" disabled={!asset && !selectedAssetIds.length} onClick={deleteSelectedImages}><Trash2 size={16} /></button></div></div>
         <button className="panel-collapse panel-collapse-left" title={copy.hideImagesPanel} aria-label={copy.hideImagesPanel} onClick={() => { setLeftPanelCollapsed(true); setLeftOpen(false); }}><PanelLeftClose size={16} /></button>
-        <input hidden ref={input} type="file" accept="image/*,.tif,.tiff" multiple onChange={(event) => files(event.target.files)} />
+        <input hidden ref={input} type="file" accept="image/*,.tif,.tiff,.geotif,.geotiff,.btf,.tf8,.btf8,.tfw,.tifw,.jgw,.jpgw,.jpegw,.pgw,.pngw,.bpw,.bmpw,.gfw,.gifw,.wld,.prj,.aux.xml" multiple onChange={(event) => { const selected = event.currentTarget.files; void files(selected); event.currentTarget.value = ""; }} />
         <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importAnnotationFiles(annotationFiles); }} />
-        <button className="import" onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
+        <button className="import" title={copy.rasterImportHint} onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
+        <small style={{ display: "block", padding: "0 12px 8px", opacity: 0.7 }}>{copy.rasterImportHint}</small>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>
         <div className="asset-list">{assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item, index) => {
@@ -2167,9 +2181,10 @@ export default function Home() {
     </div>
 
     {cogFila.length > 0 && <CogRecorte
-      key={`${cogFila[0].name}-${cogFila[0].size}-${cogFila.length}`}
-      origem={cogFila[0]}
-      nome={cogFila[0].name}
+      key={`${cogFila[0].file.name}-${cogFila[0].file.size}-${cogFila.length}`}
+      origem={cogFila[0].file}
+      reference={cogFila[0].reference}
+      nome={cogFila[0].file.name}
       copy={copy}
       onCancelar={() => setCogFila((atual) => atual.slice(1))}
       onPronto={recorteVirouAsset}

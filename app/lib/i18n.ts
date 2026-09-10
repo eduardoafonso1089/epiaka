@@ -6,6 +6,12 @@ export type ThemeMode = "system" | "light" | "dark";
 export const SOURCE_URL = "https://github.com/eduardoafonso1089/poligome";
 
 const pt = {
+    finishDrawing: "Concluir",
+    multipleSelection: "Selecionar várias",
+    touchDraw: "Toque para marcar pontos · dois dedos para mover e ampliar",
+    touchEdit: "Arraste a forma ou os vértices · dois dedos para mover e ampliar",
+    touchTrace: "Arraste para desenhar e solte para concluir · dois dedos para navegar",
+
     rasterInvalidReference: "Georreferenciamento inválido. Confira os arquivos auxiliares e selecione-os junto com a imagem.",
     rasterRangeRequired: "O servidor precisa permitir requisições HTTP Range e CORS para ler este raster sem baixar o arquivo inteiro.",
     rasterInvalidTiff: "O arquivo não contém um TIFF válido.",
@@ -193,6 +199,12 @@ export type TranslationKey = keyof typeof pt;
 const translations: Record<Language, Record<TranslationKey, string>> = {
   pt,
   en: {
+    finishDrawing: "Finish",
+    multipleSelection: "Select multiple",
+    touchDraw: "Tap to place points · two fingers to pan and zoom",
+    touchEdit: "Drag shapes or vertices · two fingers to pan and zoom",
+    touchTrace: "Drag to draw, release to finish · two fingers to navigate",
+
     rasterInvalidReference: "Invalid georeference. Check the sidecars and select them together with the image.",
     rasterRangeRequired: "The server must support HTTP Range and CORS to read this raster without downloading the entire file.",
     rasterInvalidTiff: "The file does not contain a valid TIFF.",
@@ -375,6 +387,12 @@ fileMenu: "File", renameProject: "Rename project", projectImages: "images", proj
     convUnavailable: "The local converter is not running. Download and run",
   },
   fr: {
+    finishDrawing: "Terminer",
+    multipleSelection: "Sélection multiple",
+    touchDraw: "Touchez pour placer des points · deux doigts pour déplacer et zoomer",
+    touchEdit: "Glissez les formes ou sommets · deux doigts pour déplacer et zoomer",
+    touchTrace: "Glissez pour dessiner, relâchez pour terminer · deux doigts pour naviguer",
+
     rasterInvalidReference: "Géoréférencement invalide. Vérifiez les fichiers associés et sélectionnez-les avec l’image.",
     rasterRangeRequired: "Le serveur doit accepter HTTP Range et CORS pour lire ce raster sans télécharger tout le fichier.",
     rasterInvalidTiff: "Le fichier ne contient pas de TIFF valide.",
@@ -557,6 +575,12 @@ fileMenu: "Fichier", renameProject: "Renommer le projet", projectImages: "images
     convUnavailable: "Le convertisseur local ne tourne pas. Téléchargez et lancez",
   },
   es: {
+    finishDrawing: "Terminar",
+    multipleSelection: "Selección múltiple",
+    touchDraw: "Toque para añadir puntos · dos dedos para mover y ampliar",
+    touchEdit: "Arrastre formas o vértices · dos dedos para mover y ampliar",
+    touchTrace: "Arrastre para dibujar y suelte para terminar · dos dedos para navegar",
+
     rasterInvalidReference: "Georreferenciación no válida. Revise los archivos auxiliares y selecciónelos junto con la imagen.",
     rasterRangeRequired: "El servidor debe admitir HTTP Range y CORS para leer el ráster sin descargar todo el archivo.",
     rasterInvalidTiff: "El archivo no contiene un TIFF válido.",

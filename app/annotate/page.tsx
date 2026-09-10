@@ -20,6 +20,7 @@ import { openPoligomeProject, savePoligomeProject } from "../lib/project";
 import type { ProjectLayout, ProjectSaveMode } from "../lib/project";
 import { requestSamMask } from "../lib/sam";
 import { createDemoProject } from "../lib/demo";
+import { TouchGesture, pinchZoom, touchToolUsesTap, nearestTouchVertex } from "../lib/touch-gestures";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
 import { geoReference, isRasterSidecar, readRasterSidecars } from "../lib/georeference";
@@ -72,7 +73,7 @@ function nextLabelColor(existing: Label[]) {
 }
 
 type AnnotationDrag = { startX: number; startY: number; originals: Annotation[]; started: boolean };
-type VertexDrag = { annotationId: string; vertexIndex: number; linked?: Array<{ annotationId: string; vertexIndex: number }> };
+type VertexDrag = { offset?: { x: number; y: number }; annotationId: string; vertexIndex: number; linked?: Array<{ annotationId: string; vertexIndex: number }> };
 
 function polygonPath(outer: number[] = [], holes: number[][] = []) {
   return [outer, ...holes].filter((ring) => ring.length >= 6).map((ring) => `M ${ring[0]} ${ring[1]} ${ring.slice(2).reduce((path, coordinate, index) => index % 2 === 0 ? `${path} L ${coordinate} ${ring[index + 3]}` : path, "")} Z`).join(" ");
@@ -280,6 +281,13 @@ export default function Home() {
   const [coordinatesGuide, setCoordinatesGuide] = useState(false);
   const [cursorPoint, setCursorPoint] = useState<{ x: number; y: number } | null>(null);
   const [readyImageIds, setReadyImageIds] = useState<string[]>([]);
+  const [touchMode, setTouchMode] = useState(false);
+  const [addToSelection, setAddToSelection] = useState(false);
+  const touchGesture = useRef(new TouchGesture());
+  const touchClosePoint = useRef(false);
+  const touchSnapshot = useRef<{ annotations: Annotation[]; history: Annotation[][]; redo: Annotation[][]; saved: boolean; selected: string | null; multi: string[]; vertex: typeof selectedVertex } | null>(null);
+  const pinchRef = useRef<{ zoom: number; distance: number; anchorX: number; anchorY: number } | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(1000);
   const [zoom, setZoom] = useState(92);
   const [lineThickness, setLineThickness] = useState(() => {
     if (typeof window === "undefined") return 3;
@@ -414,6 +422,7 @@ export default function Home() {
   // the image is magnified. The configured thickness is therefore visual, not in photo pixels.
   // Zooming out, a smooth curve shrinks the controls without making them illegible; zooming in,
   // we compensate so they do not become disproportionately large on screen.
+  const touchRadius = 22 * 1000 / Math.max(1, canvasWidth);
   const handleScale = zoom < 100 ? Math.pow(100 / zoom, 0.6) : 100 / zoom;
   const markerRadius = MARKER_RADIUS * handleScale;
   const visualLineWidth = lineThickness * handleScale;
@@ -458,6 +467,14 @@ export default function Home() {
     const frame = window.requestAnimationFrame(() => setMounted(true));
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const observer = new ResizeObserver(() => setCanvasWidth(svg.getBoundingClientRect().width));
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, [current, mounted, canEditImage]);
 
   // Puts the scroll back as soon as the canvas takes its new size and before painting, so
   // the anchored point stays exactly under the cursor with no intermediate frame.
@@ -551,8 +568,8 @@ export default function Home() {
       const annotation = annotations.find((item) => item.id === selectedVertex.annotationId);
       if (!annotation?.pts?.length) return;
       remember();
-      // Below the minimum the shape stops existing: 2 points on a line, 1 on a polygon.
-      if (annotation.pts.length <= (annotation.type === "line" ? 4 : 2)) {
+      // Removing a point below the minimum deletes the shape instead of storing invalid geometry.
+      if (annotation.pts.length <= (annotation.type === "line" ? 4 : 6)) {
         setAnnotations((items) => items.filter((item) => item.id !== selectedVertex.annotationId));
         setSelected(null); setMultiSelected([]); setSelectedVertex(null);
         showToast(annotation.type === "line" ? copy.toastLineDeleted : copy.toastPolygonDeleted);
@@ -602,7 +619,7 @@ export default function Home() {
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement).tagName === "INPUT") return;
+      if (event.target instanceof HTMLElement && (event.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName))) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redo(); else undo();
@@ -652,7 +669,13 @@ export default function Home() {
     return () => removeEventListener("keydown", keydown);
   }, [canEditImage, deleteSelection, finishLine, finishPolygon, labels, redo, samEndpoint, tool, undo]);
 
+  function changeTool(next: Tool) {
+    clearPointerDrafts();
+    setTool(next);
+  }
+
   function resetDrafts() {
+    clearPointerDrafts();
     setPolygonDraft([]); setLineDraft([]); setFreehandDraft([]); setFreehandDrawing(false); setDraft(null);
     setSplitStart(null); setSplitEnd(null); setReshapeDraft([]); setReshapeDrawing(false);
     annotationDragRef.current = null; setAnnotationDrag(null);
@@ -687,7 +710,7 @@ export default function Home() {
       demoLoadingRef.current = false;
       setDemoLoading(false);
     }
-  }, [copy.demoError, copy.demoReady, language, showToast]);
+  }, [copy.demoError, copy.demoReady, language, showToast, setLeftOpen, setRightOpen]);
 
   useEffect(() => {
     if (routeDemoHandledRef.current || new URLSearchParams(window.location.search).get("demo") !== "1") return;
@@ -804,7 +827,100 @@ export default function Home() {
     showToast(copy.imageCentered);
   }
 
-  function capture(pointerId: number) { svgRef.current?.setPointerCapture(pointerId); }
+  function capture(pointerId: number) {
+    try { svgRef.current?.setPointerCapture(pointerId); } catch { /* Pointer already released. */ }
+  }
+
+  function clearPointerDrafts() {
+    setStart(null); setDraft(null); setPanStart(null);
+    annotationDragRef.current = null; setAnnotationDrag(null);
+    vertexDragRef.current = null; setVertexDrag(null);
+    transformDragRef.current = null; setTransformDrag(null);
+    selectionMarqueeRef.current = null; setSelectionMarquee(null);
+    setFreehandDraft([]); setFreehandDrawing(false);
+    setReshapeDraft([]); setReshapeDrawing(false); setReshapeStartInside(null);
+    reshapeTargetRef.current = null; setSnapGuide(null);
+  }
+
+  function cancelTouchEdit() {
+    const snapshot = touchSnapshot.current;
+    if (snapshot) {
+      setAnnotations(snapshot.annotations); setHistory(snapshot.history); setRedoHistory(snapshot.redo);
+      setSaved(snapshot.saved); setSelected(snapshot.selected); setMultiSelected(snapshot.multi); setSelectedVertex(snapshot.vertex);
+      touchSnapshot.current = null;
+    }
+    clearPointerDrafts();
+  }
+
+  function beginPinch() {
+    const pair = touchGesture.current.pair();
+    const bounds = svgRef.current?.getBoundingClientRect();
+    pinchRef.current = pair && bounds ? {
+      zoom, distance: pair.distance,
+      anchorX: (pair.x - bounds.left) / bounds.width,
+      anchorY: (pair.y - bounds.top) / bounds.height,
+    } : null;
+  }
+
+  function touchPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "touch") { setTouchMode(false); return; }
+    const gesture = touchGesture.current;
+    if (!canEditImage || (!gesture.points.size && !(event.target instanceof Element && svgRef.current?.contains(event.target)))) return;
+    setTouchMode(true);
+    if (!gesture.points.size) {
+      touchSnapshot.current = { annotations, history, redo: redoHistory, saved, selected, multi: multiSelected, vertex: selectedVertex };
+      touchClosePoint.current = event.target instanceof Element && !!event.target.closest(".polygon-close-point");
+    }
+    const navigating = gesture.down(event.pointerId, event.clientX, event.clientY);
+    capture(event.pointerId);
+    if (navigating) { cancelTouchEdit(); beginPinch(); }
+    if (navigating || touchToolUsesTap(tool)) { event.preventDefault(); event.stopPropagation(); }
+  }
+
+  function touchPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const gesture = touchGesture.current;
+    if (event.pointerType !== "touch" || !gesture.points.has(event.pointerId)) return;
+    gesture.move(event.pointerId, event.clientX, event.clientY);
+    if (!gesture.navigating && !touchToolUsesTap(tool)) return;
+    event.preventDefault(); event.stopPropagation();
+    const pair = gesture.pair();
+    const pinch = pinchRef.current;
+    const canvas = svgRef.current;
+    const scroller = scrollRef.current;
+    if (!gesture.navigating || !pair || !pinch || !canvas || !scroller) return;
+    const next = pinchZoom(pinch.zoom, pinch.distance, pair.distance);
+    const anchor = { clientX: pair.x, clientY: pair.y, anchorX: pinch.anchorX, anchorY: pinch.anchorY };
+    if (next === zoom) {
+      const bounds = canvas.getBoundingClientRect();
+      scroller.scrollLeft += bounds.left + anchor.anchorX * bounds.width - anchor.clientX;
+      scroller.scrollTop += bounds.top + anchor.anchorY * bounds.height - anchor.clientY;
+    } else {
+      pendingZoomRef.current = anchor;
+      setZoom(next);
+    }
+  }
+
+  function touchPointerEnd(event: React.PointerEvent<HTMLDivElement>, cancelled = false) {
+    const gesture = touchGesture.current;
+    if (event.pointerType !== "touch" || !gesture.points.has(event.pointerId)) return;
+    gesture.move(event.pointerId, event.clientX, event.clientY);
+    const result = gesture.end(event.pointerId, cancelled);
+    if (cancelled) cancelTouchEdit();
+    if (result.blocked || touchToolUsesTap(tool)) {
+      event.preventDefault(); event.stopPropagation();
+      if (result.tap) {
+        if (touchClosePoint.current && (tool === "polygon" || tool === "ring") && polygonDraft.length >= 6) finishPolygon();
+        else canvasPointerDown(event as unknown as React.PointerEvent<SVGSVGElement>);
+      }
+    } else if (tool === "freehand" || tool === "reshape") {
+      event.preventDefault(); event.stopPropagation();
+      if (tool === "freehand") finishFreehand();
+      else finishReshape(editorPoint(event.clientX, event.clientY));
+    }
+    if (gesture.points.size >= 2) beginPinch();
+    else pinchRef.current = null;
+    if (!gesture.points.size) touchSnapshot.current = null;
+  }
 
   async function runSam(prompts: SamPrompt[]) {
     const requestId = ++samRequestRef.current;
@@ -837,7 +953,7 @@ export default function Home() {
     if (tool === "select") {
       const marquee: SelectionMarquee = {
         startX: point.x, startY: point.y, currentX: point.x, currentY: point.y,
-        additiveIds: event.shiftKey ? [...multiSelected] : [],
+        additiveIds: (event.shiftKey || addToSelection) ? [...multiSelected] : [],
       };
       selectionMarqueeRef.current = marquee; setSelectionMarquee(marquee); setSelectedVertex(null); capture(event.pointerId); return;
     }
@@ -849,8 +965,9 @@ export default function Home() {
       setPolygonDraft((points) => [...points, point.x, point.y]);
     }
     if (tool === "line") setLineDraft((points) => [...points, point.x, point.y]);
-    if (tool === "freehand" && !freehandDrawing) { setFreehandDraft([point.x, point.y]); setFreehandDrawing(true); }
+    if (tool === "freehand" && !freehandDrawing) { capture(event.pointerId); setFreehandDraft([point.x, point.y]); setFreehandDrawing(true); }
     if (tool === "reshape" && activeAnnotation?.type === "polygon") {
+      if (event.pointerType === "touch") capture(event.pointerId);
       if (reshapeDrawing) finishReshape(point);
       else beginReshape(point, activeAnnotation.id);
     }
@@ -880,9 +997,10 @@ export default function Home() {
     }
     const activeVertexDrag = vertexDragRef.current ?? vertexDrag;
     if (activeVertexDrag) {
+      const movedPoint = { x: point.x + (activeVertexDrag.offset?.x ?? 0), y: point.y + (activeVertexDrag.offset?.y ?? 0) };
       const target = snapping
-        ? snapPointToPolygons(point, visibleAnnotations, activeVertexDrag.annotationId)
-        : { ...point, snapped: false };
+        ? snapPointToPolygons(movedPoint, visibleAnnotations, activeVertexDrag.annotationId)
+        : { ...movedPoint, snapped: false };
       setSnapGuide(target.snapped ? { x: target.x, y: target.y } : null);
       const linked = activeVertexDrag.linked ?? [activeVertexDrag];
       setAnnotations((items) => items.map((annotation) => {
@@ -1002,6 +1120,7 @@ export default function Home() {
   function beginAnnotationDrag(event: React.PointerEvent<SVGElement>, annotation: Annotation) {
     if (event.button !== 0) return;
     if (tool === "reshape") {
+      if (event.pointerType === "touch") capture(event.pointerId);
       event.preventDefault(); event.stopPropagation();
       const point = editorPoint(event.clientX, event.clientY);
       if (reshapeDrawing) finishReshape(point);
@@ -1020,13 +1139,13 @@ export default function Home() {
     }
     if (tool !== "select") return;
     event.preventDefault(); event.stopPropagation();
-    if (event.shiftKey) { toggleMultiSelection(annotation.id); return; }
+    if (event.shiftKey || addToSelection) { toggleMultiSelection(annotation.id); return; }
     const point = editorPoint(event.clientX, event.clientY);
     // While editing a selected polygon, a near miss on a small visual node should still
     // adjust that node instead of unexpectedly moving the whole shape.
     if ((annotation.type === "polygon" || annotation.type === "line") && selected === annotation.id && multiSelected.length <= 1) {
       const points = annotation.pts ?? [];
-      const hitRadius = Math.max(MIN_VERTEX_DISTANCE * 1.4, polygonHandleRadius(handleScale) * 2.2);
+      const hitRadius = event.pointerType === "touch" ? touchRadius : Math.max(MIN_VERTEX_DISTANCE * 1.4, polygonHandleRadius(handleScale) * 2.2);
       let closest = -1;
       let closestDistance = Number.POSITIVE_INFINITY;
       for (let index = 0; index < points.length; index += 2) {
@@ -1103,7 +1222,8 @@ export default function Home() {
         const nextPoints = drag.kind === "rotate"
           ? transformPolygon(drag.original.pts ?? [], drag.center, 1, angleDelta)
           : transformPolygon(drag.original.pts ?? [], drag.center, scale, 0);
-        return { ...item, pts: nextPoints };
+        return { ...item, pts: nextPoints, holes: drag.original.holes?.map((hole) =>
+          transformPolygon(hole, drag.center, drag.kind === "rotate" ? 1 : scale, drag.kind === "rotate" ? angleDelta : 0)) };
       }
       if (drag.original.type === "box") {
         if (drag.kind === "rotate") return { ...item, rotation: (drag.original.rotation ?? 0) + angleDelta };
@@ -1134,7 +1254,8 @@ export default function Home() {
     const drag = vertexDragRef.current;
     if (!drag) return;
     event.preventDefault(); event.stopPropagation();
-    const rawPoint = editorPoint(event.clientX, event.clientY);
+    const pointer = editorPoint(event.clientX, event.clientY);
+    const rawPoint = { x: pointer.x + (drag.offset?.x ?? 0), y: pointer.y + (drag.offset?.y ?? 0) };
     const point = snapping
       ? snapPointToPolygons(rawPoint, visibleAnnotations, drag.annotationId)
       : { ...rawPoint, snapped: false };
@@ -1159,6 +1280,13 @@ export default function Home() {
 
   function beginVertexDrag(event: React.PointerEvent<SVGElement>, annotation: Annotation, vertexIndex: number) {
     if (event.button !== 0 || tool !== "select") return;
+    if (addToSelection) { event.preventDefault(); event.stopPropagation(); toggleMultiSelection(annotation.id); return; }
+    if (event.pointerType === "touch") {
+      const point = editorPoint(event.clientX, event.clientY);
+      const bounds = svgRef.current?.getBoundingClientRect();
+      const nearest = bounds ? nearestTouchVertex(annotation.pts ?? [], point.x, point.y, bounds.width, bounds.height) : -1;
+      if (nearest >= 0) vertexIndex = nearest;
+    }
     event.preventDefault(); event.stopPropagation(); remember(); setSelected(annotation.id); setMultiSelected([annotation.id]); setSnapGuide(null);
     const x = annotation.pts?.[vertexIndex * 2] ?? 0;
     const y = annotation.pts?.[vertexIndex * 2 + 1] ?? 0;
@@ -1168,12 +1296,14 @@ export default function Home() {
       ? item.pts.flatMap((coordinate, index) => index % 2 === 0 && Math.hypot(coordinate - x, (item.pts?.[index + 1] ?? 0) - y) <= TOPOLOGY_VERTEX_TOLERANCE
         ? [{ annotationId: item.id, vertexIndex: index / 2 }] : [])
       : []);
-    const drag = { annotationId: annotation.id, vertexIndex, linked };
+    const pointer = editorPoint(event.clientX, event.clientY);
+    const drag: VertexDrag = { annotationId: annotation.id, vertexIndex, linked, offset: event.pointerType === "touch" ? { x: x - pointer.x, y: y - pointer.y } : undefined };
     setSelectedVertex(drag); captureVertexPointer(event, drag);
   }
 
   function insertVertex(event: React.PointerEvent<SVGElement>, annotation: Annotation, edgeIndex: number, x: number, y: number) {
     if (event.button !== 0 || tool !== "select") return;
+    if (addToSelection) { event.preventDefault(); event.stopPropagation(); toggleMultiSelection(annotation.id); return; }
     event.preventDefault(); event.stopPropagation();
     const points = annotation.pts ?? [];
     const nearbyVertex = points.findIndex((coordinate, index) =>
@@ -1187,7 +1317,8 @@ export default function Home() {
     remember();
     const vertexIndex = edgeIndex + 1;
     setAnnotations((items) => items.map((item) => item.id === annotation.id ? { ...item, pts: insertPolygonVertex(points, edgeIndex, x, y) } : item));
-    const drag = { annotationId: annotation.id, vertexIndex };
+    const pointer = editorPoint(event.clientX, event.clientY);
+    const drag: VertexDrag = { annotationId: annotation.id, vertexIndex, offset: event.pointerType === "touch" ? { x: x - pointer.x, y: y - pointer.y } : undefined };
     setSelected(annotation.id); setMultiSelected([annotation.id]); setSelectedVertex(drag); captureVertexPointer(event, drag);
   }
 
@@ -2087,19 +2218,33 @@ export default function Home() {
         <div className="privacy"><ShieldCheck size={14} /> {copy.privacy}</div>
       </aside>
 
-      <section className="editor">
+      <section className={`editor ${touchMode ? "touch-editor" : ""}`}>
+        <div className="editor-controls">
         <div className="tools">
-          <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => setTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
-          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} onClick={() => setTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => setTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => setTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => setTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => setTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
-          <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "ring"} onClick={() => setTool("ring")}><CircleMinus size={17} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => setTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || (activeAnnotation?.type !== "polygon" && activeAnnotation?.type !== "box")} active={tool === "transform"} onClick={() => setTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => setTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
-          <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled={!canEditImage || !redoHistory.length} onClick={redo}><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
+          <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} onClick={() => changeTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => changeTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
+          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} onClick={() => changeTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => changeTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => changeTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => changeTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => changeTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
+          <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "ring"} onClick={() => changeTool("ring")}><CircleMinus size={17} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => changeTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || (activeAnnotation?.type !== "polygon" && activeAnnotation?.type !== "box")} active={tool === "transform"} onClick={() => changeTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => changeTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
+          <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled={!canEditImage || !redoHistory.length} onClick={redo}><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length && !lineDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
           <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton><ToolButton title={copy.removeLoadedAnnotations} disabled={!annotations.length} className="clear-annotations-control" onClick={requestDeleteAllAnnotations}><Trash2 size={16} /></ToolButton>
         </div>
+        {canEditImage && <div className="drawing-actions">
+          <span className="touch-instructions">{tool === "select" ? copy.touchEdit : tool === "freehand" || tool === "reshape" ? copy.touchTrace : copy.touchDraw}</span>
+          {(tool === "polygon" || tool === "ring" || tool === "line") && <>
+            <button disabled={(tool === "line" ? lineDraft.length : polygonDraft.length) < (tool === "line" ? 4 : 6)} onClick={tool === "line" ? finishLine : finishPolygon}><Check size={16} />{copy.finishDrawing}</button>
+            <button disabled={!(polygonDraft.length || lineDraft.length)} onClick={deleteSelection}><Undo2 size={16} />{copy.removeLastPointTitle}</button>
+          </>}
+          {["polygon", "ring", "line", "freehand", "reshape", "split"].includes(tool) && <button disabled={!(polygonDraft.length || lineDraft.length || freehandDrawing || reshapeDrawing || splitStart)} onClick={resetDrafts}><X size={16} />{copy.cancel}</button>}
+          {tool === "select" && <>
+            <button aria-pressed={addToSelection} onClick={() => { setAddToSelection((value) => !value); setSelectedVertex(null); }}><Combine size={16} />{copy.multipleSelection}</button>
+            <button disabled={!selected} onClick={deleteSelection}><Trash2 size={16} />{selectedVertex ? copy.deleteVertexTitle : copy.deleteSelectedAnnotations}</button>
+          </>}
+        </div>}
+        </div>
 
-        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
+        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {asset.missing ? <div className="missing-image"><Images size={34} /><b>{asset.name}</b><p>{copy.imageMissingHint}</p><button onClick={() => input.current?.click()}><FolderOpen size={15} />{copy.reloadProjectImages}</button></div> : imageWindow.map((item) => <img key={item.id} className={item.id === asset.id && readyImageIds.includes(item.id) ? "image-current" : "image-preload"} crossOrigin="anonymous" src={item.src} alt={item.id === asset.id ? fill(copy.annotationImageAlt, { name: item.name }) : ""} aria-hidden={item.id === asset.id ? undefined : true} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (item.width !== image.naturalWidth || item.height !== image.naturalHeight) setAssets((items) => items.map((candidate) => candidate.id === item.id ? { ...candidate, width: image.naturalWidth, height: image.naturalHeight } : candidate)); void image.decode().then(() => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id]), () => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id])); }} />)}
-          {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={canvasPointerUp} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>
+          {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={clearPointerDrafts} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (touchMode) return; if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>
             {coordinatesGuide && cursorPoint && <g className={`coordinate-guide ${cursorOverCoordinateLabel ? "obscured" : ""}`} pointerEvents="none">
               <line x1={cursorPoint.x} y1="0" x2={cursorPoint.x} y2="650" />
               <line x1="0" y1={cursorPoint.y} x2="1000" y2={cursorPoint.y} />
@@ -2114,33 +2259,33 @@ export default function Home() {
               if (annotation.type === "box") {
                 const x = annotation.x ?? 0; const y = annotation.y ?? 0; const width = annotation.w ?? 0; const height = annotation.h ?? 0;
                 const centerX = x + width / 2; const centerY = y + height / 2; const degrees = (annotation.rotation ?? 0) * 180 / Math.PI;
-                return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={finishAnnotationPointer}>
+                return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}>
                   <g transform={`rotate(${degrees} ${centerX} ${centerY})`}>
                     <rect x={x} y={y} width={width} height={height} fill={`${label.color}28`} stroke={label.color} strokeWidth={(isSelected ? lineThickness + 2 : lineThickness) * handleScale} />
                   </g>
                 </g>;
               }
-              if (annotation.type === "polygon") return <g key={annotation.id}><path fillRule="evenodd" className={`${tool === "select" ? "movable-annotation" : ""} ${tool === "reshape" && annotation.id === selected ? "reshape-target" : ""}`.trim()} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={finishAnnotationPointer} d={polygonPath(annotation.pts ?? [], annotation.holes ?? [])} fill={`${label.color}30`} stroke={label.color} strokeWidth={(isSelected ? lineThickness + 2 : lineThickness) * handleScale} />{tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && edgeMidpoints(annotation.pts ?? []).map((midpoint) => <ellipse className="edge-handle" onPointerDown={(event) => insertVertex(event, annotation, midpoint.edgeIndex, midpoint.x, midpoint.y)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={finishVertexPointer} key={`edge-${midpoint.edgeIndex}`} cx={midpoint.x} cy={midpoint.y} rx={markerRadius * .5} ry={markerRadius * .5 * markerAspect} strokeWidth={markerRadius * .22} />)}{tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && (annotation.pts ?? []).map((coordinate, index, points) => index % 2 === 0 ? <ellipse className={`vertex-handle ${selectedVertex?.annotationId === annotation.id && selectedVertex.vertexIndex === index / 2 ? "selected" : ""}`} onPointerDown={(event) => beginVertexDrag(event, annotation, index / 2)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={finishVertexPointer} key={index} cx={coordinate} cy={points[index + 1]} rx={polygonHandleRadius(handleScale)} ry={polygonHandleRadius(handleScale) * markerAspect} fill="#fff" stroke={label.color} strokeWidth={polygonHandleRadius(handleScale) * .42} /> : null)}</g>;
+              if (annotation.type === "polygon") return <g key={annotation.id}><path fillRule="evenodd" className={`${tool === "select" ? "movable-annotation" : ""} ${tool === "reshape" && annotation.id === selected ? "reshape-target" : ""}`.trim()} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts} d={polygonPath(annotation.pts ?? [], annotation.holes ?? [])} fill={`${label.color}30`} stroke={label.color} strokeWidth={(isSelected ? lineThickness + 2 : lineThickness) * handleScale} />{tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && edgeMidpoints(annotation.pts ?? []).map((midpoint) => <g key={`edge-${midpoint.edgeIndex}`}>{touchMode && <ellipse className="touch-handle-hit" onPointerDown={(event) => insertVertex(event, annotation, midpoint.edgeIndex, midpoint.x, midpoint.y)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={midpoint.x} cy={midpoint.y} rx={touchRadius} ry={touchRadius * markerAspect} strokeWidth={0} fill="transparent" />}<ellipse className="edge-handle" onPointerDown={(event) => insertVertex(event, annotation, midpoint.edgeIndex, midpoint.x, midpoint.y)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={midpoint.x} cy={midpoint.y} rx={markerRadius * .5} ry={markerRadius * .5 * markerAspect} strokeWidth={markerRadius * .22} /></g>)}{tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && (annotation.pts ?? []).map((coordinate, index, points) => index % 2 === 0 ? <g key={index}>{touchMode && <ellipse className="touch-handle-hit" onPointerDown={(event) => beginVertexDrag(event, annotation, index / 2)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={coordinate} cy={points[index + 1]} rx={touchRadius} ry={touchRadius * markerAspect} strokeWidth={0} fill="transparent" />}<ellipse className={`vertex-handle ${selectedVertex?.annotationId === annotation.id && selectedVertex.vertexIndex === index / 2 ? "selected" : ""}`} onPointerDown={(event) => beginVertexDrag(event, annotation, index / 2)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={coordinate} cy={points[index + 1]} rx={polygonHandleRadius(handleScale)} ry={polygonHandleRadius(handleScale) * markerAspect} fill="#fff" stroke={label.color} strokeWidth={polygonHandleRadius(handleScale) * .42} /></g> : null)}</g>;
               if (annotation.type === "line") return <g key={annotation.id}>
                 {/* Traço invisível e largo: uma linha fina é alvo pequeno demais para o clique. */}
-                <polyline className={`line-hit ${tool === "select" ? "movable-annotation" : ""}`} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={finishAnnotationPointer} points={pointsToSvg(annotation.pts)} strokeWidth={Math.max(14, lineThickness + 12)} />
+                <polyline className={`line-hit ${tool === "select" ? "movable-annotation" : ""}`} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts} points={pointsToSvg(annotation.pts)} strokeWidth={Math.max(14, lineThickness + 12)} />
                 <polyline className="line-shape" points={pointsToSvg(annotation.pts)} stroke={label.color} strokeWidth={(isSelected ? lineThickness + 2 : lineThickness) * handleScale} />
-                {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && edgeMidpoints(annotation.pts ?? [], true).map((midpoint) => <ellipse className="edge-handle" onPointerDown={(event) => insertVertex(event, annotation, midpoint.edgeIndex, midpoint.x, midpoint.y)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={finishVertexPointer} key={`edge-${midpoint.edgeIndex}`} cx={midpoint.x} cy={midpoint.y} rx={markerRadius * .5} ry={markerRadius * .5 * markerAspect} strokeWidth={markerRadius * .22} />)}
-                {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && (annotation.pts ?? []).map((coordinate, index, points) => index % 2 === 0 ? <ellipse className={`vertex-handle ${selectedVertex?.annotationId === annotation.id && selectedVertex.vertexIndex === index / 2 ? "selected" : ""}`} onPointerDown={(event) => beginVertexDrag(event, annotation, index / 2)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={finishVertexPointer} key={index} cx={coordinate} cy={points[index + 1]} rx={polygonHandleRadius(handleScale)} ry={polygonHandleRadius(handleScale) * markerAspect} fill="#fff" stroke={label.color} strokeWidth={polygonHandleRadius(handleScale) * .42} /> : null)}
+                {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && edgeMidpoints(annotation.pts ?? [], true).map((midpoint) => <g key={`edge-${midpoint.edgeIndex}`}>{touchMode && <ellipse className="touch-handle-hit" onPointerDown={(event) => insertVertex(event, annotation, midpoint.edgeIndex, midpoint.x, midpoint.y)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={midpoint.x} cy={midpoint.y} rx={touchRadius} ry={touchRadius * markerAspect} strokeWidth={0} fill="transparent" />}<ellipse className="edge-handle" onPointerDown={(event) => insertVertex(event, annotation, midpoint.edgeIndex, midpoint.x, midpoint.y)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={midpoint.x} cy={midpoint.y} rx={markerRadius * .5} ry={markerRadius * .5 * markerAspect} strokeWidth={markerRadius * .22} /></g>)}
+                {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && (annotation.pts ?? []).map((coordinate, index, points) => index % 2 === 0 ? <g key={index}>{touchMode && <ellipse className="touch-handle-hit" onPointerDown={(event) => beginVertexDrag(event, annotation, index / 2)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={coordinate} cy={points[index + 1]} rx={touchRadius} ry={touchRadius * markerAspect} strokeWidth={0} fill="transparent" />}<ellipse className={`vertex-handle ${selectedVertex?.annotationId === annotation.id && selectedVertex.vertexIndex === index / 2 ? "selected" : ""}`} onPointerDown={(event) => beginVertexDrag(event, annotation, index / 2)} onPointerMove={moveVertexPointer} onPointerUp={finishVertexPointer} onPointerCancel={clearPointerDrafts} cx={coordinate} cy={points[index + 1]} rx={polygonHandleRadius(handleScale)} ry={polygonHandleRadius(handleScale) * markerAspect} fill="#fff" stroke={label.color} strokeWidth={polygonHandleRadius(handleScale) * .42} /></g> : null)}
               </g>;
               const pointRadius = markerRadius * (isSelected ? 1.32 : 1);
-              return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={finishAnnotationPointer}><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius} ry={pointRadius * markerAspect} fill="#fff" stroke={label.color} strokeWidth={pointRadius * .42} /><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius * .34} ry={pointRadius * .34 * markerAspect} fill={label.color} /></g>;
+              return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius} ry={pointRadius * markerAspect} fill="#fff" stroke={label.color} strokeWidth={pointRadius * .42} /><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius * .34} ry={pointRadius * .34 * markerAspect} fill={label.color} /></g>;
             })}
             {selectionMarquee && <rect className="selection-marquee" x={Math.min(selectionMarquee.startX, selectionMarquee.currentX)} y={Math.min(selectionMarquee.startY, selectionMarquee.currentY)} width={Math.abs(selectionMarquee.currentX - selectionMarquee.startX)} height={Math.abs(selectionMarquee.currentY - selectionMarquee.startY)} />}
             {tool === "transform" && (activeAnnotation?.type === "polygon" || activeAnnotation?.type === "box") && activeTransformBounds && activeTransformCenter && <g className="transform-overlay" transform={activeAnnotation.type === "box" ? `rotate(${(activeAnnotation.rotation ?? 0) * 180 / Math.PI} ${activeTransformCenter.x} ${activeTransformCenter.y})` : undefined}>
               <rect x={activeTransformBounds.x} y={activeTransformBounds.y} width={activeTransformBounds.width} height={activeTransformBounds.height} />
               <line x1={activeTransformCenter.x} y1={transformRotationAnchorY} x2={activeTransformCenter.x} y2={transformRotationY} />
-              <ellipse className="transform-handle rotate-handle" cx={activeTransformCenter.x} cy={transformRotationY} rx={markerRadius * 1.8} ry={markerRadius * 1.8 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, activeAnnotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={finishTransformPointer} />
-              <ellipse className="transform-handle scale-handle" cx={activeTransformBounds.x + activeTransformBounds.width} cy={activeTransformBounds.y + activeTransformBounds.height} rx={markerRadius * 1.8} ry={markerRadius * 1.8 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, activeAnnotation, "scale")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={finishTransformPointer} />
+              <g>{touchMode && <ellipse className="touch-handle-hit" cx={activeTransformCenter.x} cy={transformRotationY} rx={touchRadius} ry={touchRadius * markerAspect} strokeWidth={0} onPointerDown={(event) => beginTransform(event, activeAnnotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} fill="transparent" />}<ellipse className="transform-handle rotate-handle" cx={activeTransformCenter.x} cy={transformRotationY} rx={markerRadius * 1.8} ry={markerRadius * 1.8 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, activeAnnotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></g>
+              <g>{touchMode && <ellipse className="touch-handle-hit" cx={activeTransformBounds.x + activeTransformBounds.width} cy={activeTransformBounds.y + activeTransformBounds.height} rx={touchRadius} ry={touchRadius * markerAspect} strokeWidth={0} onPointerDown={(event) => beginTransform(event, activeAnnotation, "scale")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} fill="transparent" />}<ellipse className="transform-handle scale-handle" cx={activeTransformBounds.x + activeTransformBounds.width} cy={activeTransformBounds.y + activeTransformBounds.height} rx={markerRadius * 1.8} ry={markerRadius * 1.8 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, activeAnnotation, "scale")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></g>
               <ellipse className="transform-center" cx={activeTransformCenter.x} cy={activeTransformCenter.y} rx={markerRadius * .9} ry={markerRadius * .9 * markerAspect} strokeWidth={markerRadius * .22} />
             </g>}
             {draft && <rect className="draft-shape" x={draft.x} y={draft.y} width={draft.w} height={draft.h} fill={`${getLabel(activeLabel).color}25`} stroke={getLabel(activeLabel).color} strokeWidth={visualLineWidth} strokeDasharray="9 7" />}
-            {polygonDraft.length > 1 && <g><polyline className="draft-shape" points={pointsToSvg(polygonDraft)} fill={`${getLabel(activeLabel).color}20`} stroke={getLabel(activeLabel).color} strokeWidth={visualLineWidth} strokeDasharray="9 7" />{polygonDraft.map((coordinate, index, points) => index % 2 === 0 ? <ellipse className={index === 0 && polygonDraft.length >= 6 ? "polygon-close-point draft-vertex" : "draft-vertex"} key={index} cx={coordinate} cy={points[index + 1]} rx={markerRadius * (index === 0 && polygonDraft.length >= 6 ? 1.35 : 1)} ry={markerRadius * (index === 0 && polygonDraft.length >= 6 ? 1.35 : 1) * markerAspect} fill={getLabel(activeLabel).color} stroke="#fff" strokeWidth={markerRadius * .32} /> : null)}</g>}
+            {polygonDraft.length > 1 && <g><polyline className="draft-shape" points={pointsToSvg(polygonDraft)} fill={`${getLabel(activeLabel).color}20`} stroke={getLabel(activeLabel).color} strokeWidth={visualLineWidth} strokeDasharray="9 7" />{polygonDraft.map((coordinate, index, points) => index % 2 === 0 ? <ellipse className={index === 0 && polygonDraft.length >= 6 ? "polygon-close-point draft-vertex" : "draft-vertex"} onPointerDown={(event) => { if (index === 0 && polygonDraft.length >= 6) { event.stopPropagation(); finishPolygon(); } }} key={index} cx={coordinate} cy={points[index + 1]} rx={markerRadius * (index === 0 && polygonDraft.length >= 6 ? 1.35 : 1)} ry={markerRadius * (index === 0 && polygonDraft.length >= 6 ? 1.35 : 1) * markerAspect} fill={getLabel(activeLabel).color} stroke="#fff" strokeWidth={markerRadius * .32} /> : null)}</g>}
             {lineDraft.length > 0 && <g>{lineDraft.length > 2 && <polyline className="line-shape" points={pointsToSvg(lineDraft)} stroke={getLabel(activeLabel).color} strokeWidth={visualLineWidth} strokeDasharray="9 7" />}{lineDraft.map((coordinate, index, points) => index % 2 === 0 ? <ellipse className="draft-vertex" key={index} cx={coordinate} cy={points[index + 1]} rx={markerRadius} ry={markerRadius * markerAspect} fill={getLabel(activeLabel).color} stroke="#fff" strokeWidth={markerRadius * .32} /> : null)}</g>}
             {freehandDraft.length > 1 && <polyline className="freehand-line draft-shape" points={pointsToSvg(freehandDraft)} fill={`${getLabel(activeLabel).color}22`} stroke={getLabel(activeLabel).color} strokeWidth={visualLineWidth} />}
             {reshapeDraft.length > 1 && <g><polyline className="reshape-line" points={pointsToSvg(reshapeDraft)} />{reshapeDraft.length >= 4 && <><ellipse className="reshape-endpoint" cx={reshapeDraft[0]} cy={reshapeDraft[1]} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} /><ellipse className="reshape-endpoint" cx={reshapeDraft.at(-2)} cy={reshapeDraft.at(-1)} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} /></>}</g>}

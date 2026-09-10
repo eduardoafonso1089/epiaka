@@ -5,7 +5,10 @@ export class TouchGesture {
   private moved = false;
   navigating = false;
 
-  down(id: number, x: number, y: number) {
+  down(id: number, x: number, y: number, isPrimary = false) {
+    // A primary pointer starts a new physical touch sequence. Discard orphaned IDs
+    // from a release outside the editor or a removed capture target.
+    if (isPrimary) this.points.clear();
     if (!this.points.size) {
       this.origin = { x, y };
       this.moved = false;

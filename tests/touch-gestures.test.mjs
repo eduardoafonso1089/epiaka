@@ -85,3 +85,22 @@ test("vertex hit radius uses screen pixels at different zoom levels and aspect r
   assert.equal(nearestTouchVertex(points, 100, 140, 320, 650), -1);
   assert.equal(nearestTouchVertex(points, 100, 140, 320, 208), 0);
 });
+
+test("a fresh primary touch cannot pinch against an orphaned selection pointer", () => {
+  const gesture = new TouchGesture();
+  gesture.down(1, 50, 70, true);
+  // The old target disappeared before its pointerup reached the editor.
+  assert.equal(gesture.down(2, 150, 170, true), false);
+  gesture.move(2, 152, 170);
+  assert.equal(gesture.pair(), null);
+  assert.equal(gesture.end(2).tap, true);
+});
+
+test("new primary touch recovers from an interrupted pinch but a real second finger still zooms", () => {
+  const gesture = new TouchGesture();
+  gesture.down(1, 50, 70, true); gesture.down(2, 150, 70);
+  assert.equal(gesture.navigating, true);
+  assert.equal(gesture.down(3, 80, 90, true), false);
+  assert.equal(gesture.down(4, 180, 90, false), true);
+  assert.deepEqual(gesture.pair(), { x: 130, y: 90, distance: 100 });
+});

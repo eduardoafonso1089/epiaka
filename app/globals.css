@@ -430,7 +430,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .drawing-actions button:disabled{opacity:.45;cursor:default}
 .drawing-actions button[aria-pressed=true]{background:var(--tool-active-bg);border-color:var(--tool-active-border);color:var(--tool-active-ink)}
 .touch-instructions{display:none;font-size:11px;color:var(--muted)}
-.touch-editor .touch-instructions{display:block;min-width:150px;max-width:240px;flex:1;line-height:1.4}
+.touch-instructions{min-width:150px;max-width:240px;flex:1;line-height:1.4}
 .touch-handle-hit{pointer-events:all;cursor:move}
 .canvas{min-width:0;max-width:none;-webkit-touch-callout:none;user-select:none}
 .scroll{touch-action:none}

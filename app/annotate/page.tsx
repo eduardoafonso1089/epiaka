@@ -387,6 +387,9 @@ export default function Home() {
   const idCounter = useRef(0);
 
   const asset = assets.find((item) => item.id === current) ?? assets[0];
+  const activeImageId = asset?.id;
+  const activeImageWidth = asset?.width;
+  const activeImageHeight = asset?.height;
   const assetIndex = Math.max(0, assets.findIndex((item) => item.id === asset?.id));
   const imageWindow = assets.slice(Math.max(0, assetIndex - 3), assetIndex + 4).filter((item) => !item.missing);
   const imageIsReady = !!asset && readyImageIds.includes(asset.id);
@@ -771,7 +774,7 @@ export default function Home() {
     assets.slice(Math.max(0, index - 3), index + 4).forEach((item) => { if (!item.missing) warmImage(item.src); });
   }, [assets, current]);
 
-  function zoomToFit(image: Asset) {
+  function zoomToFit(image: Pick<Asset, "width" | "height">) {
     const scroller = scrollRef.current;
     if (!scroller) return 92;
     const imageWidth = image.width ?? 1000;
@@ -785,10 +788,10 @@ export default function Home() {
   // Each image has its own framing: when the file changes, the previous zoom and
   // scroll cannot be reused.
   useEffect(() => {
-    if (!current || !asset?.width || !asset?.height) return;
+    if (!current || !activeImageWidth || !activeImageHeight) return;
     const scroller = scrollRef.current;
     if (!scroller) return;
-    setZoom(zoomToFit(asset));
+    setZoom(zoomToFit({ width: activeImageWidth, height: activeImageHeight }));
 
     let innerFrame = 0;
     const outerFrame = requestAnimationFrame(() => {
@@ -803,7 +806,7 @@ export default function Home() {
       cancelAnimationFrame(outerFrame);
       if (innerFrame) cancelAnimationFrame(innerFrame);
     };
-  }, [asset, current]);
+  }, [activeImageId, activeImageWidth, activeImageHeight, current]);
 
   function fitImageToViewport() {
     const scroller = scrollRef.current;
@@ -867,11 +870,16 @@ export default function Home() {
     const gesture = touchGesture.current;
     if (!canEditImage || (!gesture.points.size && !(event.target instanceof Element && svgRef.current?.contains(event.target)))) return;
     setTouchMode(true);
+    const orphanedSnapshot = event.isPrimary && gesture.points.size ? touchSnapshot.current : null;
+    if (event.isPrimary && gesture.points.size) {
+      cancelTouchEdit();
+      gesture.points.clear();
+    }
     if (!gesture.points.size) {
-      touchSnapshot.current = { annotations, history, redo: redoHistory, saved, selected, multi: multiSelected, vertex: selectedVertex };
+      touchSnapshot.current = orphanedSnapshot ?? { annotations, history, redo: redoHistory, saved, selected, multi: multiSelected, vertex: selectedVertex };
       touchClosePoint.current = event.target instanceof Element && !!event.target.closest(".polygon-close-point");
     }
-    const navigating = gesture.down(event.pointerId, event.clientX, event.clientY);
+    const navigating = gesture.down(event.pointerId, event.clientX, event.clientY, event.isPrimary);
     capture(event.pointerId);
     if (navigating) { cancelTouchEdit(); beginPinch(); }
     if (navigating || touchToolUsesTap(tool)) { event.preventDefault(); event.stopPropagation(); }
@@ -988,6 +996,8 @@ export default function Home() {
   }
 
   function canvasPointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    if (annotationDragRef.current) { moveAnnotationPointer(event); return; }
+    if (transformDragRef.current) { moveTransformPointer(event); return; }
     const point = editorPoint(event.clientX, event.clientY);
     if (coordinatesGuide) setCursorPoint(point);
     const activeMarquee = selectionMarqueeRef.current;
@@ -1028,7 +1038,9 @@ export default function Home() {
     setDraft({ x: Math.min(start.x, point.x), y: Math.min(start.y, point.y), w: Math.abs(point.x - start.x), h: Math.abs(point.y - start.y) });
   }
 
-  function canvasPointerUp() {
+  function canvasPointerUp(event: React.PointerEvent<SVGSVGElement>) {
+    if (annotationDragRef.current) { finishAnnotationPointer(event); return; }
+    if (transformDragRef.current) { finishTransformPointer(event); return; }
     if (panStart) { setPanStart(null); return; }
     if (selectionMarqueeRef.current) { finishSelectionMarquee(); return; }
     if (vertexDragRef.current || vertexDrag) { vertexDragRef.current = null; setVertexDrag(null); setSnapGuide(null); return; }
@@ -1159,7 +1171,8 @@ export default function Home() {
     const drag: AnnotationDrag = { startX: point.x, startY: point.y, originals, started: false };
     setSelected(annotation.id); setMultiSelected(ids); setSelectedVertex(null); syncBatchLabel(ids);
     annotationDragRef.current = drag; setAnnotationDrag(drag);
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { capture(event.pointerId); }
+    if (event.pointerType === "touch") capture(event.pointerId);
+    else try { event.currentTarget.setPointerCapture(event.pointerId); } catch { capture(event.pointerId); }
   }
 
   function moveAnnotationPointer(event: React.PointerEvent<SVGElement>) {
@@ -1204,7 +1217,8 @@ export default function Home() {
       original: { ...annotation, pts: annotation.pts ? [...annotation.pts] : undefined },
     };
     transformDragRef.current = drag; setTransformDrag(drag);
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { capture(event.pointerId); }
+    if (event.pointerType === "touch") capture(event.pointerId);
+    else try { event.currentTarget.setPointerCapture(event.pointerId); } catch { capture(event.pointerId); }
   }
 
   function moveTransformPointer(event: React.PointerEvent<SVGElement>) {
@@ -1246,7 +1260,8 @@ export default function Home() {
   function captureVertexPointer(event: React.PointerEvent<SVGElement>, drag: VertexDrag) {
     vertexDragRef.current = drag;
     setVertexDrag(drag);
-    try { event.currentTarget.setPointerCapture(event.pointerId); }
+    if (event.pointerType === "touch") capture(event.pointerId);
+    else try { event.currentTarget.setPointerCapture(event.pointerId); }
     catch { capture(event.pointerId); }
   }
 
@@ -2241,7 +2256,7 @@ export default function Home() {
         </div>}
         </div>
 
-        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
+        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onLostPointerCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {asset.missing ? <div className="missing-image"><Images size={34} /><b>{asset.name}</b><p>{copy.imageMissingHint}</p><button onClick={() => input.current?.click()}><FolderOpen size={15} />{copy.reloadProjectImages}</button></div> : imageWindow.map((item) => <img key={item.id} className={item.id === asset.id && readyImageIds.includes(item.id) ? "image-current" : "image-preload"} crossOrigin="anonymous" src={item.src} alt={item.id === asset.id ? fill(copy.annotationImageAlt, { name: item.name }) : ""} aria-hidden={item.id === asset.id ? undefined : true} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (item.width !== image.naturalWidth || item.height !== image.naturalHeight) setAssets((items) => items.map((candidate) => candidate.id === item.id ? { ...candidate, width: image.naturalWidth, height: image.naturalHeight } : candidate)); void image.decode().then(() => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id]), () => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id])); }} />)}
           {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={clearPointerDrafts} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (touchMode) return; if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>

@@ -187,9 +187,9 @@ export default function CogRecorte({ origem, nome, reference, copy, onCancelar, 
           minResolution: 0.125, maxResolution: resolutions[0] * 2 });
         const mapa = new MapaOl({
           target: hostRef.current!, maxTilesLoading: 2,
-          layers: [new WebGLTileLayer({ source, cacheSize: 64, style: {
-            color: ["color", ["band", 1], ["band", 2], ["band", 3], ["/", ["band", 4], 255]],
-          } }), new VectorLayer({ source: selecao, style: estilo })], view,
+          // RGBA bytes are normalized by the texture upload. The default shader
+          // preserves them; dividing these bands by 255 again hides the preview.
+          layers: [new WebGLTileLayer({ source, cacheSize: 64 }), new VectorLayer({ source: selecao, style: estilo })], view,
         });
         mapaRef.current = mapa;
         cleanupMap = () => { mapa.setTarget(undefined); mapa.dispose(); source.dispose(); };

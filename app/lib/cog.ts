@@ -187,15 +187,43 @@ export async function prepareDisplay(meta: SessaoRaster) {
 /** Nearest-neighbour sampling at exact source pixel centres avoids overview-edge shifts
  * and blending NoData into valid pixels. Decode only the selected bands/window. */
 export async function readRgba(meta: SessaoRaster, j: JanelaRaster, width: number, height: number, signal = meta.signal) {
+  try {
+    return await readRgbaWindow(meta, j, width, height, signal);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'rasterReadTooLarge' || (width === 1 && height === 1)) throw error;
+    // Keep the requested pixel centres and overview, but decode smaller windows.
+    // A full crop can exceed the budget even when the TIFF already has overviews.
+    const horizontal = width >= height && width > 1;
+    const first = Math.floor((horizontal ? width : height) / 2);
+    const fraction = first / (horizontal ? width : height);
+    const a = horizontal ? { ...j, w: j.w * fraction } : { ...j, h: j.h * fraction };
+    const b = horizontal
+      ? { ...j, x: j.x + a.w, w: j.w - a.w }
+      : { ...j, y: j.y + a.h, h: j.h - a.h };
+    const output = new Uint8ClampedArray(width * height * 4);
+    for (const [window, offset, length] of [[a, 0, first], [b, first, (horizontal ? width : height) - first]] as const) {
+      const partWidth = horizontal ? length : width;
+      const partHeight = horizontal ? height : length;
+      const pixels = await readRgba(meta, window, partWidth, partHeight, signal);
+      for (let row = 0; row < partHeight; row++) {
+        output.set(pixels.subarray(row * partWidth * 4, (row + 1) * partWidth * 4),
+          ((horizontal ? row : row + offset) * width + (horizontal ? offset : 0)) * 4);
+      }
+    }
+    return output;
+  }
+}
+
+async function readRgbaWindow(meta: SessaoRaster, j: JanelaRaster, width: number, height: number, signal: AbortSignal) {
   signal.throwIfAborted();
   if (![width, height].every(v => Number.isInteger(v) && v > 0 && v <= RECORTE_LADO_MAX) || width * height > RECORTE_MP_MAX * 1e6 ||
       ![j.x, j.y, j.w, j.h].every(Number.isFinite) || j.w <= 0 || j.h <= 0) throw new Error('rasterInvalidWindow');
   const { image, sx, sy } = await nivelPara(meta, j.w / width, j.h / height);
   const window = [Math.max(0, Math.floor(j.x / sx)), Math.max(0, Math.floor(j.y / sy)),
     Math.min(image.getWidth(), Math.ceil((j.x + j.w) / sx)), Math.min(image.getHeight(), Math.ceil((j.y + j.h) / sy))];
-  const output = new Uint8ClampedArray(width * height * 4);
-  if (window[2] <= window[0] || window[3] <= window[1]) return output;
+  if (window[2] <= window[0] || window[3] <= window[1]) return new Uint8ClampedArray(width * height * 4);
   checkReadBudget(image, window);
+  const output = new Uint8ClampedArray(width * height * 4);
   const photo = numbers(tag(image, 'PhotometricInterpretation'))[0];
   const converted = [3, 5, 6, 8, 9, 10].includes(photo);
   const extras = numbers(tag(image, 'ExtraSamples'));

@@ -469,7 +469,15 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
   .export-pop{max-height:calc(100dvh - 108px);overflow-y:auto}
 }
 
+/* Show the complete annotation image, including the edges of a TIFF crop. */
+.asset-list .thumb{background-size:contain;background-repeat:no-repeat}
+
 /* Selection handles must not influence the intrinsic size or scroll anchor of the stage. */
+.editor{grid-template-columns:minmax(0,1fr)}
+.editor .status{min-width:0;overflow:hidden}
+.editor .status>div,.editor .status>button{flex-shrink:0}
+.editor .status p{min-width:0}
+.editor .status p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .editor .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
 .editor .scroll{min-width:0;min-height:0;overflow-anchor:none}
 

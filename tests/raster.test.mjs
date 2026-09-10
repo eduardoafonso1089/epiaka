@@ -25,6 +25,37 @@ test('plain TIFF decodes without inventing a georeference', async () => {
   });
 });
 
+test('over-budget crops split reads without changing pixel centres or RGBA values', async () => {
+  let bytesPerPixel = 1;
+  const reads = [];
+  const image = {
+    getWidth: () => 9, getHeight: () => 7,
+    getTileWidth: () => 1, getTileHeight: () => 1,
+    getBytesPerPixel: () => bytesPerPixel,
+    getSamplesPerPixel: () => 1,
+    getFileDirectory: () => ({ getValue: name => ({ PhotometricInterpretation: 1, BitsPerSample: [8] })[name] }),
+    readRasters: async ({ window }) => {
+      checkReadBudget(image, window);
+      reads.push(window);
+      const values = [];
+      for (let y = window[1]; y < window[3]; y++) for (let x = window[0]; x < window[2]; x++) values.push(y * 9 + x);
+      return Uint8Array.from(values);
+    },
+  };
+  const meta = { tiff: { getImage: async () => image }, niveis: [0], masks: [], largura: 9, altura: 7, bandas: 1,
+    semDado: 0, signal: new AbortController().signal };
+  for (const [window, width, height] of [[{ x: 0, y: 0, w: 9, h: 7 }, 9, 7], [{ x: .25, y: .5, w: 8.5, h: 6 }, 5, 3]]) {
+    bytesPerPixel = 1;
+    const expected = await readRgba(meta, window, width, height);
+    bytesPerPixel = 4 * 1024 * 1024;
+    reads.length = 0;
+    assert.deepEqual(await readRgba(meta, window, width, height), expected);
+    assert.ok(reads.length > 1);
+  }
+  bytesPerPixel = 128 * 1024 * 1024;
+  await assert.rejects(readRgba(meta, { x: 0, y: 0, w: 1, h: 1 }, 1, 1), /rasterReadTooLarge/);
+});
+
 test('reads nonzero tiepoint offsets, signed scales and EPSG from a real TIFF', async () => {
   await withRaster(tiffFile(new Uint8Array([10,20,30,40]), { ModelPixelScale:[2,3,0], ModelTiepoint:[5,7,0,100,200,0], ProjectedCSTypeGeoKey:31983 }), meta => {
     assert.deepEqual(meta.transform, [2,0,90,0,-3,221]);

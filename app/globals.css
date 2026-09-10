@@ -44,6 +44,8 @@
 .transform-overlay line{stroke:#F2F5F3;stroke-width:3;stroke-dasharray:7 5;pointer-events:none}
 .transform-handle{fill:#FFFFFF;stroke:#44C995;pointer-events:all}
 .transform-handle.rotate-handle{cursor:grab}.transform-handle.scale-handle{cursor:nwse-resize}
+.box-resize-handle{fill:#FFFFFF;stroke:#44C995;pointer-events:all}.box-resize-handle.nw,.box-resize-handle.se{cursor:nwse-resize}.box-resize-handle.ne,.box-resize-handle.sw{cursor:nesw-resize}
+.box-rotation-stem{stroke:#FFFFFF;stroke-width:3;stroke-dasharray:7 5;pointer-events:none;vector-effect:non-scaling-stroke}.box-rotation-handle{fill:#FFFFFF;stroke:#44C995;pointer-events:all;cursor:grab;vector-effect:non-scaling-stroke}
 .transform-center{fill:#44C995;stroke:#FFFFFF;pointer-events:none}
 .snap-guide{pointer-events:none}.snap-guide circle{fill:rgba(168,224,99,.18);stroke:#8BE3BD}
 .snap-guide line{stroke:#FFFFFF;stroke-linecap:round}
@@ -55,7 +57,7 @@
 .stage.transform .transform-handle.rotate-handle{cursor:grab}
 .stage.transform .transform-handle.scale-handle{cursor:nwse-resize}
 .reshape-target{stroke-dasharray:none}
-.selection-marquee{fill:rgba(108,140,255,.14);stroke:#6c8cff;stroke-width:3;stroke-dasharray:9 6;pointer-events:none}
+.selection-marquee{fill:rgba(108,140,255,.14);stroke:#6c8cff;stroke-width:3;stroke-dasharray:9 6;pointer-events:none;vector-effect:non-scaling-stroke}
 .polygon-close-point{cursor:pointer;filter:drop-shadow(0 0 5px rgba(255,255,255,.9))}
 
 /* Visibility controls, preferences and color themes */
@@ -419,3 +421,72 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
 .landing-foot .source-link:hover{color:var(--tool-active-ink);text-decoration:underline;background:transparent}
 @media(max-width:860px){.source-link span{display:none}.source-link{padding:0 8px}}
 .empty-project button:disabled{opacity:.58;cursor:wait}
+
+/* Touch editing: keep actions reachable without covering the image. */
+.editor{grid-template-rows:auto minmax(0,1fr) 42px}
+.editor-controls{min-width:0;overflow:hidden;background:var(--surface-soft)}
+.editor-controls .tools{min-height:50px}
+.drawing-actions{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line)}
+.drawing-actions:empty{display:none}
+.drawing-actions button{display:flex;align-items:center;justify-content:center;gap:5px;flex-shrink:0;min-height:36px;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px;cursor:pointer;white-space:nowrap}
+.drawing-actions button:disabled{opacity:.45;cursor:default}
+.drawing-actions button[aria-pressed=true]{background:var(--tool-active-bg);border-color:var(--tool-active-border);color:var(--tool-active-ink)}
+.touch-instructions{display:none;font-size:11px;color:var(--muted)}
+.touch-instructions{min-width:150px;max-width:240px;flex:1;line-height:1.4}
+.touch-handle-hit{pointer-events:all;cursor:move}
+.canvas{min-width:0;max-width:none;-webkit-touch-callout:none;user-select:none}
+.scroll{touch-action:none}
+@media(pointer:coarse),(max-width:860px){
+  .editor{grid-template-rows:auto minmax(0,1fr) 44px}
+  .editor-controls .tools{min-height:54px;padding:4px 6px;gap:5px}
+  .tool-btn,.tools .zoom button{min-width:44px;min-height:44px}
+  .tools .zoom{height:44px;flex-shrink:0}
+  .tool-btn small{display:none}
+  .drawing-actions{flex-wrap:wrap;overflow:visible;padding:5px 6px;gap:5px}
+  .drawing-actions button{min-height:44px;white-space:normal;flex:1;padding:5px 7px}
+  .touch-instructions,.touch-editor .touch-instructions{display:block;max-width:none;min-width:100%;font-size:11px;line-height:1.4}
+  .stage{padding:6px}
+  .status>div button,.drawer-head button,.mobile{min-width:44px;min-height:44px}
+  .status{padding:0 6px;padding-bottom:env(safe-area-inset-bottom)}
+  .status p.notice{display:flex;min-width:0;max-width:calc(100% - 115px);margin:0}
+  .status p.notice span{font-size:10px;white-space:normal;line-height:1.2}
+  [role=dialog] input,[role=dialog] select,[role=dialog] textarea,.project-name-input{font-size:16px}
+}
+@supports(height:100dvh){
+  .workspace{height:calc(100dvh - 96px)}
+  .llm-shell{height:100dvh}
+  [role=dialog]{max-height:calc(100dvh - 24px);overflow-y:auto}
+  @media(max-width:560px){.workspace{height:calc(100dvh - 88px)}}
+}
+@media(max-height:500px) and (pointer:coarse){
+  .touch-instructions,.touch-editor .touch-instructions{display:none}
+  .drawing-actions{flex-wrap:nowrap;overflow-x:auto}
+  .drawing-actions button{flex:0 0 auto}
+}
+
+@media(pointer:coarse){
+  .modal-backdrop{padding:12px}
+  .modal-backdrop button,.export-pop button{min-height:44px}
+  .annotation-info,.label-row{min-height:44px}
+  .export-pop{max-height:calc(100dvh - 108px);overflow-y:auto}
+}
+
+/* Show the complete annotation image, including the edges of a TIFF crop. */
+.asset-list .thumb{background-size:contain;background-repeat:no-repeat}
+
+/* Selection handles must not influence the intrinsic size or scroll anchor of the stage. */
+.editor{grid-template-columns:minmax(0,1fr)}
+.editor .status{min-width:0;overflow:hidden}
+.editor .status>div,.editor .status>button{flex-shrink:0}
+.editor .status p{min-width:0}
+.editor .status p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.editor .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.editor .scroll{min-width:0;min-height:0;overflow-anchor:none}
+
+/* Pixel-sized canvas and origin are independent of status text and selection controls. */
+.editor .scroll{display:block;contain:size layout}
+.editor .scroll>.canvas-surface{position:relative;flex:none;margin:0;overflow:visible}
+.editor .canvas{aspect-ratio:auto;margin:0}
+.editor .canvas>img,.editor .canvas>svg{width:100%;height:100%}
+
+.demo-import{margin:0 13px 8px;width:calc(100% - 26px);height:31px;border:1px solid var(--tool-active-border);border-radius:8px;background:var(--tool-active-bg);color:var(--btn-accent-ink);display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer}.demo-import:disabled{opacity:.55;cursor:wait}.dataset-tabs{grid-template-columns:1fr 1fr 1fr}.dataset-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px}.quality-data{padding:12px}.quality-data section,.review-panel section{margin-bottom:12px;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft)}.quality-data section>b,.review-panel section>b{display:block;font-size:11px;color:var(--btn-accent-ink)}.quality-data section>small,.review-panel section>small{display:block;margin:4px 0 9px;font-size:10px;color:var(--muted);line-height:1.4}.quality-bar{display:grid;grid-template-columns:minmax(0,1fr) 72px 24px;align-items:center;gap:6px;margin:7px 0;font-size:10px}.quality-bar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.quality-bar i{height:6px;border-radius:6px;background:var(--theme-hover);overflow:hidden}.quality-bar em{display:block;height:100%;border-radius:6px;background:var(--green)}.quality-row{display:grid;grid-template-columns:9px minmax(0,1fr) auto;gap:6px;align-items:center;margin:7px 0;font-size:10px}.quality-row i{width:8px;height:8px;border-radius:2px}.quality-row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.quality-row small{grid-column:2/-1;color:var(--muted)}.quality-suggestions p,.review-hint{margin:6px 0 0;font-size:10px;line-height:1.45;color:var(--muted)}.review-panel{padding:12px}.review-panel select{width:100%;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--control-bg);color:var(--ink);padding:0 7px;font-size:11px}.review-score{display:flex;align-items:center;gap:2px}.review-score button{width:27px;height:27px;border:0;border-radius:5px;background:transparent;color:var(--tool-disabled-ink);font-size:18px;cursor:pointer}.review-score button.selected{color:var(--amber);background:var(--amber-bg)}.review-score small{margin-left:5px;font-size:10px;color:var(--muted)}

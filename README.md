@@ -142,3 +142,8 @@ eduardoafonso1089@gmail.com describing the intended use.
 
 The Poligome name and logos are not covered by the AGPL: the license grants rights over the
 code, not over the identity. See [NOTICE](NOTICE).
+
+### Georeferenced rasters
+
+See [Raster import and export](docs/RASTER_WORKFLOW.md) for supported formats,
+sidecars, memory limits, coordinate handling and verification instructions.

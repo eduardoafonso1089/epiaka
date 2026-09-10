@@ -13,8 +13,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type OlMapa from "ol/Map.js";
 import type OlDesenho from "ol/interaction/Draw.js";
-import { dimensionaRecorte, ehArquivoTiff, geraRecorte, leMetadados, medeFaixa } from "../lib/cog";
-import type { MetadadosCog, PerfilCog, Recorte } from "../lib/cog";
+import { dimensionaRecorte, ehArquivoTiff, geraRecorte, leMetadados, prepareDisplay, readRgba } from "../lib/cog";
+import type { MetadadosCog, PerfilCog, Recorte, SessaoRaster } from "../lib/cog";
+import type { RasterReference } from "../lib/georeference";
 import { fill } from "../lib/i18n";
 import type { Copy, TranslationKey } from "../lib/i18n";
 
@@ -32,6 +33,7 @@ type Janela = { x: number; y: number; w: number; h: number };
 export type CogRecorteProps = {
   origem: File | string;
   nome: string;
+  reference?: RasterReference;
   copy: Copy;
   onCancelar: () => void;
   onPronto: (recorte: Recorte, nome: string) => void;
@@ -62,42 +64,18 @@ type Trabalho = {
   url?: string;
 };
 
-function comLimite<T>(promessa: Promise<T>, etapa: string) {
-  return new Promise<T>((resolve, reject) => {
-    const id = window.setTimeout(
-      () => reject(new Error(`Tempo esgotado (${LIMITE_MS / 1000}s) em: ${etapa}`)), LIMITE_MS);
-    promessa.then(
-      (valor) => { window.clearTimeout(id); resolve(valor); },
-      (erro) => { window.clearTimeout(id); reject(erro); });
-  });
-}
-
-/** Full-range BT.601 matrix. Drone orthophotos almost always arrive as JPEG with
- *  photometric=YCbCr, and the geotiff.js decoder hands back raw Y, Cb and Cr in the three
- *  channels when read through readRasters — which is the WebGLTile path. Without this,
- *  grass comes out pink. The conversion costs nothing by running in the shader. */
-function corDeYCbCr() {
-  const y = ["band", 1];
-  const cb = ["-", ["band", 2], 128];
-  const cr = ["-", ["band", 3], 128];
-  return ["color",
-    ["+", y, ["*", cr, 1.402]],
-    ["+", y, ["*", cb, -0.344136], ["*", cr, -0.714136]],
-    ["+", y, ["*", cb, 1.772]],
-  ];
-}
-
 function inteiro(valor: number) {
   return Math.round(valor).toLocaleString("pt-BR");
 }
 
-export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }: CogRecorteProps) {
+export default function CogRecorte({ origem, nome, reference, copy, onCancelar, onPronto }: CogRecorteProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const limpaRef = useRef<(() => void) | null>(null);
   const mapaRef = useRef<OlMapa | null>(null);
   const desenhoRef = useRef<OlDesenho | null>(null);
   const metaRef = useRef<MetadadosCog | null>(null);
-  const faixaRef = useRef<{ min: number; max: number } | null>(null);
+  const sessaoRef = useRef<SessaoRaster | null>(null);
+  const [crs, setCrs] = useState("");
   const caixaRef = useRef<Janela | null>(null);
   const modoRef = useRef<Modo>("visivel");
 
@@ -123,10 +101,10 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
   const janelaDe = useCallback((extent: number[]): Janela | null => {
     const m = metaRef.current;
     if (!m) return null;
-    const x0 = Math.max(0, (extent[0] - m.origemX) / m.escalaX);
-    const x1 = Math.min(m.largura, (extent[2] - m.origemX) / m.escalaX);
-    const y0 = Math.max(0, (m.origemY - extent[3]) / m.escalaY);
-    const y1 = Math.min(m.altura, (m.origemY - extent[1]) / m.escalaY);
+    const x0 = Math.max(0, extent[0]);
+    const x1 = Math.min(m.largura, extent[2]);
+    const y0 = Math.max(0, -extent[3]);
+    const y1 = Math.min(m.altura, -extent[1]);
     if (x1 <= x0 || y1 <= y0) return null;
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }, []);
@@ -147,128 +125,100 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
 
   useEffect(() => {
     let cancelado = false;
-    // Switching source remounts the map; without discarding the previous one, two canvases
-    // and two render loops would be fighting over the same div.
+    const controller = new AbortController();
+    let session: SessaoRaster | undefined;
+    let cleanupMap: (() => void) | undefined;
+    const timeout = window.setTimeout(() => controller.abort(), LIMITE_MS);
     limpaRef.current?.();
     limpaRef.current = null;
+    caixaRef.current = null;
     (async () => {
       try {
         setEtapa(copy.cogStepLibrary);
         const [
           { default: MapaOl }, { default: View }, { default: WebGLTileLayer },
-          { default: GeoTIFF }, { default: VectorLayer }, { default: VectorSource },
+          { default: DataTile }, { default: VectorLayer }, { default: VectorSource },
           { default: Draw, createBox }, { Style, Stroke, Fill }, { always },
+          { default: Projection }, { default: TileGrid },
         ] = await Promise.all([
           import("ol/Map.js"), import("ol/View.js"), import("ol/layer/WebGLTile.js"),
-          import("ol/source/GeoTIFF.js"), import("ol/layer/Vector.js"), import("ol/source/Vector.js"),
+          import("ol/source/DataTile.js"), import("ol/layer/Vector.js"), import("ol/source/Vector.js"),
           import("ol/interaction/Draw.js"), import("ol/style.js"), import("ol/events/condition.js"),
+          import("ol/proj/Projection.js"), import("ol/tilegrid/TileGrid.js"),
         ]);
-
+        if (cancelado) return;
+        setFase("lendo"); setErro(null); setJanela(null);
         setEtapa(copy.cogStepHeader);
-        const dados = await comLimite(leMetadados(fonte), copy.cogStepHeader);
-        if (cancelado) return;
+        session = await leMetadados(fonte, reference, controller.signal);
+        if (cancelado) { session.close(); return; }
+        const dados = session;
+        sessaoRef.current = dados;
         metaRef.current = dados;
-        setMeta(dados);
-
-        // A single band (elevation, NDVI, mask) has no mapping to RGB: without an explicit
-        // ramp WebGLTile paints everything black, because it reads altitude in metres as a
-        // colour component from 0 to 255. The range measured here applies to the preview and
-        // to the crop, otherwise the user annotates one image and receives another.
-        let faixa: { min: number; max: number } | null = null;
-        if (dados.bandas === 1) {
-          setEtapa(copy.cogStepBand);
-          // The last level is the coarsest overview; reading from it costs a few KB.
-          const grossa = await dados.tiff.getImage(dados.niveis[dados.niveis.length - 1]);
-          const rasters = await comLimite(grossa.readRasters(), copy.cogStepBand) as unknown as Array<ArrayLike<number>>;
-          faixa = medeFaixa(rasters[0], dados.semDado);
-          faixaRef.current = faixa;
-        }
-
-        const diretorio = (await dados.tiff.getImage(0) as unknown as {
-          fileDirectory?: { getValue?: (nome: string) => unknown } & Record<string, unknown>;
-        }).fileDirectory;
-        const photometric = typeof diretorio?.getValue === "function"
-          ? diretorio.getValue("PhotometricInterpretation")
-          : diretorio?.PhotometricInterpretation;
-        const ycbcr = dados.bandas === 3 && photometric === 6;
-
-        const base = typeof fonte === "string" ? { url: fonte } : { blob: fonte };
-        const source = new GeoTIFF({
-          sources: [dados.semDado !== null ? { ...base, nodata: dados.semDado } : base],
-          interpolate: true,
-          // The default normalisation rescales everything to 0–1 and breaks the relation
-          // to the real unit, which the ramp and the YCbCr matrix need to keep.
-          ...(faixa || ycbcr ? { normalize: false } : {}),
-        });
-
-        setEtapa(copy.cogStepTiles);
-        const viewConfig = await comLimite(source.getView(), copy.cogStepTiles);
+        setMeta(dados); setCrs(dados.crs === "sem CRS" ? "" : dados.crs);
+        setEtapa(copy.cogStepBand);
+        await prepareDisplay(dados);
         if (cancelado) return;
-
-        const selecao = new VectorSource();
-        const estilo = new Style({
-          stroke: new Stroke({ color: "#44C995", width: 2.5 }),
-          fill: new Fill({ color: "rgba(68,201,149,0.14)" }),
+        // Work in source pixels; affine rotation, south-up and custom CRSs cannot distort
+        // the crop rectangle. Only export applies the georeference.
+        const extent = [0, -dados.altura, dados.largura, 0];
+        const projection = new Projection({ code: "poligome-raster", units: "pixels", extent });
+        const maxZoom = Math.max(0, Math.ceil(Math.log2(Math.max(dados.largura, dados.altura) / 256)));
+        const resolutions = Array.from({ length: maxZoom + 1 }, (_, z) => 2 ** (maxZoom - z));
+        const source = new DataTile({
+          projection, tileGrid: new TileGrid({ extent, origin: [0, 0], resolutions, tileSize: 256 }),
+          tileSize: 256, bandCount: 4, wrapX: false, transition: 0,
+          loader: async (z, x, y, options) => {
+            try {
+              const step = resolutions[z] * 256;
+              return await readRgba(dados, { x: x * step, y: y * step, w: step, h: step }, 256, 256,
+                AbortSignal.any([dados.signal, options.signal]));
+            } catch (error) {
+              if (!cancelado && !options.signal.aborted && !dados.signal.aborted) {
+                const key = error instanceof Error ? error.message : "";
+                setErro(copy[key as TranslationKey] ?? copy.cogFailedHint);
+              }
+              throw error;
+            }
+          },
         });
-
+        const selecao = new VectorSource();
+        const estilo = new Style({ stroke: new Stroke({ color: "#44C995", width: 2.5 }), fill: new Fill({ color: "rgba(68,201,149,0.14)" }) });
+        const view = new View({ projection, center: [dados.largura / 2, -dados.altura / 2], resolution: resolutions[0],
+          minResolution: 0.125, maxResolution: resolutions[0] * 2 });
         const mapa = new MapaOl({
-          target: hostRef.current!,
-          layers: [
-            new WebGLTileLayer({
-              source,
-              ...(faixa ? {
-                style: {
-                  color: ["interpolate", ["linear"], ["band", 1],
-                    faixa.min, [16, 22, 19],
-                    (faixa.min + faixa.max) / 2, [104, 148, 124],
-                    faixa.max, [242, 246, 243]],
-                },
-              } : ycbcr ? { style: { color: corDeYCbCr() } } : {}),
-            }),
-            new VectorLayer({ source: selecao, style: estilo }),
-          ],
-          view: new View(viewConfig),
+          target: hostRef.current!, maxTilesLoading: 2,
+          // RGBA bytes are normalized by the texture upload. The default shader
+          // preserves them; dividing these bands by 255 again hides the preview.
+          layers: [new WebGLTileLayer({ source, cacheSize: 64 }), new VectorLayer({ source: selecao, style: estilo })], view,
         });
         mapaRef.current = mapa;
-
-        // Box by dragging. The OpenLayers default asks for two clicks and leaves dragging
-        // to the pan; that is the opposite of what a crop selection suggests, and the user
-        // has already framed the region in "visible area" mode before getting here.
-        const desenho = new Draw({
-          source: selecao, type: "Circle", geometryFunction: createBox(),
-          style: estilo, freehandCondition: always,
-        });
+        cleanupMap = () => { mapa.setTarget(undefined); mapa.dispose(); source.dispose(); };
+        view.fit(extent, { size: mapa.getSize(), padding: [8, 8, 8, 8] });
+        const desenho = new Draw({ source: selecao, type: "Circle", geometryFunction: createBox(), style: estilo, freehandCondition: always });
         desenho.on("drawstart", () => selecao.clear());
         desenho.on("drawend", (evento) => {
           const extent = evento.feature.getGeometry()?.getExtent();
-          if (extent) {
-            caixaRef.current = janelaDe(extent);
-            setJanela(caixaRef.current);
-          }
+          if (extent) { caixaRef.current = janelaDe(extent); setJanela(caixaRef.current); }
         });
-        desenho.setActive(false);
-        mapa.addInteraction(desenho);
-        desenhoRef.current = desenho;
-
+        desenho.setActive(modoRef.current === "retangulo");
+        mapa.addInteraction(desenho); desenhoRef.current = desenho;
         mapa.on("moveend", atualizaJanela);
         mapa.once("rendercomplete", atualizaJanela);
-
-        limpaRef.current = () => {
-          mapaRef.current = null;
-          desenhoRef.current = null;
-          mapa.setTarget(undefined);
-          mapa.dispose();
-        };
-        setFase("pronto");
-        setEtapa("");
-      } catch (falha) {
+        atualizaJanela();
+        setFase("pronto"); setEtapa("");
+      } catch (error) {
         if (cancelado) return;
-        setErro(falha instanceof Error ? falha.message : String(falha));
-        setFase("erro");
-      }
+        const key = error instanceof Error ? error.message : "";
+        setErro(copy[key as TranslationKey] ?? copy.cogFailedHint); setFase("erro");
+      } finally { window.clearTimeout(timeout); }
     })();
-    return () => { cancelado = true; };
-  }, [fonte, copy, janelaDe, atualizaJanela]);
+    const cleanup = () => {
+      cancelado = true; window.clearTimeout(timeout); controller.abort(); session?.close(); cleanupMap?.();
+      sessaoRef.current = null; mapaRef.current = null; desenhoRef.current = null;
+    };
+    limpaRef.current = cleanup;
+    return cleanup;
+  }, [fonte, reference, copy, janelaDe, atualizaJanela]);
 
   useEffect(() => {
     modoRef.current = modo;
@@ -327,20 +277,25 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
       setFonte(`${endpoint}${trabalho.url}`);
     } catch (falha) {
       setConversao(null);
-      setErro(falha instanceof Error ? falha.message : String(falha));
+      const key = falha instanceof Error ? falha.message : "";
+      setErro(copy[key as TranslationKey] ?? copy.cogFailedHint);
     }
   }
 
   const previsao = janela ? dimensionaRecorte(janela.w, janela.h) : null;
 
   async function confirma() {
-    if (!janela || gerando) return;
+    if (!janela || gerando || !sessaoRef.current) return;
     setGerando(true);
     try {
-      const recorte = await geraRecorte(fonte, nome, janela, faixaRef.current);
+      const session = sessaoRef.current;
+      const recorte = await geraRecorte(session, nome, janela);
+      if (session.signal.aborted) return;
+      if (recorte.geo) recorte.geo.crs = crs.trim() || "sem CRS";
       onPronto(recorte, nome);
     } catch (falha) {
-      setErro(falha instanceof Error ? falha.message : String(falha));
+      const key = falha instanceof Error ? falha.message : "";
+      setErro(copy[key as TranslationKey] ?? copy.cogFailedHint);
       setFase("erro");
     } finally {
       setGerando(false);
@@ -390,7 +345,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
           <h3>{copy.cogFileSection}</h3>
           <dl>
             <dt>{copy.cogPixels}</dt><dd>{meta ? `${inteiro(meta.largura)} × ${inteiro(meta.altura)}` : "—"}</dd>
-            <dt>{copy.cogCrs}</dt><dd>{meta?.crs ?? "—"}</dd>
+            <dt>{copy.cogCrs}</dt><dd>{meta?.transform ? <input aria-label={copy.rasterCrsInput} title={copy.rasterCrsInput} placeholder="EPSG:31983" value={crs} onChange={event => setCrs(event.target.value)} style={{ width: "100%", minWidth: 0 }} /> : copy.rasterPixelOnly}</dd>
             <dt>{copy.cogBands}</dt><dd>{meta?.bandas ?? "—"}</dd>
             <dt>{copy.cogOverviews}</dt><dd>{meta?.overviews ?? "—"}</dd>
             <dt>{copy.cogProfile}</dt>
@@ -414,6 +369,7 @@ export default function CogRecorte({ origem, nome, copy, onCancelar, onPronto }:
           </dl> : <p className="cog-crop-vazio">
             {modo === "retangulo" ? copy.cogDrawPrompt : copy.cogNoWindow}
           </p>}
+          <p className="cog-crop-nota">{meta?.transform ? copy.rasterCrsInput : copy.rasterPixelOnly}</p>
           <p className="cog-crop-nota">{fill(copy.cogCapNote, { side: 4096, mp: 12 })}</p>
         </aside>
       </div>

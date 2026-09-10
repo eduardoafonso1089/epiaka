@@ -1,3 +1,5 @@
+import { rasterTransform, transformPoint } from "./georeference";
+import { toWgs84 } from "./projections";
 import JSZip from "jszip";
 import { annotationBounds, boxCorners, polygonArea, scalePoints } from "./geometry";
 import { EDITOR_HEIGHT, EDITOR_WIDTH } from "./geometry";
@@ -28,6 +30,7 @@ export function exportCoco(assets: Asset[], labels: Label[], annotations: Annota
     file_name: asset.name,
     width: asset.width ?? 1000,
     height: asset.height ?? 650,
+    ...(asset.geo ? { georeference: asset.geo } : {}),
   }));
   const categories = labels.map((label, index) => ({
     id: index + 1,
@@ -128,6 +131,7 @@ export async function exportYoloZip(assets: Asset[], labels: Label[], annotation
     zip.file(`images/${split}/${numberedBaseName}${extension}`, await response.arrayBuffer());
     zip.file(`labels/${split}/${numberedBaseName}.txt`, lines.join("\n"));
   }
+  if (assets.some(asset => asset.geo)) zip.file("georeferences.json", JSON.stringify(assets.filter(asset => asset.geo).map(asset => ({ image: asset.name, georeference: asset.geo })), null, 2));
   zip.file("classes.txt", labels.map((label) => label.name).join("\n"));
   const validationPath = assets.length > 1 ? "images/val" : "images/train";
   zip.file(
@@ -155,13 +159,10 @@ export async function exportYoloZip(assets: Asset[], labels: Label[], annotation
  * Editor space (1000 × 650) → crop pixel → file pixel → CRS coordinate.
  * The editor's y grows downwards and the CRS's upwards; the flip happens in the last step.
  */
-function paraCoordenada(asset: Asset, x: number, y: number): [number, number] {
+export function paraCoordenada(asset: Asset, x: number, y: number): [number, number] {
   const geo = asset.geo!;
-  const recorteX = x / EDITOR_WIDTH * geo.cropWidth;
-  const recorteY = y / EDITOR_HEIGHT * geo.cropHeight;
-  const arquivoX = geo.window.x + recorteX * (geo.window.w / geo.cropWidth);
-  const arquivoY = geo.window.y + recorteY * (geo.window.h / geo.cropHeight);
-  return [geo.originX + arquivoX * geo.scaleX, geo.originY - arquivoY * geo.scaleY];
+  return transformPoint(rasterTransform(geo), geo.window.x + x / EDITOR_WIDTH * geo.window.w,
+    geo.window.y + y / EDITOR_HEIGHT * geo.window.h);
 }
 
 function anel(asset: Asset, pontos: number[]) {
@@ -195,55 +196,52 @@ function geometriaDe(asset: Asset, annotation: Annotation) {
   return { type: "Polygon", coordinates: [[...pontos, pontos[0]], ...holes.map((hole) => [...hole, hole[0]])] };
 }
 
-export function annotationsToGeoJson(assets: Asset[], labels: Label[], annotations: Annotation[]) {
-  const comGeo = assets.filter((asset) => asset.geo);
-  const features = annotations.flatMap((annotation) => {
-    const asset = comGeo.find((item) => item.id === annotation.asset);
-    if (!asset) return [];
-    const geometry = geometriaDe(asset, annotation);
-    if (!geometry) return [];
-    const label = labels.find((item) => item.id === annotation.label);
-    return [{
-      type: "Feature",
-      geometry,
-      properties: {
-        id: annotation.id,
-        classe: label?.name ?? annotation.label,
-        classe_id: annotation.label,
-        cor: label?.color ?? null,
-        forma: annotation.type,
-        rotacao: annotation.type === "box" ? annotation.rotation ?? 0 : undefined,
-        recorte: asset.name,
-        origem: asset.geo!.source,
-        crs: asset.geo!.crs,
-      },
-    }];
-  });
-
-  // Every crop in an export has to speak the same CRS: mixing UTM from different zones in
-  // a single file would produce overlapping geometry with no warning.
-  const crsUsados = [...new Set(comGeo.map((asset) => asset.geo!.crs))];
-  return {
-    colecao: {
-      type: "FeatureCollection",
-      // The `crs` member left the specification in 2016, but QGIS and GDAL still read it,
-      // and it is the only way not to lose the projection without reprojecting to WGS84 here.
-      ...(crsUsados.length === 1 && crsUsados[0] !== "sem CRS"
-        ? { crs: { type: "name", properties: { name: `urn:ogc:def:crs:EPSG::${crsUsados[0].replace("EPSG:", "")}` } } }
-        : {}),
-      features,
-    },
-    crsUsados,
-    total: features.length,
-    semGeo: annotations.length - features.length,
+function projectGeometry(geometry: NonNullable<ReturnType<typeof geometriaDe>>, project: (p: [number, number]) => [number, number]) {
+  // Geometry construction above deliberately happens in native CRS before reprojection.
+  const map = (coordinates: unknown): unknown => {
+    const values = coordinates as unknown[];
+    return typeof values[0] === "number" ? project(values as [number, number]) : values.map(map);
   };
+  const coordinates = map(geometry.coordinates);
+  if (geometry.type === "Polygon") {
+    (coordinates as number[][][]).forEach((ring, index) => {
+      // RFC 7946: outer rings counterclockwise, inner rings clockwise.
+      let area = 0;
+      for (let i = 0; i < ring.length - 1; i++) area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      if ((index === 0 && area < 0) || (index > 0 && area > 0)) ring.reverse();
+    });
+  }
+  return { type: geometry.type, coordinates };
+}
+
+export function annotationsToGeoJson(assets: Asset[], labels: Label[], annotations: Annotation[]) {
+  const assetMap = new Map(assets.map(asset => [asset.id, asset]));
+  const labelMap = new Map(labels.map(label => [label.id, label]));
+  const projections = new Map<string, ReturnType<typeof toWgs84>>();
+  const features = annotations.map(annotation => {
+    const asset = assetMap.get(annotation.asset);
+    // Never silently drop annotations or emit local/projected coordinates as longitude.
+    if (!asset?.geo) throw new Error('rasterMissingReference');
+    const crs = asset.geo.crs;
+    if (!projections.has(crs)) projections.set(crs, toWgs84(crs));
+    const geometry = geometriaDe(asset, annotation);
+    if (!geometry) throw new Error('rasterInvalidCoordinates');
+    const label = labelMap.get(annotation.label);
+    return {
+      type: "Feature", geometry: projectGeometry(geometry, projections.get(crs)!),
+      properties: {
+        id: annotation.id, classe: label?.name ?? annotation.label, classe_id: annotation.label,
+        cor: label?.color ?? null, forma: annotation.type,
+        rotacao: annotation.type === "box" ? annotation.rotation ?? 0 : undefined,
+        recorte: asset.name, origem: asset.geo.source, crs,
+      },
+    };
+  });
+  return { colecao: { type: "FeatureCollection", features }, crsUsados: [...projections.keys()], total: features.length, semGeo: 0 };
 }
 
 export function exportGeoJson(assets: Asset[], labels: Label[], annotations: Annotation[]) {
   const resultado = annotationsToGeoJson(assets, labels, annotations);
-  downloadBlob(
-    "poligome-annotations.geojson",
-    new Blob([JSON.stringify(resultado.colecao, null, 2)], { type: "application/geo+json;charset=utf-8" }),
-  );
+  downloadBlob("poligome-annotations.geojson", new Blob([JSON.stringify(resultado.colecao, null, 2)], { type: "application/geo+json;charset=utf-8" }));
   return resultado;
 }

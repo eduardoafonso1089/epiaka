@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { access } from "node:fs/promises";
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
@@ -31,6 +32,14 @@ test("renders development preview metadata", async () => {
   );
   const html = await response.text();
   assert.match(html, developmentPreviewMeta);
+  assert.match(html, /<title>Poligome — Anotação de Imagens<\/title>/);
+  assert.doesNotMatch(html, /visionlabel|\/workspace\/sites\//i);
+  const fontUrls = [...html.matchAll(/<link[^>]*href="([^"]+)"[^>]*as="font"/g)].map(match => match[1]);
+  assert.ok(fontUrls.length > 0, "self-hosted fonts must be preloaded");
+  for (const url of fontUrls) {
+    assert.ok(url.startsWith("/assets/_vinext_fonts/"), `font must use a public URL: ${url}`);
+    await access(new URL(`../dist/client${url}`, import.meta.url));
+  }
 
   const themeScript = html.indexOf('localStorage.getItem("poligome-theme")');
   const body = html.indexOf("<body");

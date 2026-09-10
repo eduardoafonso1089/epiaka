@@ -21,6 +21,7 @@ import type { ProjectLayout, ProjectSaveMode } from "../lib/project";
 import { requestSamMask } from "../lib/sam";
 import { createDemoProject } from "../lib/demo";
 import { TouchGesture, pinchZoom, touchToolUsesTap, nearestTouchVertex } from "../lib/touch-gestures";
+import { ImageFraming, annotationPointerDelta } from "../lib/editor-viewport";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
 import { geoReference, isRasterSidecar, readRasterSidecars } from "../lib/georeference";
@@ -72,7 +73,7 @@ function nextLabelColor(existing: Label[]) {
   return colors[existing.length % colors.length];
 }
 
-type AnnotationDrag = { startX: number; startY: number; originals: Annotation[]; started: boolean };
+type AnnotationDrag = { clientX: number; clientY: number; width: number; height: number; originals: Annotation[]; started: boolean };
 type VertexDrag = { offset?: { x: number; y: number }; annotationId: string; vertexIndex: number; linked?: Array<{ annotationId: string; vertexIndex: number }> };
 
 function polygonPath(outer: number[] = [], holes: number[][] = []) {
@@ -288,6 +289,8 @@ export default function Home() {
   const touchSnapshot = useRef<{ annotations: Annotation[]; history: Annotation[][]; redo: Annotation[][]; saved: boolean; selected: string | null; multi: string[]; vertex: typeof selectedVertex } | null>(null);
   const pinchRef = useRef<{ zoom: number; distance: number; anchorX: number; anchorY: number } | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(1000);
+  const framingRef = useRef(new ImageFraming());
+  const selectionViewportRef = useRef<{ left: number; top: number } | null>(null);
   const [zoom, setZoom] = useState(92);
   const [lineThickness, setLineThickness] = useState(() => {
     if (typeof window === "undefined") return 3;
@@ -731,6 +734,7 @@ export default function Home() {
   // the canvas, otherwise the viewport centre. The scroll is repositioned in the layout
   // effect below, with the canvas already at its new size.
   const applyZoom = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
+    if (activeImageId) framingRef.current.keep(activeImageId);
     const target = Math.max(10, Math.min(400, Math.round(nextZoom)));
     if (target === zoom) return;
     const scroller = scrollRef.current;
@@ -748,7 +752,7 @@ export default function Home() {
       anchorY: Math.max(0, Math.min(1, (clientY - bounds.top) / bounds.height)),
     };
     setZoom(target);
-  }, [zoom]);
+  }, [zoom, activeImageId]);
 
   // The wheel needs a native listener with passive:false. React registers `onWheel` as
   // passive (react-dom: "wheel" is in the same list as touchstart/touchmove), so there
@@ -791,6 +795,7 @@ export default function Home() {
     if (!current || !activeImageWidth || !activeImageHeight) return;
     const scroller = scrollRef.current;
     if (!scroller) return;
+    if (!activeImageId || !framingRef.current.fit(activeImageId, canEditImage)) return;
     setZoom(zoomToFit({ width: activeImageWidth, height: activeImageHeight }));
 
     let innerFrame = 0;
@@ -806,7 +811,7 @@ export default function Home() {
       cancelAnimationFrame(outerFrame);
       if (innerFrame) cancelAnimationFrame(innerFrame);
     };
-  }, [activeImageId, activeImageWidth, activeImageHeight, current]);
+  }, [activeImageId, activeImageWidth, activeImageHeight, canEditImage, current]);
 
   function fitImageToViewport() {
     const scroller = scrollRef.current;
@@ -865,7 +870,24 @@ export default function Home() {
     } : null;
   }
 
+  function preserveSelectionViewport() {
+    if (activeImageId) framingRef.current.keep(activeImageId);
+    const scroller = scrollRef.current;
+    if (scroller) selectionViewportRef.current = { left: scroller.scrollLeft, top: scroller.scrollTop };
+  }
+
+  useIsomorphicLayoutEffect(() => {
+    const position = selectionViewportRef.current;
+    selectionViewportRef.current = null;
+    const scroller = scrollRef.current;
+    if (position && scroller) {
+      scroller.scrollLeft = position.left;
+      scroller.scrollTop = position.top;
+    }
+  }, [selected, multiSelected, selectedVertex]);
+
   function touchPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (canEditImage && tool === "select") preserveSelectionViewport();
     if (event.pointerType !== "touch") { setTouchMode(false); return; }
     const gesture = touchGesture.current;
     if (!canEditImage || (!gesture.points.size && !(event.target instanceof Element && svgRef.current?.contains(event.target)))) return;
@@ -1168,7 +1190,9 @@ export default function Home() {
     }
     const ids = multiSelected.includes(annotation.id) && multiSelected.length > 1 ? multiSelected : [annotation.id];
     const originals = annotations.filter((item) => ids.includes(item.id));
-    const drag: AnnotationDrag = { startX: point.x, startY: point.y, originals, started: false };
+    const frame = svgRef.current?.getBoundingClientRect();
+    if (!frame) return;
+    const drag: AnnotationDrag = { clientX: event.clientX, clientY: event.clientY, width: frame.width, height: frame.height, originals, started: false };
     setSelected(annotation.id); setMultiSelected(ids); setSelectedVertex(null); syncBatchLabel(ids);
     annotationDragRef.current = drag; setAnnotationDrag(drag);
     if (event.pointerType === "touch") capture(event.pointerId);
@@ -1179,13 +1203,13 @@ export default function Home() {
     const drag = annotationDragRef.current;
     if (!drag) return;
     event.preventDefault(); event.stopPropagation();
-    const point = editorPoint(event.clientX, event.clientY);
+    const movement = annotationPointerDelta(drag, event.clientX, event.clientY);
     if (!drag.started) {
-      if (Math.hypot(point.x - drag.startX, point.y - drag.startY) < 4 * handleScale) return;
+      if (!movement.moved) return;
       drag.started = true;
       remember();
     }
-    const delta = boundedAnnotationDelta(drag.originals, point.x - drag.startX, point.y - drag.startY);
+    const delta = boundedAnnotationDelta(drag.originals, movement.dx, movement.dy);
     const originals = new Map(drag.originals.map((annotation) => [annotation.id, annotation]));
     setAnnotations((items) => items.map((item) => {
       const original = originals.get(item.id);
@@ -1351,6 +1375,7 @@ export default function Home() {
   }
 
   function selectAnnotationFromPanel(annotation: Annotation, shiftKey: boolean, additive: boolean, toggle: boolean) {
+    preserveSelectionViewport();
     const anchorId = annotationSelectionAnchorRef.current;
     const anchorIndex = anchorId ? currentAnnotations.findIndex((item) => item.id === anchorId) : -1;
     const targetIndex = currentAnnotations.findIndex((item) => item.id === annotation.id);
@@ -2121,7 +2146,7 @@ export default function Home() {
     if (!target) return;
     const index = assets.findIndex((item) => item.id === id);
     assets.slice(Math.max(0, index - 2), index + 3).forEach((item) => { if (!item.missing) warmImage(item.src); });
-    if (target.width && target.height) setZoom(zoomToFit(target));
+    if (id === current) { setLeftOpen(false); return; }
     annotationSelectionAnchorRef.current = null;
     setCurrent(id); setSelected(null); setMultiSelected([]); setSelectedVertex(null); resetDrafts(); setLeftOpen(false);
   }

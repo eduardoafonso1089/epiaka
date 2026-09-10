@@ -468,3 +468,7 @@ html[data-theme="light"]{--ink:#29262F;--muted:#6E6A75;--line:#DEDCE4;--green:#7
   .annotation-info,.label-row{min-height:44px}
   .export-pop{max-height:calc(100dvh - 108px);overflow-y:auto}
 }
+
+/* Selection handles must not influence the intrinsic size or scroll anchor of the stage. */
+.editor .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.editor .scroll{min-width:0;min-height:0;overflow-anchor:none}

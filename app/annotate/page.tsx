@@ -2357,7 +2357,7 @@ export default function Home() {
                 const centerX = x + width / 2; const centerY = y + height / 2; const degrees = (annotation.rotation ?? 0) * 180 / Math.PI;
                 return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}>
                   <g transform={`rotate(${degrees} ${centerX} ${centerY})`}>
-                    <rect x={x} y={y} width={width} height={height} fill={`${label.color}28`} stroke={label.color} strokeWidth={isSelected ? lineThickness + 2 : lineThickness} />
+                    <rect x={x} y={y} width={width} height={height} fill={`${label.color}28`} stroke={label.color} strokeWidth={isSelected ? lineThickness + 2 : lineThickness} vectorEffect="non-scaling-stroke" />
                     {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && ([
                       ["nw", x, y], ["ne", x + width, y], ["se", x + width, y + height], ["sw", x, y + height],
                     ] as const).map(([corner, handleX, handleY]) => <ellipse key={corner} className={`box-resize-handle ${corner}`} cx={handleX} cy={handleY} rx={markerRadius} ry={markerRadius * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} />)}

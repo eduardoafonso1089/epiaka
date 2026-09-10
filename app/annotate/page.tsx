@@ -90,6 +90,11 @@ type TransformDrag = {
   startDistance: number;
   original: Annotation;
 };
+type BoxResizeDrag = {
+  annotationId: string;
+  corner: "nw" | "ne" | "se" | "sw";
+  original: Annotation;
+};
 type PanelSide = "left" | "right";
 type PanelResize = { side: PanelSide; pointerId: number; startX: number; startWidth: number };
 type ReorderDrag = { sourceId: string; targetId: string | null; position: "before" | "after" };
@@ -377,6 +382,7 @@ export default function Home() {
   const selectionMarqueeRef = useRef<SelectionMarquee | null>(null);
   const vertexDragRef = useRef<VertexDrag | null>(null);
   const transformDragRef = useRef<TransformDrag | null>(null);
+  const boxResizeDragRef = useRef<BoxResizeDrag | null>(null);
   const reshapeTargetRef = useRef<string | null>(null);
   const annotationSelectionAnchorRef = useRef<string | null>(null);
   const panelResizeRef = useRef<PanelResize | null>(null);
@@ -848,6 +854,7 @@ export default function Home() {
     annotationDragRef.current = null; setAnnotationDrag(null);
     vertexDragRef.current = null; setVertexDrag(null);
     transformDragRef.current = null; setTransformDrag(null);
+    boxResizeDragRef.current = null;
     selectionMarqueeRef.current = null; setSelectionMarquee(null);
     setFreehandDraft([]); setFreehandDrawing(false);
     setReshapeDraft([]); setReshapeDrawing(false); setReshapeStartInside(null);
@@ -1227,6 +1234,51 @@ export default function Home() {
     event.preventDefault(); event.stopPropagation();
     try { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* no-op */ }
     annotationDragRef.current = null; setAnnotationDrag(null);
+  }
+
+  function beginBoxResize(event: React.PointerEvent<SVGElement>, annotation: Annotation, corner: BoxResizeDrag["corner"]) {
+    if (event.button !== 0 || tool !== "select" || annotation.type !== "box") return;
+    event.preventDefault(); event.stopPropagation(); remember();
+    const drag: BoxResizeDrag = { annotationId: annotation.id, corner, original: { ...annotation } };
+    boxResizeDragRef.current = drag;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { capture(event.pointerId); }
+  }
+
+  function moveBoxResize(event: React.PointerEvent<SVGElement>) {
+    const drag = boxResizeDragRef.current;
+    if (!drag || drag.original.type !== "box") return;
+    event.preventDefault(); event.stopPropagation();
+    const original = drag.original;
+    const width = original.w ?? 0, height = original.h ?? 0;
+    const center = { x: (original.x ?? 0) + width / 2, y: (original.y ?? 0) + height / 2 };
+    const angle = original.rotation ?? 0;
+    const pointer = editorPoint(event.clientX, event.clientY);
+    const dx = pointer.x - center.x, dy = pointer.y - center.y;
+    // Work in the box's own axes, then place its new centre so the opposite corner stays put.
+    const localPointer = { x: center.x + dx * Math.cos(angle) + dy * Math.sin(angle), y: center.y - dx * Math.sin(angle) + dy * Math.cos(angle) };
+    const fixed = {
+      x: (drag.corner === "nw" || drag.corner === "sw") ? (original.x ?? 0) + width : (original.x ?? 0),
+      y: (drag.corner === "nw" || drag.corner === "ne") ? (original.y ?? 0) + height : (original.y ?? 0),
+    };
+    const nextWidth = Math.max(8, Math.abs(localPointer.x - fixed.x));
+    const nextHeight = Math.max(8, Math.abs(localPointer.y - fixed.y));
+    const localCenter = { x: (localPointer.x + fixed.x) / 2, y: (localPointer.y + fixed.y) / 2 };
+    const localDelta = { x: localCenter.x - center.x, y: localCenter.y - center.y };
+    const nextCenter = {
+      x: center.x + localDelta.x * Math.cos(angle) - localDelta.y * Math.sin(angle),
+      y: center.y + localDelta.x * Math.sin(angle) + localDelta.y * Math.cos(angle),
+    };
+    setAnnotations((items) => items.map((item) => item.id === drag.annotationId
+      ? { ...item, x: nextCenter.x - nextWidth / 2, y: nextCenter.y - nextHeight / 2, w: nextWidth, h: nextHeight }
+      : item));
+    setSaved(false);
+  }
+
+  function finishBoxResize(event: React.PointerEvent<SVGElement>) {
+    if (!boxResizeDragRef.current) return;
+    event.preventDefault(); event.stopPropagation();
+    try { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* no-op */ }
+    boxResizeDragRef.current = null;
   }
 
   function beginTransform(event: React.PointerEvent<SVGElement>, annotation: Annotation, kind: "scale" | "rotate") {
@@ -2306,6 +2358,9 @@ export default function Home() {
                 return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}>
                   <g transform={`rotate(${degrees} ${centerX} ${centerY})`}>
                     <rect x={x} y={y} width={width} height={height} fill={`${label.color}28`} stroke={label.color} strokeWidth={(isSelected ? lineThickness + 2 : lineThickness) * handleScale} />
+                    {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && ([
+                      ["nw", x, y], ["ne", x + width, y], ["se", x + width, y + height], ["sw", x, y + height],
+                    ] as const).map(([corner, handleX, handleY]) => <ellipse key={corner} className={`box-resize-handle ${corner}`} cx={handleX} cy={handleY} rx={markerRadius} ry={markerRadius * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} />)}
                   </g>
                 </g>;
               }

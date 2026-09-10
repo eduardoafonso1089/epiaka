@@ -44,6 +44,7 @@
 .transform-overlay line{stroke:#F2F5F3;stroke-width:3;stroke-dasharray:7 5;pointer-events:none}
 .transform-handle{fill:#FFFFFF;stroke:#44C995;pointer-events:all}
 .transform-handle.rotate-handle{cursor:grab}.transform-handle.scale-handle{cursor:nwse-resize}
+.box-resize-handle{fill:#FFFFFF;stroke:#44C995;pointer-events:all}.box-resize-handle.nw,.box-resize-handle.se{cursor:nwse-resize}.box-resize-handle.ne,.box-resize-handle.sw{cursor:nesw-resize}
 .transform-center{fill:#44C995;stroke:#FFFFFF;pointer-events:none}
 .snap-guide{pointer-events:none}.snap-guide circle{fill:rgba(168,224,99,.18);stroke:#8BE3BD}
 .snap-guide line{stroke:#FFFFFF;stroke-linecap:round}

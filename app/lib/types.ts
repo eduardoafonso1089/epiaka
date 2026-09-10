@@ -17,6 +17,8 @@ export type Label = {
   name: string;
   color: string;
   key: string;
+  /** Optional 1–5 review score, saved with the project. */
+  reviewScore?: number;
 };
 
 /**
@@ -59,6 +61,7 @@ export type Asset = {
   width?: number;
   height?: number;
   geo?: GeoRef;
+  reviewScore?: number;
 };
 
 export type Annotation = {
@@ -76,6 +79,7 @@ export type Annotation = {
   pts?: number[];
   /** Interior rings (holes) of a polygon. Legacy annotations simply omit this field. */
   holes?: number[][];
+  reviewScore?: number;
 };
 
 export type SamPrompt = {

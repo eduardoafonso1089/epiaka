@@ -3,7 +3,7 @@
 import {
   Check, ChevronDown, CodeXml, ChevronLeft, ChevronRight, CircleMinus, CirclePlus, Crosshair,
   Combine, Copy, Download, Eye, EyeOff, FileText, FolderOpen, FolderUp, Hand, HardDriveDownload, ImagePlus, Images, Keyboard, Languages, Link2,
-  Focus, Globe, GripVertical, House, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
+  BarChart3, ClipboardCheck, Focus, Globe, GripVertical, House, ListRestart, LoaderCircle, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, Save, ShieldCheck,
   Monitor, Moon, Palette, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Pentagon, Plus, Power, Redo2, Scissors, Search, Settings2, Sparkles,
   Spline, Square, Sun, Tags, Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut, PenTool,
 } from "lucide-react";
@@ -35,6 +35,19 @@ const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : us
 
 const UNLABELED_ID = "unlabeled";
 const UNLABELED_COLOR = "#929a95";
+
+function polygonArea(points: number[] = []) {
+  let area = 0;
+  for (let i = 0; i < points.length; i += 2) {
+    const next = (i + 2) % points.length;
+    area += points[i] * points[next + 1] - points[next] * points[i + 1];
+  }
+  return Math.abs(area) / 2;
+}
+
+function ScoreButtons({ value, onChange, label }: { value?: number; onChange: (score: number) => void; label: string }) {
+  return <div className="review-score" aria-label={label}>{[1, 2, 3, 4, 5].map((score) => <button key={score} aria-label={`${label}: ${score} de 5`} aria-pressed={value === score} className={score <= (value ?? 0) ? "selected" : ""} onClick={() => onChange(score)}>★</button>)}<small>{value ? `${value}/5` : "sem nota"}</small></div>;
+}
 // Boolean cuts are represented by a very thin strip, so the two generated nodes can be
 // a couple of editor units apart. Treat that as a shared topological vertex.
 const TOPOLOGY_VERTEX_TOLERANCE = 3;
@@ -305,6 +318,7 @@ export default function Home() {
   });
   const [search, setSearch] = useState("");
   const [quality, setQuality] = useState(false);
+  const [reviewTab, setReviewTab] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
@@ -412,6 +426,20 @@ export default function Home() {
   const currentImageAnnotationsHidden = currentAnnotations.length > 0 && currentAnnotations.every((annotation) => hiddenAnnotations.includes(annotation.id));
   const copy = getCopy(language);
   const activeAnnotation = annotations.find((annotation) => annotation.id === selected);
+  const qualitySummary = useMemo(() => {
+    const perImage = assets.map((item) => ({ item, count: annotations.filter((annotation) => annotation.asset === item.id).length }));
+    const counts = labels.map((label) => ({ label, count: annotations.filter((annotation) => annotation.label === label.id).length }));
+    const maxCount = Math.max(0, ...counts.map((entry) => entry.count));
+    const areas = new Map<string, number>();
+    for (const annotation of annotations) {
+      if (annotation.type !== "polygon") continue;
+      const image = assets.find((item) => item.id === annotation.asset);
+      const imagePixels = (image?.width ?? 1000) * (image?.height ?? 650);
+      const editorArea = Math.max(0, polygonArea(annotation.pts) - (annotation.holes ?? []).reduce((sum, hole) => sum + polygonArea(hole), 0));
+      areas.set(annotation.label, (areas.get(annotation.label) ?? 0) + editorArea / 650000 * imagePixels);
+    }
+    return { perImage, counts, areas, maxCount, minPerImage: Math.min(...perImage.map((entry) => entry.count), 0), maxPerImage: Math.max(...perImage.map((entry) => entry.count), 0) };
+  }, [annotations, assets, labels]);
   const activeTransformBounds = activeAnnotation?.type === "polygon" && (activeAnnotation.pts?.length ?? 0) >= 6
     ? polygonBounds(activeAnnotation.pts ?? [])
     : activeAnnotation?.type === "box"
@@ -713,7 +741,7 @@ export default function Home() {
       setActiveLabel(demo.labels[0].id); setBatchLabel(demo.labels[0].id); setNewLabelColor(nextLabelColor(demo.labels));
       setHistory([]); setRedoHistory([]); setSelected(demo.annotations[0].id); setMultiSelected([demo.annotations[0].id]); setSelectedVertex(null);
       setSelectedClassIds([]); setSelectedAssetIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
-      setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setSearch(""); setQuality(false); setTool("select"); setZoom(92);
+      setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setSearch(""); setQuality(false); setReviewTab(false); setTool("select"); setZoom(92);
       setPanelLayout(defaultPanelLayout()); setLeftPanelCollapsed(false); setRightPanelCollapsed(false);
       setProjectOpen(false); setProjectEditing(false); setProjectSaveOpen(false); setClassManagerOpen(false); setLeftOpen(false); setRightOpen(false);
       setSaved(true);
@@ -1919,6 +1947,23 @@ export default function Home() {
     requestAnimationFrame(() => labelInputRef.current?.focus());
   }
 
+  function setAssetReview(score: number) {
+    if (!asset) return;
+    setAssets((items) => items.map((item) => item.id === asset.id ? { ...item, reviewScore: score } : item));
+    setSaved(false);
+  }
+
+  function setAnnotationReview(score: number) {
+    if (!activeAnnotation) return;
+    setAnnotations((items) => items.map((item) => item.id === activeAnnotation.id ? { ...item, reviewScore: score } : item));
+    setSaved(false);
+  }
+
+  function setLabelReview(score: number) {
+    setLabels((items) => items.map((item) => item.id === activeLabel ? { ...item, reviewScore: score } : item));
+    setSaved(false);
+  }
+
   function requestClassDeletion(classIds: string[]) {
     const validIds = classIds.filter((id, index) => id !== UNLABELED_ID && classIds.indexOf(id) === index && labels.some((label) => label.id === id));
     if (validIds.length) setPendingDeleteClassIds(validIds);
@@ -2066,7 +2111,7 @@ export default function Home() {
     annotationSelectionAnchorRef.current = null;
     setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSelectedClassIds([]); setSelectedAssetIds([]);
     setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
-    setSearch(""); setQuality(false); setTool("select"); setZoom(92); resetDrafts();
+    setSearch(""); setQuality(false); setReviewTab(false); setTool("select"); setZoom(92); resetDrafts();
     setPanelLayout(defaultPanelLayout());
     setProjectOpen(false); setProjectEditing(false); setProjectSaveOpen(false);
     setClassManagerOpen(false); setLeftOpen(false); setRightOpen(false); setSaved(true);
@@ -2294,6 +2339,7 @@ export default function Home() {
         <input hidden ref={input} type="file" accept="image/*,.tif,.tiff,.geotif,.geotiff,.btf,.tf8,.btf8,.tfw,.tifw,.jgw,.jpgw,.jpegw,.pgw,.pngw,.bpw,.bmpw,.gfw,.gifw,.wld,.prj,.aux.xml" multiple onChange={(event) => { const selected = event.currentTarget.files; void files(selected); event.currentTarget.value = ""; }} />
         <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importAnnotationFiles(annotationFiles); }} />
         <button className="import" title={copy.rasterImportHint} onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
+        <button className="demo-import" disabled={demoLoading} onClick={() => void loadDemoProject()}>{demoLoading ? <LoaderCircle className="spin" size={15} /> : <WandSparkles size={15} />}{copy.tryDemo}</button>
         <small style={{ display: "block", padding: "0 12px 8px", opacity: 0.7 }}>{copy.rasterImportHint}</small>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>
@@ -2396,7 +2442,7 @@ export default function Home() {
             {tool === "sam" && samPrompts.map((prompt, index) => { const arm = markerRadius * .5; const bar = markerRadius * .34; return <g key={index} className={`sam-prompt ${prompt.label ? "positive" : "negative"}`}><circle cx={prompt.x} cy={prompt.y} r={markerRadius} strokeWidth={markerRadius * .4} /><line x1={prompt.x - arm} y1={prompt.y} x2={prompt.x + arm} y2={prompt.y} strokeWidth={bar} />{prompt.label === 1 && <line x1={prompt.x} y1={prompt.y - arm} x2={prompt.x} y2={prompt.y + arm} strokeWidth={bar} />}</g>; })}
           </svg>}
           {tool === "sam" && <div className="sam-controls"><div><button className={samPromptMode === 1 ? "active positive" : ""} onClick={() => setSamPromptMode(1)}><CirclePlus size={15} />{copy.samInclude}</button><button className={samPromptMode === 0 ? "active negative" : ""} onClick={() => setSamPromptMode(0)}><CircleMinus size={15} />{copy.samExclude}</button></div><span>{samLoading ? <><LoaderCircle className="spin" size={14} />{copy.samSegmenting}</> : `${samPrompts.length} ${copy.samPoints}`}</span><div><button disabled={!samPrompts.length && !samPreview.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={samPreview.length < 6 || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}</button><button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div></div>}
-        </div></div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button className="primary" disabled={demoLoading} onClick={() => void loadDemoProject()}>{demoLoading ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}{copy.tryDemo}</button><button disabled={demoLoading} onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button disabled={demoLoading} onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
+        </div></div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button disabled={demoLoading} onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button disabled={demoLoading} onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
         <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p className={toast ? "notice" : ""} role="status" aria-live="polite">{toast ? <Check size={14} /> : <Sparkles size={14} />}<span>{statusMessage}</span></p><button><Keyboard size={15} /> {copy.shortcuts}</button></div>
       </section>
 
@@ -2405,8 +2451,8 @@ export default function Home() {
         <button className="panel-collapse panel-collapse-right" title={copy.hideAnnotationsPanel} aria-label={copy.hideAnnotationsPanel} onClick={() => { setRightPanelCollapsed(true); setRightOpen(false); }}><PanelRightClose size={16} /></button>
         <div className="drawer-head"><b>{copy.annotations}</b><button onClick={() => setRightOpen(false)}><X size={19} /></button></div>
         <button type="button" className="panel-resizer panel-resizer-right" aria-label={copy.resizeAnnotationsPanel} title={copy.resizeAnnotationsPanel} onPointerDown={(event) => beginPanelResize(event, "right")} onPointerMove={movePanelResize} onPointerUp={finishPanelResize} onPointerCancel={finishPanelResize} onKeyDown={(event) => resizePanelWithKeyboard(event, "right")} />
-        <div className="tabs"><button className={!quality ? "active" : ""} onClick={() => setQuality(false)}>{copy.annotations}</button><button className={quality ? "active" : ""} onClick={() => setQuality(true)}>{copy.quality} <b>{currentAnnotations.length ? 1 : 0}</b></button></div>
-        {!quality ? <div className="annotation-editor"><section className="annotation-panel-head"><div><b>{copy.annotations} · {currentAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div><div className="annotation-panel-actions"><button disabled={!currentAnnotations.length} title={currentImageAnnotationsHidden ? copy.showAllAnnotations : copy.hideAllAnnotations} onClick={toggleCurrentImageAnnotationVisibility}>{currentImageAnnotationsHidden ? <EyeOff size={14} /> : <Eye size={14} />}{currentImageAnnotationsHidden ? copy.showAllAnnotations : copy.hideAllAnnotations}</button><button onClick={() => { setSelectedClassIds([]); cancelLabelRename(); setNewLabelColor(nextLabelColor(labels)); setClassManagerOpen(true); }}><Palette size={14} />{copy.manageClasses}</button></div></section>
+        <div className="tabs dataset-tabs"><button className={!quality && !reviewTab ? "active" : ""} onClick={() => { setQuality(false); setReviewTab(false); }}>{copy.annotations}</button><button className={quality ? "active" : ""} onClick={() => { setQuality(true); setReviewTab(false); }}><BarChart3 size={14} />{copy.quality}</button><button className={reviewTab ? "active" : ""} onClick={() => { setQuality(false); setReviewTab(true); }}><ClipboardCheck size={14} />Revisão</button></div>
+        {!quality && !reviewTab ? <div className="annotation-editor"><section className="annotation-panel-head"><div><b>{copy.annotations} · {currentAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div><div className="annotation-panel-actions"><button disabled={!currentAnnotations.length} title={currentImageAnnotationsHidden ? copy.showAllAnnotations : copy.hideAllAnnotations} onClick={toggleCurrentImageAnnotationVisibility}>{currentImageAnnotationsHidden ? <EyeOff size={14} /> : <Eye size={14} />}{currentImageAnnotationsHidden ? copy.showAllAnnotations : copy.hideAllAnnotations}</button><button onClick={() => { setSelectedClassIds([]); cancelLabelRename(); setNewLabelColor(nextLabelColor(labels)); setClassManagerOpen(true); }}><Palette size={14} />{copy.manageClasses}</button></div></section>
           {selectedIds.length > 0 && <section className="batch-class"><div><Tags size={14} /><span><b>{selectedIds.length} {copy.batchSelection}</b><small>{copy.changeClass}</small></span></div><div><select aria-label={copy.changeClass} value={resolvedBatchLabel} onChange={(event) => setBatchLabel(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.id === UNLABELED_ID ? copy.unlabeled : label.name}</option>)}</select><button onClick={reclassifySelection}>{copy.applyClass}</button><button className="batch-delete" onClick={() => setPendingDeleteAnnotationIds(selectedIds)}><Trash2 size={13} />{copy.deleteSelectedAnnotations}</button></div></section>}
           <div className="instances">{currentAnnotations.map((annotation, index) => {
             const label = getLabel(annotation.label);
@@ -2421,7 +2467,7 @@ export default function Home() {
               <button className="delete-annotation" title={copy.deleteShape} aria-label={`${copy.deleteShape}: ${label.name} #${index + 1}`} onClick={() => setPendingDeleteAnnotationIds([annotation.id])}><Trash2 size={13} /></button>
             </div>;
           })}</div>
-        </div> : <div className="quality"><div className="score"><strong>92<small>/100</small></strong><span>{copy.goodConsistency}</span></div><article className="warn"><b>!</b><div><strong>{copy.possibleOverlap}</strong><p>{copy.overlapText}</p></div></article><article><b>✓</b><div><strong>{copy.validClasses}</strong><p>{copy.validClassesText}</p></div></article><article><b>✓</b><div><strong>{copy.noEmpty}</strong><p>{copy.noEmptyText}</p></div></article><button onClick={() => { setQuality(false); setSelected(visibleAnnotations[0]?.id ?? null); setMultiSelected(visibleAnnotations[0] ? [visibleAnnotations[0].id] : []); }}>{copy.review}</button></div>}
+        </div> : quality ? <div className="quality quality-data"><section><b>Balanceamento por imagem</b><small>{qualitySummary.minPerImage}–{qualitySummary.maxPerImage} instâncias por imagem</small>{qualitySummary.perImage.map(({ item, count }) => <div className="quality-bar" key={item.id}><span title={item.name}>{item.name}</span><i><em style={{ width: `${qualitySummary.maxPerImage ? count / qualitySummary.maxPerImage * 100 : 0}%` }} /></i><b>{count}</b></div>)}</section><section><b>Classes majoritárias e minoritárias</b>{qualitySummary.counts.filter(({ label }) => label.id !== UNLABELED_ID).map(({ label, count }) => <div className="quality-row" key={label.id}><i style={{ background: label.color }} /><span>{label.name}</span><b>{count}</b><small>{count === qualitySummary.maxCount && count > 0 ? "majoritária" : count <= Math.max(1, qualitySummary.maxCount * .25) ? "minoritária" : "equilibrada"}</small></div>)}</section><section><b>Área de segmentação</b><small>Área de polígonos em pixels da imagem de origem.</small>{qualitySummary.counts.filter(({ label }) => label.id !== UNLABELED_ID).map(({ label }) => <div className="quality-row" key={`${label.id}-area`}><i style={{ background: label.color }} /><span>{label.name}</span><b>{Math.round(qualitySummary.areas.get(label.id) ?? 0).toLocaleString("pt-BR")} px²</b></div>)}</section><section className="quality-suggestions"><b>Classes a considerar</b>{qualitySummary.counts.filter(({ label, count }) => label.id !== UNLABELED_ID && !count).length > 0 ? <p>Classes criadas sem instâncias: {qualitySummary.counts.filter(({ label, count }) => label.id !== UNLABELED_ID && !count).map(({ label }) => label.name).join(", ")}.</p> : <p>{qualitySummary.perImage.some(({ count }) => !count) ? "Há imagens sem instâncias. Revise-as para identificar classes ausentes antes de treinar." : "Não há evidência automática de uma nova classe sem revisão visual das imagens."}</p>}</section></div> : <div className="quality review-panel"><section><b>Revisão da imagem</b><small>{asset?.name ?? "Selecione uma imagem"}</small><ScoreButtons label="Nota da imagem" value={asset?.reviewScore} onChange={setAssetReview} /></section><section><b>Revisão do polígono ou anotação</b><small>{activeAnnotation ? `${getLabel(activeAnnotation.label).name} · ${activeAnnotation.type}` : "Selecione uma anotação no mapa ou na lista"}</small><ScoreButtons label="Nota da anotação" value={activeAnnotation?.reviewScore} onChange={setAnnotationReview} /></section><section><b>Revisão da classe</b><select aria-label="Classe para revisão" value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select><ScoreButtons label="Nota da classe" value={getLabel(activeLabel).reviewScore} onChange={setLabelReview} /></section><p className="review-hint">As notas de 1 a 5 são salvas no projeto e podem ser aplicadas à imagem, à anotação selecionada e à classe de forma independente.</p></div>}
         <div className="hint"><b>{activeAnnotation?.type === "polygon" ? copy.vectorEditing : copy.quickTip}</b><p>{activeAnnotation?.type === "polygon" ? copy.vectorHint : copy.shortcutHint}</p></div>
       </aside>
     </div>

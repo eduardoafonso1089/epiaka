@@ -1282,7 +1282,8 @@ export default function Home() {
   }
 
   function beginTransform(event: React.PointerEvent<SVGElement>, annotation: Annotation, kind: "scale" | "rotate") {
-    if (event.button !== 0 || tool !== "transform" || (annotation.type !== "polygon" && annotation.type !== "box")) return;
+    const rotateSelectedBox = tool === "select" && annotation.type === "box" && kind === "rotate";
+    if (event.button !== 0 || (tool !== "transform" && !rotateSelectedBox) || (annotation.type !== "polygon" && annotation.type !== "box")) return;
     event.preventDefault(); event.stopPropagation(); remember();
     const point = editorPoint(event.clientX, event.clientY);
     const center = annotation.type === "polygon"
@@ -2361,6 +2362,7 @@ export default function Home() {
                     {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && ([
                       ["nw", x, y], ["ne", x + width, y], ["se", x + width, y + height], ["sw", x, y + height],
                     ] as const).map(([corner, handleX, handleY]) => <ellipse key={corner} className={`box-resize-handle ${corner}`} cx={handleX} cy={handleY} rx={markerRadius} ry={markerRadius * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} />)}
+                    {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && <><line className="box-rotation-stem" x1={centerX} y1={y} x2={centerX} y2={y - markerRadius * 3.5} /><ellipse className="box-rotation-handle" cx={centerX} cy={y - markerRadius * 4.7} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></>}
                   </g>
                 </g>;
               }

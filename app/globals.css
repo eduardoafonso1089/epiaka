@@ -56,7 +56,7 @@
 .stage.transform .transform-handle.rotate-handle{cursor:grab}
 .stage.transform .transform-handle.scale-handle{cursor:nwse-resize}
 .reshape-target{stroke-dasharray:none}
-.selection-marquee{fill:rgba(108,140,255,.14);stroke:#6c8cff;stroke-width:3;stroke-dasharray:9 6;pointer-events:none}
+.selection-marquee{fill:rgba(108,140,255,.14);stroke:#6c8cff;stroke-width:3;stroke-dasharray:9 6;pointer-events:none;vector-effect:non-scaling-stroke}
 .polygon-close-point{cursor:pointer;filter:drop-shadow(0 0 5px rgba(255,255,255,.9))}
 
 /* Visibility controls, preferences and color themes */

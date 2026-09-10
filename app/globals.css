@@ -284,7 +284,7 @@ html[data-theme="light"]{--green:#5D43D8;--lime:#412EAD;--tool-active-bg:#ECE8FF
 .split-line{stroke-dasharray:none;stroke-linecap:round;vector-effect:non-scaling-stroke}
 
 /* The quality review is kept in the code but out of the interface for now. */
-.labels>.tabs{display:none}
+.labels>.tabs:not(.dataset-tabs){display:none}
 
 /* Palette for the long haul: neutral surfaces and low-saturation lavender reduce fatigue
    in long sessions, without losing the contrast of actions and warnings. */

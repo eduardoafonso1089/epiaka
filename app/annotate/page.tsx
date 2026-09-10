@@ -21,7 +21,7 @@ import type { ProjectLayout, ProjectSaveMode } from "../lib/project";
 import { requestSamMask } from "../lib/sam";
 import { createDemoProject } from "../lib/demo";
 import { TouchGesture, pinchZoom, touchToolUsesTap, nearestTouchVertex } from "../lib/touch-gestures";
-import { ImageFraming, annotationPointerDelta } from "../lib/editor-viewport";
+import { ImageFraming, annotationPointerDelta, canvasLayout } from "../lib/editor-viewport";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
 import { geoReference, isRasterSidecar, readRasterSidecars } from "../lib/georeference";
@@ -292,6 +292,7 @@ export default function Home() {
   const framingRef = useRef(new ImageFraming());
   const selectionViewportRef = useRef<{ left: number; top: number } | null>(null);
   const [zoom, setZoom] = useState(92);
+  const [canvasViewport, setCanvasViewport] = useState({ width: 1000, height: 650 });
   const [lineThickness, setLineThickness] = useState(() => {
     if (typeof window === "undefined") return 3;
     const stored = Number(localStorage.getItem("poligome-line-thickness"));
@@ -393,6 +394,7 @@ export default function Home() {
   const activeImageId = asset?.id;
   const activeImageWidth = asset?.width;
   const activeImageHeight = asset?.height;
+  const canvasPixels = canvasLayout(canvasViewport, { width: activeImageWidth ?? 1000, height: activeImageHeight ?? 650 }, zoom);
   const assetIndex = Math.max(0, assets.findIndex((item) => item.id === asset?.id));
   const imageWindow = assets.slice(Math.max(0, assetIndex - 3), assetIndex + 4).filter((item) => !item.missing);
   const imageIsReady = !!asset && readyImageIds.includes(asset.id);
@@ -796,6 +798,7 @@ export default function Home() {
     const scroller = scrollRef.current;
     if (!scroller) return;
     if (!activeImageId || !framingRef.current.fit(activeImageId, canEditImage)) return;
+    setCanvasViewport({ width: scroller.clientWidth, height: scroller.clientHeight });
     setZoom(zoomToFit({ width: activeImageWidth, height: activeImageHeight }));
 
     let innerFrame = 0;
@@ -816,6 +819,7 @@ export default function Home() {
   function fitImageToViewport() {
     const scroller = scrollRef.current;
     if (!scroller) { setZoom(92); return; }
+    setCanvasViewport({ width: scroller.clientWidth, height: scroller.clientHeight });
     const imageWidth = asset.width ?? 1000;
     const imageHeight = asset.height ?? 650;
     const widthAtHundred = Math.max(1, scroller.clientWidth);
@@ -2281,7 +2285,7 @@ export default function Home() {
         </div>}
         </div>
 
-        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onLostPointerCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas" style={{ width: `${zoom}%`, aspectRatio: `${asset.width ?? 1000}/${asset.height ?? 650}` }}>
+        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onLostPointerCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas-surface" style={{ width: canvasPixels.surfaceWidth, height: canvasPixels.surfaceHeight }}><div className="canvas" style={{ position: "absolute", width: canvasPixels.width, height: canvasPixels.height, left: canvasPixels.left, top: canvasPixels.top }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {asset.missing ? <div className="missing-image"><Images size={34} /><b>{asset.name}</b><p>{copy.imageMissingHint}</p><button onClick={() => input.current?.click()}><FolderOpen size={15} />{copy.reloadProjectImages}</button></div> : imageWindow.map((item) => <img key={item.id} className={item.id === asset.id && readyImageIds.includes(item.id) ? "image-current" : "image-preload"} crossOrigin="anonymous" src={item.src} alt={item.id === asset.id ? fill(copy.annotationImageAlt, { name: item.name }) : ""} aria-hidden={item.id === asset.id ? undefined : true} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (item.width !== image.naturalWidth || item.height !== image.naturalHeight) setAssets((items) => items.map((candidate) => candidate.id === item.id ? { ...candidate, width: image.naturalWidth, height: image.naturalHeight } : candidate)); void image.decode().then(() => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id]), () => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id])); }} />)}
           {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={clearPointerDrafts} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (touchMode) return; if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>
@@ -2335,7 +2339,7 @@ export default function Home() {
             {tool === "sam" && samPrompts.map((prompt, index) => { const arm = markerRadius * .5; const bar = markerRadius * .34; return <g key={index} className={`sam-prompt ${prompt.label ? "positive" : "negative"}`}><circle cx={prompt.x} cy={prompt.y} r={markerRadius} strokeWidth={markerRadius * .4} /><line x1={prompt.x - arm} y1={prompt.y} x2={prompt.x + arm} y2={prompt.y} strokeWidth={bar} />{prompt.label === 1 && <line x1={prompt.x} y1={prompt.y - arm} x2={prompt.x} y2={prompt.y + arm} strokeWidth={bar} />}</g>; })}
           </svg>}
           {tool === "sam" && <div className="sam-controls"><div><button className={samPromptMode === 1 ? "active positive" : ""} onClick={() => setSamPromptMode(1)}><CirclePlus size={15} />{copy.samInclude}</button><button className={samPromptMode === 0 ? "active negative" : ""} onClick={() => setSamPromptMode(0)}><CircleMinus size={15} />{copy.samExclude}</button></div><span>{samLoading ? <><LoaderCircle className="spin" size={14} />{copy.samSegmenting}</> : `${samPrompts.length} ${copy.samPoints}`}</span><div><button disabled={!samPrompts.length && !samPreview.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={samPreview.length < 6 || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}</button><button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div></div>}
-        </div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button className="primary" disabled={demoLoading} onClick={() => void loadDemoProject()}>{demoLoading ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}{copy.tryDemo}</button><button disabled={demoLoading} onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button disabled={demoLoading} onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
+        </div></div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button className="primary" disabled={demoLoading} onClick={() => void loadDemoProject()}>{demoLoading ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}{copy.tryDemo}</button><button disabled={demoLoading} onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button disabled={demoLoading} onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
         <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p className={toast ? "notice" : ""} role="status" aria-live="polite">{toast ? <Check size={14} /> : <Sparkles size={14} />}<span>{statusMessage}</span></p><button><Keyboard size={15} /> {copy.shortcuts}</button></div>
       </section>
 

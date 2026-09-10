@@ -15,3 +15,16 @@ export function annotationPointerDelta(start: { clientX: number; clientY: number
   const dy = y - start.clientY;
   return { dx: dx * 1000 / Math.max(1, start.width), dy: dy * 650 / Math.max(1, start.height), moved: Math.hypot(dx, dy) >= 6 };
 }
+
+/** Fixed pixel geometry: surrounding UI reflow cannot silently change the zoom. */
+export function canvasLayout(viewport: { width: number; height: number }, image: { width: number; height: number }, zoom: number) {
+  const width = viewport.width * zoom / 100;
+  const height = width * image.height / Math.max(1, image.width);
+  return {
+    width, height,
+    left: Math.max(0, (viewport.width - width) / 2),
+    top: Math.max(0, (viewport.height - height) / 2),
+    surfaceWidth: Math.max(viewport.width, width),
+    surfaceHeight: Math.max(viewport.height, height),
+  };
+}

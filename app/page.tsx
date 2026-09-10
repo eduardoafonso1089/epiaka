@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Box, Check, CodeXml, Combine, Download, FileArchive, Languages, MessageSquareText, Monitor, Moon, Pentagon, ShieldCheck, Spline, Sun, WandSparkles } from "lucide-react";
+import { ArrowRight, Box, Check, CodeXml, Download, FileArchive, Languages, Monitor, Moon, Pentagon, ShieldCheck, Spline, Sun, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SOURCE_URL, getCopy, storedLanguage, storedTheme } from "./lib/i18n";
 import type { Language, ThemeMode } from "./lib/i18n";
@@ -63,7 +63,6 @@ export default function Landing() {
 
   const features = [
     { icon: <Box size={19} />, title: copy.landingFeatShapesTitle, text: copy.landingFeatShapesText },
-    { icon: <MessageSquareText size={19} />, title: copy.landingFeatVectorTitle, text: copy.landingFeatVectorText },
     { icon: <WandSparkles size={19} />, title: copy.landingFeatSamTitle, text: copy.landingFeatSamText },
     { icon: <Download size={19} />, title: copy.landingFeatExportTitle, text: copy.landingFeatExportText },
     { icon: <FileArchive size={19} />, title: copy.landingFeatProjectTitle, text: copy.landingFeatProjectText },
@@ -96,7 +95,7 @@ export default function Landing() {
       <div className="landing-hero-copy">
         <p className="landing-eyebrow"><Pentagon size={13} aria-hidden="true" />{copy.landingEyebrow}</p>
         <h1>{copy.landingHeadline}</h1>
-        <p className="landing-intro">{copy.landingIntro}</p>
+        <p className="landing-intro">{copy.landingVisionText}</p>
         <div className="landing-actions">
           <a className="landing-cta" href="/annotate?demo=1"><WandSparkles size={17} />{copy.tryDemo}</a>
           <span className="landing-free-badge"><Check size={13} aria-hidden="true" />{copy.landingBadgeFree}</span>
@@ -106,7 +105,7 @@ export default function Landing() {
       <div className="landing-identity" aria-hidden="true">
         <span className="landing-identity-shape"><Pentagon size={42} strokeWidth={1.4} /></span>
         <span className="landing-identity-core"><BrandLockup height={24} /></span>
-        <span className="landing-identity-text"><MessageSquareText size={42} strokeWidth={1.4} /></span>
+        <span className="landing-identity-text"><Spline size={42} strokeWidth={1.4} /></span>
         <i />
       </div>
     </section>
@@ -115,11 +114,6 @@ export default function Landing() {
       <a href="/annotate">
         <span className="landing-project-icon"><Box size={22} /></span>
         <div><small>{copy.landingVisionEyebrow}</small><b>{copy.landingVisionTitle}</b><span>{copy.landingVisionText}</span></div>
-        <ArrowRight size={18} />
-      </a>
-      <a href="/text">
-        <span className="landing-project-icon"><MessageSquareText size={22} /></span>
-        <div><small>{copy.landingLlmEyebrow}</small><b>{copy.landingLlmTitle}</b><span>{copy.landingLlmText}</span></div>
         <ArrowRight size={18} />
       </a>
     </section>
@@ -132,10 +126,6 @@ export default function Landing() {
       <article>
         <span className="landing-claim-mark"><ShieldCheck size={17} aria-hidden="true" /></span>
         <div><h2>{copy.landingPrivacyTitle}</h2><p>{copy.landingPrivacyText}</p></div>
-      </article>
-      <article>
-        <span className="landing-claim-mark"><Combine size={17} aria-hidden="true" /></span>
-        <div><h2>{copy.landingUnifiedTitle}</h2><p>{copy.landingUnifiedText}</p></div>
       </article>
       <article>
         <span className="landing-claim-mark"><WandSparkles size={17} aria-hidden="true" /></span>
@@ -158,14 +148,13 @@ export default function Landing() {
       <BrandLockup height={26} />
       <div className="landing-closing-actions">
         <a className="landing-cta" href="/annotate">{copy.landingVisionCta}</a>
-        <a className="landing-cta secondary" href="/text">{copy.landingLlmCta}</a>
       </div>
       <p>{copy.landingCtaNote}</p>
     </section>
 
     <footer className="landing-foot">
       <span className="landing-free-badge"><Check size={12} aria-hidden="true" />{copy.landingBadgeFree}</span>
-      <p>{copy.landingFooterNote}</p>
+      <p>{copy.privacy}</p>
       <a className="source-link" href={SOURCE_URL} target="_blank" rel="noreferrer"><CodeXml size={13} aria-hidden="true" />{copy.sourceCode}</a>
     </footer>
   </main>;

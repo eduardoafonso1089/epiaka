@@ -461,7 +461,7 @@ export default function Home() {
   const activeImageId = asset?.id;
   const activeImageWidth = asset?.width;
   const activeImageHeight = asset?.height;
-  const canvasPixels = canvasLayout(canvasViewport, { width: activeImageWidth ?? 1000, height: activeImageHeight ?? 650 }, zoom);
+  const canvasPixels = canvasLayout(canvasViewport, { width: activeImageWidth ?? 1000, height: activeImageHeight ?? 650 }, zoom, touchMode);
   const assetIndex = Math.max(0, assets.findIndex((item) => item.id === asset?.id));
   const imageWindow = assets.slice(Math.max(0, assetIndex - 3), assetIndex + 4).filter((item) => !item.missing);
   const imageIsReady = !!asset && readyImageIds.includes(asset.id);
@@ -2278,6 +2278,7 @@ export default function Home() {
     setSelected(null); setMultiSelected([]); setSelectedVertex(null); setSelectedClassIds([]); setSelectedAssetIds([]);
     setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
     setSearch(""); setQuality(false); setReviewTab(false); setTool("select"); setZoom(92); resetDrafts();
+    setDemoTutorialStep(null); setDemoTutorialToolPrompt(null); demoAnnotationsRef.current = [];
     setPanelLayout(defaultPanelLayout());
     setProjectOpen(false); setProjectEditing(false); setProjectSaveOpen(false);
     setClassManagerOpen(false); setLeftOpen(false); setRightOpen(false); setSaved(true);

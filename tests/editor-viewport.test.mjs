@@ -46,3 +46,12 @@ test('zoomed canvas keeps full overflow dimensions and a reachable top-left corn
   assert.equal(tall.top, 0);
   assert.equal(tall.surfaceHeight, 1400);
 });
+
+test('touch navigation adds room beyond every overflowing image edge', () => {
+  assert.deepEqual(canvasLayout({ width: 350, height: 480 }, { width: 1200, height: 780 }, 200, true), {
+    width: 700, height: 455, left: 175, top: 12.5, surfaceWidth: 1050, surfaceHeight: 480,
+  });
+  const tall = canvasLayout({ width: 350, height: 480 }, { width: 500, height: 2000 }, 100, true);
+  assert.equal(tall.top, 240);
+  assert.equal(tall.surfaceHeight, 1880);
+});

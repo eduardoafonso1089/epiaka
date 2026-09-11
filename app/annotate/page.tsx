@@ -36,6 +36,22 @@ const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : us
 const UNLABELED_ID = "unlabeled";
 const UNLABELED_COLOR = "#929a95";
 
+const demoTutorialCopy = {
+  pt: [
+    ["Desenhe uma caixa", "A ferramenta Caixa está destacada acima. Use-a para marcar o telhado iluminado."],
+    ["Muito bem!", "Seu polígono foi criado. Quando quiser, avance para ver como editar uma caixa."],
+    ["Edite uma caixa", "Arraste um vértice ou o controle de rotação da caixa destacada."],
+    ["Próxima imagem", "A caixa foi ajustada. Avance para experimentar uma sugestão de modelo."],
+    ["Experimente um modelo local", "Clique na área destacada para simular uma sugestão automática de polígono."],
+  ],
+  en: [["Draw a box", "The Box tool is highlighted above. Use it to mark the illuminated roof."], ["Great!", "Your box was created. Move on when you are ready to edit a box."], ["Edit a box", "Drag a corner or the rotation control of the highlighted box."], ["Next image", "The box is adjusted. Move on to try a model suggestion."], ["Try a local model", "Click the highlighted area to simulate an automatic polygon suggestion."]],
+  fr: [["Dessinez une boîte", "L’outil Boîte est mis en évidence. Utilisez-le sur le toit éclairé."], ["Très bien !", "Votre boîte est créée. Passez à l’image suivante lorsque vous êtes prêt."], ["Modifiez une boîte", "Faites glisser un sommet ou le contrôle de rotation de la boîte."], ["Image suivante", "La boîte est ajustée. Passez à la suggestion du modèle."], ["Essayez un modèle local", "Cliquez sur la zone mise en évidence pour simuler une suggestion automatique."]],
+  es: [["Dibuja una caja", "La herramienta Caja está resaltada arriba. Úsala sobre el tejado iluminado."], ["¡Muy bien!", "Tu caja fue creada. Avanza cuando quieras editar una caja."], ["Edita una caja", "Arrastra un vértice o el control de rotación de la caja resaltada."], ["Siguiente imagen", "La caja está ajustada. Avanza para probar una sugerencia."], ["Prueba un modelo local", "Haz clic en el área resaltada para simular una sugerencia automática."]],
+} as const;
+const demoTutorialNext = { pt: "Próximo", en: "Next", fr: "Suivant", es: "Siguiente" } as const;
+const demoTutorialModels = { pt: "Conhecer modelos locais", en: "Explore local models", fr: "Découvrir les modèles locaux", es: "Conocer modelos locales" } as const;
+const demoTutorialWrongDraw = { pt: "A anotação ficou fora do telhado destacado. Tente novamente.", en: "The annotation is outside the highlighted roof. Try again.", fr: "L’annotation est hors du toit mis en évidence. Réessayez.", es: "La anotación está fuera del tejado resaltado. Inténtalo de nuevo." } as const;
+
 function polygonArea(points: number[] = []) {
   let area = 0;
   for (let i = 0; i < points.length; i += 2) {
@@ -43,6 +59,23 @@ function polygonArea(points: number[] = []) {
     area += points[i] * points[next + 1] - points[next] * points[i + 1];
   }
   return Math.abs(area) / 2;
+}
+
+function vertexResizeCursor(points: number[], x: number, y: number) {
+  const bounds = polygonBounds(points);
+  const horizontal = x < bounds.x + bounds.width / 2 ? "w" : "e";
+  const vertical = y < bounds.y + bounds.height / 2 ? "n" : "s";
+  return (vertical === "n" && horizontal === "w") || (vertical === "s" && horizontal === "e") ? "nwse-resize" : "nesw-resize";
+}
+
+function edgeResizeCursor(points: number[], edgeIndex: number) {
+  const start = edgeIndex * 2;
+  const end = (start + 2) % points.length;
+  const dx = points[end] - points[start];
+  const dy = points[end + 1] - points[start + 1];
+  if (Math.abs(dx) > Math.abs(dy) * 2) return "ns-resize";
+  if (Math.abs(dy) > Math.abs(dx) * 2) return "ew-resize";
+  return dx * dy >= 0 ? "nwse-resize" : "nesw-resize";
 }
 
 function ScoreButtons({ value, onChange, label }: { value?: number; onChange: (score: number) => void; label: string }) {
@@ -342,6 +375,8 @@ export default function Home() {
   const [projectName, setProjectName] = useState(() => getCopy(storedLanguage()).newProject);
   const [projectNameDraft, setProjectNameDraft] = useState("");
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [demoTutorialStep, setDemoTutorialStep] = useState<number | null>(null);
   const [classManagerOpen, setClassManagerOpen] = useState(false);
   const [preferencesTab, setPreferencesTab] = useState<"appearance" | "language">("appearance");
   const [language, setLanguage] = useState<Language>(storedLanguage);
@@ -407,6 +442,7 @@ export default function Home() {
   const projectObjectUrlsRef = useRef<string[]>([]);
   const routeDemoHandledRef = useRef(false);
   const demoLoadingRef = useRef(false);
+  const demoAnnotationsRef = useRef<Annotation[]>([]);
   const labelsRef = useRef(labels);
   const idCounter = useRef(0);
 
@@ -468,6 +504,9 @@ export default function Home() {
   // Keep box controls at least 56 screen pixels wide for a finger, independently of canvas size.
   // The visible marker remains compact; this radius is used only by its transparent touch target.
   const boxTouchRadius = 28 * 1000 / Math.max(1, canvasWidth);
+  // Rotation is deliberately smaller than the corner targets. This prevents its hit area from
+  // covering a nearby resize corner on compact boxes, while still leaving a 40 px touch target.
+  const boxRotationTouchRadius = 20 * 1000 / Math.max(1, canvasWidth);
   const handleScale = zoom < 100 ? Math.pow(100 / zoom, 0.6) : 100 / zoom;
   const markerRadius = MARKER_RADIUS * handleScale;
   const visualLineWidth = lineThickness * handleScale;
@@ -740,9 +779,14 @@ export default function Home() {
       idCounter.current = 0;
       setProjectName(demo.name); setProjectNameDraft("");
       setAssets(demo.assets); setCurrent(demo.assets[0].id); setReadyImageIds([]);
-      setLabels(demo.labels); setAnnotations(demo.annotations);
+      demoAnnotationsRef.current = demo.annotations;
+      // The guided demo deliberately starts clean. Each task adds only the
+      // annotation the person is meant to work with, avoiding visual noise
+      // from the complete demo dataset.
+      const tutorialAnnotations: Annotation[] = [];
+      setLabels(demo.labels); setAnnotations(tutorialAnnotations);
       setActiveLabel(demo.labels[0].id); setBatchLabel(demo.labels[0].id); setNewLabelColor(nextLabelColor(demo.labels));
-      setHistory([]); setRedoHistory([]); setSelected(demo.annotations[0].id); setMultiSelected([demo.annotations[0].id]); setSelectedVertex(null);
+      setHistory([]); setRedoHistory([]); setSelected(null); setMultiSelected([]); setSelectedVertex(null); setDemoTutorialStep(0);
       setSelectedClassIds([]); setSelectedAssetIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
       setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setSearch(""); setQuality(false); setReviewTab(false); setTool("select"); setZoom(92);
       setPanelLayout(defaultPanelLayout()); setLeftPanelCollapsed(false); setRightPanelCollapsed(false);
@@ -757,16 +801,57 @@ export default function Home() {
     }
   }, [copy.demoError, copy.demoReady, language, showToast, setLeftOpen, setRightOpen]);
 
+  function exitDemoTutorial() {
+    if (demoAnnotationsRef.current.length) {
+      setAnnotations([...demoAnnotationsRef.current]);
+      setCurrent("demo-urban"); setSelected(null); setMultiSelected([]); setTool("select");
+    }
+    setDemoTutorialStep(null);
+  }
+
   useEffect(() => {
     if (routeDemoHandledRef.current || new URLSearchParams(window.location.search).get("demo") !== "1") return;
     routeDemoHandledRef.current = true;
     void loadDemoProject();
   }, [loadDemoProject]);
 
+  useEffect(() => {
+    if (demoTutorialStep === 0) {
+      const drawn = annotations.find((annotation) => annotation.asset === "demo-urban");
+      if (drawn && annotationIntersectsRect(drawn, { x: 357, y: 68, width: 211, height: 214 })) {
+        setDemoTutorialStep(1); setTool("select"); showToast(demoTutorialCopy[language][1][0]);
+      } else if (drawn) {
+        setAnnotations((items) => items.filter((annotation) => annotation.id !== drawn.id));
+        setSelected(null); setMultiSelected([]); setTool("box"); showToast(demoTutorialWrongDraw[language]);
+      }
+    }
+    if (demoTutorialStep === 2) {
+      const box = annotations.find((annotation) => annotation.id === "demo-b4");
+      if (box && (box.x !== 112 || box.y !== 414 || box.w !== 120 || box.h !== 112 || box.rotation !== .42)) {
+        setDemoTutorialStep(3); setTool("select");
+      }
+    }
+  }, [annotations, demoTutorialStep, language, showToast]);
+
   function editorPoint(clientX: number, clientY: number) {
     const bounds = svgRef.current?.getBoundingClientRect();
     if (!bounds) return { x: 0, y: 0 };
     return { x: Math.max(0, Math.min(1000, (clientX - bounds.left) / bounds.width * 1000)), y: Math.max(0, Math.min(650, (clientY - bounds.top) / bounds.height * 650)) };
+  }
+
+  function updateGeometryCursor(event: { target: EventTarget | null }) {
+    if (tool !== "select" || !activeAnnotation || !["polygon", "line"].includes(activeAnnotation.type)) return;
+    const target = event.target instanceof SVGElement ? event.target : null;
+    const points = activeAnnotation.pts ?? [];
+    if (!target || points.length < 4) return;
+    if (target.classList.contains("vertex-handle")) {
+      target.style.cursor = vertexResizeCursor(points, Number(target.getAttribute("cx")), Number(target.getAttribute("cy")));
+      return;
+    }
+    if (!target.classList.contains("edge-handle")) return;
+    const x = Number(target.getAttribute("cx")); const y = Number(target.getAttribute("cy"));
+    const midpoint = edgeMidpoints(points, activeAnnotation.type === "line").find((item) => item.x === x && item.y === y);
+    if (midpoint) target.style.cursor = edgeResizeCursor(points, midpoint.edgeIndex);
   }
 
   // Applies a new zoom keeping the point that must stay still: the cursor when it is over
@@ -1019,6 +1104,13 @@ export default function Home() {
     }
     if (event.button !== 0) return;
     const rawPoint = editorPoint(event.clientX, event.clientY);
+    if (demoTutorialStep === 4 && current === "demo-rural" && rawPoint.x >= 460 && rawPoint.x <= 580 && rawPoint.y >= 340 && rawPoint.y <= 515) {
+      remember();
+      const id = makeId("annotation");
+      setAnnotations((items) => [...items, { id, asset: current, label: activeLabel, type: "polygon", pts: [486.82179658674977, 358.39816364376503, 531.9790089520645, 346.16785019675245, 553.6168398771111, 364.0429236962323, 561.143041937997, 405.4378307476593, 565, 486, 532, 503, 511.2819532846287, 446.8327377990864, 488, 410] }]);
+      setSelected(id); setMultiSelected([id]); setDemoTutorialStep(5); setTool("select"); setSaved(false);
+      return;
+    }
     const point = snapping && ["polygon", "line", "freehand", "split", "reshape", "point"].includes(tool)
       ? snapPointToPolygons(rawPoint, visibleAnnotations, "")
       : rawPoint;
@@ -1190,7 +1282,11 @@ export default function Home() {
     const splitId = makeId("split");
     const created = parts.map((points, index) => ({ ...annotation, id: `${splitId}-${index}`, pts: points }));
     setAnnotations((items) => [...items.filter((item) => item.id !== annotation.id), ...created]);
-    setSelected(created[0].id); setMultiSelected(created.map((item) => item.id)); showToast(fill(copy.toastSplitDone, { n: created.length }));
+    // Leave the cutter as soon as it has produced the parts. Keeping every new part selected
+    // made the next click start another cut (or drag them as one); now that click selects the
+    // region the person chose directly.
+    setSelected(null); setMultiSelected([]); setSelectedVertex(null); setTool("select");
+    showToast(fill(copy.toastSplitDone, { n: created.length }));
   }
 
   function beginAnnotationDrag(event: React.PointerEvent<SVGElement>, annotation: Annotation) {
@@ -2273,9 +2369,7 @@ export default function Home() {
             ? copy.transformTip
             : tool === "reshape"
               ? reshapeDrawing ? (reshapeStartInside ? copy.reshapeAdd : copy.reshapeDelete) : copy.reshapeStart
-              : activeAnnotation?.type === "polygon" && tool === "select"
-                ? `${copy.middlePan} · ${copy.polygonTipDetail}`
-                : null;
+              : null;
   const statusMessage = toast
     ?? (annotationDrag ? `${copy.moving} (${annotationDrag.originals.length})`
       : selectionMarquee ? copy.selecting
@@ -2343,7 +2437,6 @@ export default function Home() {
         <input hidden ref={cocoInputRef} type="file" accept="application/json,.json" multiple onChange={(event) => { const annotationFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importAnnotationFiles(annotationFiles); }} />
         <button className="import" title={copy.rasterImportHint} onClick={() => input.current?.click()}><ImagePlus size={16} /> {copy.importImages}</button>
         <button className="demo-import" disabled={demoLoading} onClick={() => void loadDemoProject()}>{demoLoading ? <LoaderCircle className="spin" size={15} /> : <WandSparkles size={15} />}{copy.tryDemo}</button>
-        <small style={{ display: "block", padding: "0 12px 8px", opacity: 0.7 }}>{copy.rasterImportHint}</small>
         <label className="search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchImage} /></label>
         <div className="progress"><div><span>{copy.progress}</span><b>{completed} {copy.of} {assets.length}</b></div><i><em style={{ width: `${assets.length ? completed / assets.length * 100 : 0}%` }} /></i></div>
         <div className="asset-list">{assets.filter((item) => item.name.toLowerCase().includes(search.toLowerCase())).map((item, index) => {
@@ -2368,10 +2461,10 @@ export default function Home() {
         <div className="editor-controls">
         <div className="tools">
           <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} onClick={() => changeTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => changeTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
-          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} onClick={() => changeTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => changeTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => changeTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => changeTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => changeTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
+          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} className={demoTutorialStep === 0 ? "demo-tutorial-tool-target" : undefined} onClick={() => changeTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => changeTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => changeTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => changeTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => changeTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
           <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "ring"} onClick={() => changeTool("ring")}><CircleMinus size={17} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => changeTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || (activeAnnotation?.type !== "polygon" && activeAnnotation?.type !== "box")} active={tool === "transform"} onClick={() => changeTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => changeTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
           <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled={!canEditImage || !redoHistory.length} onClick={redo}><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length && !lineDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
-          <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton><ToolButton title={copy.removeLoadedAnnotations} disabled={!annotations.length} className="clear-annotations-control" onClick={requestDeleteAllAnnotations}><Trash2 size={16} /></ToolButton>
+          <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton><ToolButton title={copy.removeLoadedAnnotations} disabled={!annotations.length} className="clear-annotations-control" onClick={requestDeleteAllAnnotations}><Trash2 size={16} /></ToolButton><ToolButton title={copy.shortcuts} onClick={() => setTutorialOpen(true)}><Keyboard size={16} /></ToolButton>
         </div>
         {canEditImage && <div className="drawing-actions">
           <span className="touch-instructions">{tool === "select" ? copy.touchEdit : tool === "freehand" || tool === "reshape" ? copy.touchTrace : copy.touchDraw}</span>
@@ -2390,7 +2483,7 @@ export default function Home() {
         <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onLostPointerCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas-surface" style={{ width: canvasPixels.surfaceWidth, height: canvasPixels.surfaceHeight }}><div className="canvas" style={{ position: "absolute", width: canvasPixels.width, height: canvasPixels.height, left: canvasPixels.left, top: canvasPixels.top }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {asset.missing ? <div className="missing-image"><Images size={34} /><b>{asset.name}</b><p>{copy.imageMissingHint}</p><button onClick={() => input.current?.click()}><FolderOpen size={15} />{copy.reloadProjectImages}</button></div> : imageWindow.map((item) => <img key={item.id} className={item.id === asset.id && readyImageIds.includes(item.id) ? "image-current" : "image-preload"} crossOrigin="anonymous" src={item.src} alt={item.id === asset.id ? fill(copy.annotationImageAlt, { name: item.name }) : ""} aria-hidden={item.id === asset.id ? undefined : true} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (item.width !== image.naturalWidth || item.height !== image.naturalHeight) setAssets((items) => items.map((candidate) => candidate.id === item.id ? { ...candidate, width: image.naturalWidth, height: image.naturalHeight } : candidate)); void image.decode().then(() => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id]), () => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id])); }} />)}
-          {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={clearPointerDrafts} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (touchMode) return; if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>
+          {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={clearPointerDrafts} onPointerOver={updateGeometryCursor} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (touchMode) return; if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>
             {coordinatesGuide && cursorPoint && <g className={`coordinate-guide ${cursorOverCoordinateLabel ? "obscured" : ""}`} pointerEvents="none">
               <line x1={cursorPoint.x} y1="0" x2={cursorPoint.x} y2="650" />
               <line x1="0" y1={cursorPoint.y} x2="1000" y2={cursorPoint.y} />
@@ -2409,15 +2502,15 @@ export default function Home() {
                 // place it below so both the stem and the enlarged touch target stay reachable.
                 const rotationAbove = y > markerRadius * 7;
                 const rotationAnchorY = rotationAbove ? y : y + height;
-                const rotationStemEndY = rotationAnchorY + (rotationAbove ? -1 : 1) * markerRadius * 5;
-                const rotationHandleY = rotationAnchorY + (rotationAbove ? -1 : 1) * markerRadius * 6.4;
+                const rotationStemEndY = rotationAnchorY + (rotationAbove ? -1 : 1) * markerRadius * 7;
+                const rotationHandleY = rotationAnchorY + (rotationAbove ? -1 : 1) * markerRadius * 8.4;
                 return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}>
                   <g transform={`rotate(${degrees} ${centerX} ${centerY})`}>
                     <rect x={x} y={y} width={width} height={height} fill={`${label.color}28`} stroke={label.color} strokeWidth={isSelected ? lineThickness + 2 : lineThickness} vectorEffect="non-scaling-stroke" />
+                    {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && <><line className="box-rotation-stem" x1={centerX} y1={rotationAnchorY} x2={centerX} y2={rotationStemEndY} /><g>{touchMode && <ellipse className="touch-handle-hit box-touch-handle-hit" cx={centerX} cy={rotationHandleY} rx={boxRotationTouchRadius} ry={boxRotationTouchRadius * markerAspect} strokeWidth={0} fill="transparent" onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} />}<ellipse className="box-rotation-handle" cx={centerX} cy={rotationHandleY} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></g></>}
                     {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && ([
                       ["nw", x, y], ["ne", x + width, y], ["se", x + width, y + height], ["sw", x, y + height],
                     ] as const).map(([corner, handleX, handleY]) => <g key={corner}>{touchMode && <ellipse className="touch-handle-hit box-touch-handle-hit" cx={handleX} cy={handleY} rx={boxTouchRadius} ry={boxTouchRadius * markerAspect} strokeWidth={0} fill="transparent" onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} />}<ellipse className={`box-resize-handle ${corner}`} cx={handleX} cy={handleY} rx={markerRadius} ry={markerRadius * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} /></g>)}
-                    {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && <><line className="box-rotation-stem" x1={centerX} y1={rotationAnchorY} x2={centerX} y2={rotationStemEndY} /><g>{touchMode && <ellipse className="touch-handle-hit box-touch-handle-hit" cx={centerX} cy={rotationHandleY} rx={boxTouchRadius} ry={boxTouchRadius * markerAspect} strokeWidth={0} fill="transparent" onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} />}<ellipse className="box-rotation-handle" cx={centerX} cy={rotationHandleY} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></g></>}
                   </g>
                 </g>;
               }
@@ -2433,6 +2526,7 @@ export default function Home() {
               return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius} ry={pointRadius * markerAspect} fill="#fff" stroke={label.color} strokeWidth={pointRadius * .42} /><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius * .34} ry={pointRadius * .34 * markerAspect} fill={label.color} /></g>;
             })}
             {selectionMarquee && <rect className="selection-marquee" x={Math.min(selectionMarquee.startX, selectionMarquee.currentX)} y={Math.min(selectionMarquee.startY, selectionMarquee.currentY)} width={Math.abs(selectionMarquee.currentX - selectionMarquee.startX)} height={Math.abs(selectionMarquee.currentY - selectionMarquee.startY)} />}
+            {[0, 2, 4].includes(demoTutorialStep ?? -1) && <><mask id="demo-tutorial-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect width="1000" height="650" fill="white" />{demoTutorialStep === 0 && <polygon points="357,68 568,72 567,282 357,277" fill="black" />}{demoTutorialStep === 2 && <rect x="92" y="394" width="160" height="152" rx="12" fill="black" />}{demoTutorialStep === 4 && <rect x="460" y="340" width="120" height="175" rx="10" fill="black" />}</mask><rect className="demo-tutorial-image-dim" width="1000" height="650" mask="url(#demo-tutorial-mask)" />{demoTutorialStep === 0 && <polygon className="demo-tutorial-target" points="357,68 568,72 567,282 357,277" />}{demoTutorialStep === 2 && <rect className="demo-tutorial-target" x="92" y="394" width="160" height="152" rx="12" />}{demoTutorialStep === 4 && <><rect className="demo-tutorial-model-region" x="460" y="340" width="120" height="175" rx="10" /><circle className="demo-tutorial-model-point" cx="525" cy="422" r="10" /></>}</>}
             {tool === "transform" && (activeAnnotation?.type === "polygon" || activeAnnotation?.type === "box") && activeTransformBounds && activeTransformCenter && <g className="transform-overlay" transform={activeAnnotation.type === "box" ? `rotate(${(activeAnnotation.rotation ?? 0) * 180 / Math.PI} ${activeTransformCenter.x} ${activeTransformCenter.y})` : undefined}>
               <rect x={activeTransformBounds.x} y={activeTransformBounds.y} width={activeTransformBounds.width} height={activeTransformBounds.height} />
               <line x1={activeTransformCenter.x} y1={transformRotationAnchorY} x2={activeTransformCenter.x} y2={transformRotationY} />
@@ -2452,7 +2546,7 @@ export default function Home() {
           </svg>}
           {tool === "sam" && <div className="sam-controls"><div><button className={samPromptMode === 1 ? "active positive" : ""} onClick={() => setSamPromptMode(1)}><CirclePlus size={15} />{copy.samInclude}</button><button className={samPromptMode === 0 ? "active negative" : ""} onClick={() => setSamPromptMode(0)}><CircleMinus size={15} />{copy.samExclude}</button></div><span>{samLoading ? <><LoaderCircle className="spin" size={14} />{copy.samSegmenting}</> : `${samPrompts.length} ${copy.samPoints}`}</span><div><button disabled={!samPrompts.length && !samPreview.length && !samLoading} onClick={restartSam}><ListRestart size={14} />{copy.samRestart}</button><button className="accept" disabled={samPreview.length < 6 || samLoading} onClick={acceptSamMask}><Check size={14} />{copy.samSaveEdit}</button><button aria-label={copy.samConfigure} onClick={openSamSettings}><Settings2 size={15} /></button></div></div>}
         </div></div> : <div className="empty-project"><span><Images size={30} /></span><h2>{copy.emptyProjectTitle}</h2><p>{copy.emptyProjectHint}</p><div><button disabled={demoLoading} onClick={() => input.current?.click()}><ImagePlus size={16} />{copy.importImages}</button><button disabled={demoLoading} onClick={requestOpenProject}><FolderUp size={16} />{copy.openProject}</button></div><small>{copy.privacy}</small></div>}</div></div>
-        <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p className={toast ? "notice" : ""} role="status" aria-live="polite">{toast ? <Check size={14} /> : <Sparkles size={14} />}<span>{statusMessage}</span></p><button><Keyboard size={15} /> {copy.shortcuts}</button></div>
+        <div className="status"><div><button onClick={() => go(-1)} disabled={!asset || assets[0]?.id === current}><ChevronLeft size={16} /></button><span><b>{asset ? assets.findIndex((item) => item.id === current) + 1 : 0}</b> / {assets.length}</span><button onClick={() => go(1)} disabled={!asset || assets.at(-1)?.id === current}><ChevronRight size={16} /></button></div><p className={toast ? "notice" : ""} role="status" aria-live="polite">{toast ? <Check size={14} /> : <Sparkles size={14} />}<span>{statusMessage}</span></p></div>
       </section>
 
       <aside className={`labels ${rightOpen ? "open" : ""} ${rightPanelCollapsed ? "collapsed" : ""}`}>
@@ -2498,6 +2592,8 @@ export default function Home() {
     {pendingDeleteClasses.length > 0 && <div className="modal-backdrop"><section className="sam-modal delete-class-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-class-title" aria-describedby="delete-class-description"><header><div><span><Trash2 size={18} /></span><div><h2 id="delete-class-title">{pendingDeleteClasses.length === 1 ? copy.confirmDeleteClass : copy.confirmDeleteClasses}</h2><p>{pendingDeleteClasses.map((label) => label.name).join(", ")}</p></div></div><button onClick={() => setPendingDeleteClassIds([])} aria-label={copy.close}><X size={19} /></button></header><p id="delete-class-description" className="delete-class-warning">{copy.deleteClassWarning} <strong>{copy.unlabeled}</strong>.</p><div className="delete-class-impact"><span>{copy.affectedAnnotations}</span><b>{pendingAffectedAnnotations}</b></div><footer><button onClick={() => setPendingDeleteClassIds([])}>{copy.cancel}</button><button className="danger" onClick={deletePendingClasses}><Trash2 size={14} />{copy.confirmDelete}</button></footer></section></div>}
     {preferencesOpen && <div className="modal-backdrop"><section className="sam-modal preferences-modal" role="dialog" aria-modal="true" aria-labelledby="preferences-title"><header><div><span><Settings2 size={18} /></span><div><h2 id="preferences-title">{copy.preferences}</h2><p>poligome.com</p></div></div><button onClick={() => setPreferencesOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="preferences-tabs"><button className={preferencesTab === "appearance" ? "active" : ""} onClick={() => setPreferencesTab("appearance")}><Sun size={14} />{copy.appearance}</button><button className={preferencesTab === "language" ? "active" : ""} onClick={() => setPreferencesTab("language")}><Languages size={14} />{copy.language}</button></div>{preferencesTab === "appearance" ? <div className="preference-options"><button className={themeMode === "system" ? "active" : ""} onClick={() => setThemeMode("system")}><Monitor size={20} /><b>{copy.system}</b></button><button className={themeMode === "light" ? "active" : ""} onClick={() => setThemeMode("light")}><Sun size={20} /><b>{copy.light}</b></button><button className={themeMode === "dark" ? "active" : ""} onClick={() => setThemeMode("dark")}><Moon size={20} /><b>{copy.dark}</b></button></div> : <div className="language-options"><button className={language === "pt" ? "active" : ""} onClick={() => setLanguage("pt")}><b>Português</b><span>PT-BR</span></button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}><b>English</b><span>EN</span></button><button className={language === "fr" ? "active" : ""} onClick={() => setLanguage("fr")}><b>Français</b><span>FR</span></button><button className={language === "es" ? "active" : ""} onClick={() => setLanguage("es")}><b>Español</b><span>ES</span></button></div>}<footer><button className="connect" onClick={() => setPreferencesOpen(false)}><Check size={15} /> {copy.close}</button></footer></section></div>}
     {samOpen && <div className="modal-backdrop"><section className="sam-modal sam-local-modal" role="dialog" aria-modal="true" aria-labelledby="sam-title"><header><div><span><WandSparkles size={18} /></span><div><h2 id="sam-title">{copy.samTitle}</h2><p>{copy.samSubtitle}</p></div></div><button onClick={() => setSamOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="hardware-warning"><b>{copy.beforeRun}</b><p><strong>{copy.samHardwareRecommended}</strong> {copy.samHardwareDetail}</p><p>{copy.samInstallerDetail}</p></div><div className="sam-oneclick"><b>{copy.oneClickSetup}</b><p>{copy.oneClickHint}</p><div><a className="primary" href="/poligome-sam-windows.bat" download><Download size={15} /><span><strong>{copy.windowsInstaller}</strong><small>Windows 10/11</small></span></a><a href="/poligome-sam-macos-linux.sh" download><Download size={15} /><span><strong>{copy.unixInstaller}</strong><small>macOS · Linux</small></span></a></div><small>{copy.autoDownloadModel}</small></div><div className="sam-relaunch"><div><b>{copy.installedAlready}</b><p>{copy.restartServerHint}</p></div><div><a className="windows" href="/poligome-sam-start-windows.bat" download><Power size={14} />{copy.restartWindows}</a><a href="/poligome-sam-start-macos-linux.sh" download><Power size={14} />{copy.restartUnix}</a></div></div><div className={`sam-status ${samConnectionState}`}><span /> <b>{samConnectionState === "ready" ? copy.samReady : samConnectionState === "loading" ? copy.samLoadingModel : samConnectionState === "checking" ? copy.samChecking : copy.samOffline}</b>{samRuntime && <small>{samRuntime}</small>}</div><details className="sam-advanced"><summary>{copy.advancedSetup}</summary><div className="sam-setup"><b>{copy.manualSetup}</b><ol><li><a href="https://github.com/facebookresearch/segment-anything#model-checkpoints" target="_blank" rel="noreferrer"><Download size={13} /> {copy.checkpointPage}</a></li><li><a href="/poligome-sam-local.py" download><Download size={13} /> {copy.connectorDownload}</a></li><li>{copy.samManualStep} <code>.pth</code>.</li></ol><pre>python poligome-sam-local.py --checkpoint sam_vit_b_01ec64.pth</pre></div><label>{copy.localAddress}<input type="url" placeholder="http://127.0.0.1:7860/predict" value={samEndpointDraft} onChange={(event) => setSamEndpointDraft(event.target.value)} /></label></details><div className="sam-contract"><b>{copy.noUpload}</b><p>{copy.samPrivacyIntro} <code>localhost</code>{copy.samPrivacyDetail}</p></div><footer><button onClick={() => setSamOpen(false)}>{copy.cancel}</button><button className="connect" disabled={samConnectionState === "checking"} onClick={() => void connectSam()}>{samConnectionState === "checking" ? <LoaderCircle className="spin" size={15} /> : <Link2 size={15} />} {copy.verifyUse}</button></footer></section></div>}
+    {tutorialOpen && <div className="modal-backdrop"><section className="sam-modal tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorial-title"><header><div><span><Keyboard size={18} /></span><div><h2 id="tutorial-title">{copy.shortcuts}</h2><p>{copy.quickTip}</p></div></div><button onClick={() => setTutorialOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="tutorial-grid"><section><ImagePlus size={16} /><div><b>{copy.importImages}</b><p>{copy.rasterImportHint}</p></div></section><section><Hand size={16} /><div><b>{copy.pan}</b><p>{copy.middlePan} · {copy.shiftZoom}</p></div></section><section><MousePointer2 size={16} /><div><b>{copy.select}</b><p>{copy.polygonTipDetail}</p></div></section><section><Maximize2 size={16} /><div><b>{copy.transform}</b><p>{copy.transformTip}</p></div></section><section><Pentagon size={16} /><div><b>{copy.polygon}</b><p>{copy.polygonFinish}</p></div></section><section><Tags size={16} /><div><b>{copy.shortcutHint}</b><p>{copy.vectorHint}</p></div></section></div><footer><button className="connect" onClick={() => setTutorialOpen(false)}><Check size={15} /> {copy.close}</button></footer></section></div>}
+    {demoTutorialStep !== null && <section className="demo-tutorial-card" role="dialog" aria-live="polite"><span>{demoTutorialStep < 2 ? "1 / 3" : demoTutorialStep < 4 ? "2 / 3" : "3 / 3"}</span><h2>{demoTutorialCopy[language][Math.min(demoTutorialStep, 4)][0]}</h2><p>{demoTutorialStep < 5 ? demoTutorialCopy[language][demoTutorialStep][1] : copy.sam}</p>{demoTutorialStep === 1 && <button onClick={() => { const box = demoAnnotationsRef.current.find((annotation) => annotation.id === "demo-b4"); setAnnotations(box ? [{ ...box, x: 112, y: 414, w: 120, h: 112, rotation: .42 }] : []); setCurrent("demo-park"); setSelected("demo-b4"); setMultiSelected(["demo-b4"]); setDemoTutorialStep(2); }}><ChevronRight size={15} />{demoTutorialNext[language]}</button>}{demoTutorialStep === 3 && <button onClick={() => { setAnnotations([]); setCurrent("demo-rural"); setSelected(null); setMultiSelected([]); setDemoTutorialStep(4); }}><ChevronRight size={15} />{demoTutorialNext[language]}</button>}{demoTutorialStep === 5 && <button onClick={() => { exitDemoTutorial(); openSamSettings(); }}><WandSparkles size={15} />{demoTutorialModels[language]}</button>}{demoTutorialStep !== 5 && <button className="demo-tutorial-skip" onClick={exitDemoTutorial}>{copy.close}</button>}</section>}
     {(leftOpen || rightOpen) && <button className="backdrop" onClick={() => { setLeftOpen(false); setRightOpen(false); }} aria-label={copy.closePanel} />}
   </main>;
 }

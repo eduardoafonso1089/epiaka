@@ -1,21 +1,20 @@
 # Poligome
 
-Free, local-first data annotation for AI. Annotate images and model responses in
+Free, local-first data annotation for AI. Annotate images in
 the browser — no account, no upload, no server holding your dataset.
 
-Poligome runs entirely in the tab. Images, text, and annotations are processed on
+Poligome runs entirely in the tab. Images and annotations are processed on
 your own machine, and the dataset you export never passes through a backend. AI
 assistance is optional and also local: the SAM connector and the GeoTIFF
 converter run on your computer, not in the cloud.
 
-## The two annotators
+## Image annotator
 
 | | Route | What it does | Exports |
 |---|---|---|---|
 | **Computer vision** | `/annotate` | Boxes, polygons, masks, polylines, and keypoints, with vector editing, snapping, and per-class visibility | COCO, YOLO, GeoJSON, portable project |
-| **LLM and text** | `/text` | Classification, rating against criteria, A/B preference with strength, and response correction | JSON, JSONL, CSV |
 
-Both keep a project you can save and reopen later: a single portable file with
+Projects can be saved as a project you can save and reopen later: a single portable file with
 images, labels, and annotations, so work resumes on another machine without a
 server.
 
@@ -88,7 +87,6 @@ path, including the workaround for networks that block the npm registry.
 ```
 app/page.tsx          landing
 app/annotate/         image annotator
-app/text/             LLM and text annotator
 app/lib/              exporters, geometry, SAM and COG clients, i18n
 public/               local connector installers, favicon and cursors
 docs/PLATFORM.md      hosting platform, bindings, and auth notes

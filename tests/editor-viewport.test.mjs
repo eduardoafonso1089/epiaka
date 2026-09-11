@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ImageFraming, annotationPointerDelta, canvasLayout } from '../app/lib/editor-viewport.ts';
+import { readFileSync } from 'node:fs';
+import { ImageFraming, anchoredScrollOffset, annotationPointerDelta, canvasLayout } from '../app/lib/editor-viewport.ts';
 
 test('selecting an image object prevents all subsequent automatic fits of that image', () => {
   const framing = new ImageFraming();
@@ -47,11 +48,27 @@ test('zoomed canvas keeps full overflow dimensions and a reachable top-left corn
   assert.equal(tall.surfaceHeight, 1400);
 });
 
-test('touch navigation adds room beyond every overflowing image edge', () => {
-  assert.deepEqual(canvasLayout({ width: 350, height: 480 }, { width: 1200, height: 780 }, 200, true), {
-    width: 700, height: 455, left: 175, top: 12.5, surfaceWidth: 1050, surfaceHeight: 480,
+test('a zoomed mobile image has no artificial margin and both horizontal edges are reachable', () => {
+  const viewport = { width: 350, height: 480 };
+  const layout = canvasLayout(viewport, { width: 1200, height: 780 }, 400);
+  assert.deepEqual(layout, {
+    width: 1400, height: 910, left: 0, top: 0, surfaceWidth: 1400, surfaceHeight: 910,
   });
-  const tall = canvasLayout({ width: 350, height: 480 }, { width: 500, height: 2000 }, 100, true);
-  assert.equal(tall.top, 240);
-  assert.equal(tall.surfaceHeight, 1880);
+  const maximumScrollLeft = layout.surfaceWidth - viewport.width;
+  assert.equal(layout.left, 0, 'the left image edge aligns at scrollLeft 0');
+  assert.equal(layout.left + layout.width - maximumScrollLeft, viewport.width, 'the right image edge aligns at maximum scrollLeft');
+});
+
+test('mobile zoom remains centered and can anchor either image edge without clipping it', () => {
+  const width = 1400;
+  assert.equal(anchoredScrollOffset(0, 0, width, 0.5, 175), 525);
+  assert.equal(anchoredScrollOffset(0, 0, width, 0, 0), 0);
+  assert.equal(anchoredScrollOffset(0, 0, width, 1, 350), 1050);
+});
+
+test('the editor scroll container aligns oversized canvases to the reachable origin', () => {
+  const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
+  const scrollRule = css.match(/\.editor \.scroll\{display:block;[^}]*\}/)?.[0] ?? '';
+  assert.match(scrollRule, /place-items:start/);
+  assert.match(scrollRule, /scrollbar-gutter:auto/);
 });

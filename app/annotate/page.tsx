@@ -21,7 +21,7 @@ import type { ProjectLayout, ProjectSaveMode } from "../lib/project";
 import { requestSamMask } from "../lib/sam";
 import { createDemoProject } from "../lib/demo";
 import { TouchGesture, pinchZoom, touchToolUsesTap, nearestTouchVertex } from "../lib/touch-gestures";
-import { ImageFraming, annotationPointerDelta, canvasLayout } from "../lib/editor-viewport";
+import { ImageFraming, anchoredScrollOffset, annotationPointerDelta, canvasLayout } from "../lib/editor-viewport";
 import CogRecorte from "./CogRecorte";
 import { ehArquivoTiff } from "../lib/cog";
 import { geoReference, isRasterSidecar, readRasterSidecars } from "../lib/georeference";
@@ -463,7 +463,7 @@ export default function Home() {
   const activeImageId = asset?.id;
   const activeImageWidth = asset?.width;
   const activeImageHeight = asset?.height;
-  const canvasPixels = canvasLayout(canvasViewport, { width: activeImageWidth ?? 1000, height: activeImageHeight ?? 650 }, zoom, touchMode);
+  const canvasPixels = canvasLayout(canvasViewport, { width: activeImageWidth ?? 1000, height: activeImageHeight ?? 650 }, zoom);
   const assetIndex = Math.max(0, assets.findIndex((item) => item.id === asset?.id));
   const imageWindow = assets.slice(Math.max(0, assetIndex - 3), assetIndex + 4).filter((item) => !item.missing);
   const imageIsReady = !!asset && readyImageIds.includes(asset.id);
@@ -589,8 +589,8 @@ export default function Home() {
     const canvas = svgRef.current?.parentElement;
     if (!pending || !scroller || !canvas) return;
     const bounds = canvas.getBoundingClientRect();
-    scroller.scrollLeft += bounds.left + pending.anchorX * bounds.width - pending.clientX;
-    scroller.scrollTop += bounds.top + pending.anchorY * bounds.height - pending.clientY;
+    scroller.scrollLeft = anchoredScrollOffset(scroller.scrollLeft, bounds.left, bounds.width, pending.anchorX, pending.clientX);
+    scroller.scrollTop = anchoredScrollOffset(scroller.scrollTop, bounds.top, bounds.height, pending.anchorY, pending.clientY);
   }, [zoom]);
 
   useEffect(() => {
@@ -1127,8 +1127,12 @@ export default function Home() {
     const scroller = scrollRef.current;
     if (directPan?.pointerId === event.pointerId && scroller && (tool === "pan" || gesture.navigating)) {
       event.preventDefault(); event.stopPropagation();
-      scroller.scrollLeft = directPan.left - (event.clientX - directPan.x);
-      scroller.scrollTop = directPan.top - (event.clientY - directPan.y);
+      scroller.scrollLeft -= event.clientX - directPan.x;
+      scroller.scrollTop -= event.clientY - directPan.y;
+      directPan.x = event.clientX;
+      directPan.y = event.clientY;
+      directPan.left = scroller.scrollLeft;
+      directPan.top = scroller.scrollTop;
       return;
     }
     if (!gesture.navigating && !touchToolUsesTap(tool)) return;
@@ -2612,7 +2616,7 @@ export default function Home() {
         </div>}
         </div>
 
-        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onLostPointerCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas-surface" style={{ width: canvasPixels.surfaceWidth, height: canvasPixels.surfaceHeight }}><div className="canvas" style={{ position: "absolute", width: canvasPixels.width, height: canvasPixels.height, left: canvasPixels.left, top: canvasPixels.top }}>
+        <div className={`stage ${tool} ${panStart ? "panning" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const projectFile = Array.from(event.dataTransfer.files).find((file) => file.name.toLowerCase().endsWith(".plgm")); if (projectFile) { if (saved || window.confirm(copy.replaceUnsavedProject)) void loadProjectFile(projectFile); } else files(event.dataTransfer.files); }}><div className="scroll" ref={scrollRef} onPointerDownCapture={touchPointerDown} onPointerMoveCapture={touchPointerMove} onPointerUpCapture={(event) => touchPointerEnd(event)} onPointerCancelCapture={(event) => touchPointerEnd(event, true)} onLostPointerCapture={(event) => touchPointerEnd(event, true)} onPointerMove={(event) => { if (event.pointerType === "mouse") zoomAnchorRef.current = { x: event.clientX, y: event.clientY }; }} onPointerLeave={() => { zoomAnchorRef.current = null; setCursorPoint(null); }}>{asset ? <div className="canvas-surface" style={{ width: canvasPixels.surfaceWidth, height: canvasPixels.surfaceHeight }}><div className="canvas" style={{ position: "absolute", width: canvasPixels.width, height: canvasPixels.height, left: canvasPixels.left, top: canvasPixels.top }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {asset.missing ? <div className="missing-image"><Images size={34} /><b>{asset.name}</b><p>{copy.imageMissingHint}</p><button onClick={() => input.current?.click()}><FolderOpen size={15} />{copy.reloadProjectImages}</button></div> : imageWindow.map((item) => <img key={item.id} className={item.id === asset.id && readyImageIds.includes(item.id) ? "image-current" : "image-preload"} crossOrigin="anonymous" src={item.src} alt={item.id === asset.id ? fill(copy.annotationImageAlt, { name: item.name }) : ""} aria-hidden={item.id === asset.id ? undefined : true} draggable={false} onLoad={(event) => { const image = event.currentTarget; if (item.width !== image.naturalWidth || item.height !== image.naturalHeight) setAssets((items) => items.map((candidate) => candidate.id === item.id ? { ...candidate, width: image.naturalWidth, height: image.naturalHeight } : candidate)); void image.decode().then(() => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id]), () => setReadyImageIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id])); }} />)}
           {!asset.missing && imageIsReady && <svg ref={svgRef} viewBox="0 0 1000 650" preserveAspectRatio="none" onPointerDown={canvasPointerDown} onPointerMove={canvasPointerMove} onPointerUp={canvasPointerUp} onPointerCancel={clearPointerDrafts} onPointerOver={updateGeometryCursor} onAuxClick={(event) => event.preventDefault()} onContextMenu={finishDrawingWithRightClick} onDoubleClick={() => { if (touchMode) return; if (tool === "polygon" || tool === "ring") finishPolygon(); if (tool === "line") finishLine(); }}>

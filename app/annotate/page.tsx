@@ -349,6 +349,7 @@ export default function Home() {
   const touchClosePoint = useRef(false);
   const touchSnapshot = useRef<{ annotations: Annotation[]; history: Annotation[][]; redo: Annotation[][]; saved: boolean; selected: string | null; multi: string[]; vertex: typeof selectedVertex } | null>(null);
   const pinchRef = useRef<{ zoom: number; distance: number; lastX: number; lastY: number } | null>(null);
+  const touchPanRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(1000);
   const framingRef = useRef(new ImageFraming());
   const selectionViewportRef = useRef<{ left: number; top: number } | null>(null);
@@ -453,6 +454,7 @@ export default function Home() {
   const projectObjectUrlsRef = useRef<string[]>([]);
   const routeDemoHandledRef = useRef(false);
   const demoLoadingRef = useRef(false);
+  const demoLoadGenerationRef = useRef(0);
   const demoAnnotationsRef = useRef<Annotation[]>([]);
   const labelsRef = useRef(labels);
   const idCounter = useRef(0);
@@ -561,6 +563,13 @@ export default function Home() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setMounted(true));
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  // Enable the mobile canvas bounds before the first gesture. Waiting for a touch on the
+  // SVG changed its scrollable size in the middle of that gesture and made one edge appear
+  // locked on phones.
+  useEffect(() => {
+    if (window.matchMedia("(pointer: coarse)").matches) setTouchMode(true);
   }, []);
 
   useEffect(() => {
@@ -781,10 +790,15 @@ export default function Home() {
 
   const loadDemoProject = useCallback(async () => {
     if (demoLoadingRef.current) return;
+    const generation = ++demoLoadGenerationRef.current;
     demoLoadingRef.current = true;
     setDemoLoading(true);
     try {
       const demo = await createDemoProject(language);
+      if (generation !== demoLoadGenerationRef.current) {
+        demo.objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        return;
+      }
       projectObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       projectObjectUrlsRef.current = demo.objectUrls;
       idCounter.current = 0;
@@ -805,10 +819,12 @@ export default function Home() {
       setSaved(true);
       showToast(copy.demoReady);
     } catch {
-      showToast(copy.demoError);
+      if (generation === demoLoadGenerationRef.current) showToast(copy.demoError);
     } finally {
-      demoLoadingRef.current = false;
-      setDemoLoading(false);
+      if (generation === demoLoadGenerationRef.current) {
+        demoLoadingRef.current = false;
+        setDemoLoading(false);
+      }
     }
   }, [copy.demoError, copy.demoReady, language, showToast, setLeftOpen, setRightOpen]);
 
@@ -1076,7 +1092,10 @@ export default function Home() {
     if (canEditImage && tool === "select") preserveSelectionViewport();
     if (event.pointerType !== "touch") { setTouchMode(false); return; }
     const gesture = touchGesture.current;
-    if (!canEditImage || (!gesture.points.size && !(event.target instanceof Element && svgRef.current?.contains(event.target)))) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const startedOnImage = !!target && !!svgRef.current?.contains(target);
+    const startedInPanArea = tool === "pan" && !!target && event.currentTarget.contains(target);
+    if (!canEditImage || (!gesture.points.size && !startedOnImage && !startedInPanArea)) return;
     setTouchMode(true);
     const orphanedSnapshot = event.isPrimary && gesture.points.size ? touchSnapshot.current : null;
     if (event.isPrimary && gesture.points.size) {
@@ -1088,21 +1107,35 @@ export default function Home() {
       touchClosePoint.current = event.target instanceof Element && !!event.target.closest(".polygon-close-point");
     }
     const navigating = gesture.down(event.pointerId, event.clientX, event.clientY, event.isPrimary);
-    capture(event.pointerId);
-    if (navigating) { cancelTouchEdit(); beginPinch(); }
+    if (tool === "pan") {
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { capture(event.pointerId); }
+    } else capture(event.pointerId);
+    if (navigating) { touchPanRef.current = null; cancelTouchEdit(); beginPinch(); }
+    else if (tool === "pan" && scrollRef.current) {
+      const scroller = scrollRef.current;
+      touchPanRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
+    }
     if (navigating || touchToolUsesTap(tool)) { event.preventDefault(); event.stopPropagation(); }
+    if (tool === "pan") { event.preventDefault(); event.stopPropagation(); }
   }
 
   function touchPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const gesture = touchGesture.current;
     if (event.pointerType !== "touch" || !gesture.points.has(event.pointerId)) return;
     gesture.move(event.pointerId, event.clientX, event.clientY);
+    const directPan = touchPanRef.current;
+    const scroller = scrollRef.current;
+    if (directPan?.pointerId === event.pointerId && scroller && (tool === "pan" || gesture.navigating)) {
+      event.preventDefault(); event.stopPropagation();
+      scroller.scrollLeft = directPan.left - (event.clientX - directPan.x);
+      scroller.scrollTop = directPan.top - (event.clientY - directPan.y);
+      return;
+    }
     if (!gesture.navigating && !touchToolUsesTap(tool)) return;
     event.preventDefault(); event.stopPropagation();
     const pair = gesture.pair();
     const pinch = pinchRef.current;
     const canvas = svgRef.current;
-    const scroller = scrollRef.current;
     if (!gesture.navigating || !pair || !pinch || !canvas || !scroller) return;
     // Pan by the incremental movement of the two-finger centre. The old calculation used
     // the initial pinch position on every frame, so the scroll quickly hit an edge on small
@@ -1127,12 +1160,13 @@ export default function Home() {
   function touchPointerEnd(event: React.PointerEvent<HTMLDivElement>, cancelled = false) {
     const gesture = touchGesture.current;
     if (event.pointerType !== "touch" || !gesture.points.has(event.pointerId)) return;
+    const wasDirectPan = touchPanRef.current?.pointerId === event.pointerId;
     gesture.move(event.pointerId, event.clientX, event.clientY);
     const result = gesture.end(event.pointerId, cancelled);
     if (cancelled) cancelTouchEdit();
-    if (result.blocked || touchToolUsesTap(tool)) {
+    if (wasDirectPan || result.blocked || touchToolUsesTap(tool)) {
       event.preventDefault(); event.stopPropagation();
-      if (result.tap) {
+      if (!wasDirectPan && result.tap) {
         if (touchClosePoint.current && (tool === "polygon" || tool === "ring") && polygonDraft.length >= 6) finishPolygon();
         else canvasPointerDown(event as unknown as React.PointerEvent<SVGSVGElement>);
       }
@@ -1142,8 +1176,16 @@ export default function Home() {
       else finishReshape(editorPoint(event.clientX, event.clientY));
     }
     if (gesture.points.size >= 2) beginPinch();
-    else pinchRef.current = null;
-    if (!gesture.points.size) touchSnapshot.current = null;
+    else {
+      pinchRef.current = null;
+      const remaining = gesture.points.entries().next().value as [number, { x: number; y: number }] | undefined;
+      const scroller = scrollRef.current;
+      // Continue panning smoothly with the finger that remains on screen after a pinch.
+      touchPanRef.current = remaining && scroller && gesture.navigating
+        ? { pointerId: remaining[0], x: remaining[1].x, y: remaining[1].y, left: scroller.scrollLeft, top: scroller.scrollTop }
+        : null;
+    }
+    if (!gesture.points.size) { touchSnapshot.current = null; touchPanRef.current = null; }
   }
 
   async function runSam(prompts: SamPrompt[]) {
@@ -2266,6 +2308,27 @@ export default function Home() {
     if (projectBusy) return;
     const hasProjectContent = assets.length > 0 || annotations.length > 0 || labels.some((label) => label.id !== UNLABELED_ID) || !saved;
     if (hasProjectContent && !window.confirm(copy.replaceUnsavedWithNewProject)) return;
+    // Invalidate a demo still loading and remove the route flag as well as React state.
+    // This prevents the tutorial from returning after the new empty project is rendered.
+    demoLoadGenerationRef.current += 1;
+    demoLoadingRef.current = false;
+    setDemoLoading(false);
+    routeDemoHandledRef.current = true;
+    touchGesture.current = new TouchGesture();
+    touchSnapshot.current = null;
+    touchPanRef.current = null;
+    pinchRef.current = null;
+    pendingZoomRef.current = null;
+    zoomAnchorRef.current = null;
+    const nextUrl = new URL(window.location.href);
+    if (nextUrl.searchParams.has("demo")) {
+      nextUrl.searchParams.delete("demo");
+      window.history.replaceState(window.history.state, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+    }
+    delete document.documentElement.dataset.demoTutorialCard;
+    document.documentElement.style.removeProperty("--demo-tutorial-card-top");
+    document.documentElement.style.removeProperty("--demo-tutorial-tool-x");
+    document.documentElement.style.removeProperty("--demo-tutorial-tool-y");
     projectObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     projectObjectUrlsRef.current = [];
     if (input.current) input.current.value = "";

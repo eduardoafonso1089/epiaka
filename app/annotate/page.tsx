@@ -465,6 +465,9 @@ export default function Home() {
   // Zooming out, a smooth curve shrinks the controls without making them illegible; zooming in,
   // we compensate so they do not become disproportionately large on screen.
   const touchRadius = 22 * 1000 / Math.max(1, canvasWidth);
+  // Keep box controls at least 56 screen pixels wide for a finger, independently of canvas size.
+  // The visible marker remains compact; this radius is used only by its transparent touch target.
+  const boxTouchRadius = 28 * 1000 / Math.max(1, canvasWidth);
   const handleScale = zoom < 100 ? Math.pow(100 / zoom, 0.6) : 100 / zoom;
   const markerRadius = MARKER_RADIUS * handleScale;
   const visualLineWidth = lineThickness * handleScale;
@@ -2407,8 +2410,8 @@ export default function Home() {
                     <rect x={x} y={y} width={width} height={height} fill={`${label.color}28`} stroke={label.color} strokeWidth={isSelected ? lineThickness + 2 : lineThickness} vectorEffect="non-scaling-stroke" />
                     {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && ([
                       ["nw", x, y], ["ne", x + width, y], ["se", x + width, y + height], ["sw", x, y + height],
-                    ] as const).map(([corner, handleX, handleY]) => <ellipse key={corner} className={`box-resize-handle ${corner}`} cx={handleX} cy={handleY} rx={markerRadius} ry={markerRadius * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} />)}
-                    {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && <><line className="box-rotation-stem" x1={centerX} y1={y} x2={centerX} y2={y - markerRadius * 3.5} /><ellipse className="box-rotation-handle" cx={centerX} cy={y - markerRadius * 4.7} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></>}
+                    ] as const).map(([corner, handleX, handleY]) => <g key={corner}>{touchMode && <ellipse className="touch-handle-hit box-touch-handle-hit" cx={handleX} cy={handleY} rx={boxTouchRadius} ry={boxTouchRadius * markerAspect} strokeWidth={0} fill="transparent" onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} />}<ellipse className={`box-resize-handle ${corner}`} cx={handleX} cy={handleY} rx={markerRadius} ry={markerRadius * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginBoxResize(event, annotation, corner)} onPointerMove={moveBoxResize} onPointerUp={finishBoxResize} onPointerCancel={clearPointerDrafts} /></g>)}
+                    {tool === "select" && isSelected && annotation.id === selected && multiSelected.length === 1 && <><line className="box-rotation-stem" x1={centerX} y1={y} x2={centerX} y2={y - markerRadius * 3.5} /><g>{touchMode && <ellipse className="touch-handle-hit box-touch-handle-hit" cx={centerX} cy={y - markerRadius * 4.7} rx={boxTouchRadius} ry={boxTouchRadius * markerAspect} strokeWidth={0} fill="transparent" onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} />}<ellipse className="box-rotation-handle" cx={centerX} cy={y - markerRadius * 4.7} rx={markerRadius * 1.25} ry={markerRadius * 1.25 * markerAspect} strokeWidth={markerRadius * .42} onPointerDown={(event) => beginTransform(event, annotation, "rotate")} onPointerMove={moveTransformPointer} onPointerUp={finishTransformPointer} onPointerCancel={clearPointerDrafts} /></g></>}
                   </g>
                 </g>;
               }

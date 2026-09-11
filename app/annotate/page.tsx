@@ -338,7 +338,7 @@ export default function Home() {
   const touchGesture = useRef(new TouchGesture());
   const touchClosePoint = useRef(false);
   const touchSnapshot = useRef<{ annotations: Annotation[]; history: Annotation[][]; redo: Annotation[][]; saved: boolean; selected: string | null; multi: string[]; vertex: typeof selectedVertex } | null>(null);
-  const pinchRef = useRef<{ zoom: number; distance: number; anchorX: number; anchorY: number } | null>(null);
+  const pinchRef = useRef<{ zoom: number; distance: number; lastX: number; lastY: number } | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(1000);
   const framingRef = useRef(new ImageFraming());
   const selectionViewportRef = useRef<{ left: number; top: number } | null>(null);
@@ -833,6 +833,14 @@ export default function Home() {
     }
   }, [annotations, demoTutorialStep, language, showToast]);
 
+  // On phones, the lower-half tasks use the upper card position from the first
+  // instruction through their confirmation, so the card never jumps back over the work.
+  useEffect(() => {
+    if (demoTutorialStep !== null && demoTutorialStep >= 2) document.documentElement.dataset.demoTutorialCard = "top";
+    else delete document.documentElement.dataset.demoTutorialCard;
+    return () => { delete document.documentElement.dataset.demoTutorialCard; };
+  }, [demoTutorialStep]);
+
   function editorPoint(clientX: number, clientY: number) {
     const bounds = svgRef.current?.getBoundingClientRect();
     if (!bounds) return { x: 0, y: 0 };
@@ -990,11 +998,7 @@ export default function Home() {
   function beginPinch() {
     const pair = touchGesture.current.pair();
     const bounds = svgRef.current?.getBoundingClientRect();
-    pinchRef.current = pair && bounds ? {
-      zoom, distance: pair.distance,
-      anchorX: (pair.x - bounds.left) / bounds.width,
-      anchorY: (pair.y - bounds.top) / bounds.height,
-    } : null;
+    pinchRef.current = pair && bounds ? { zoom, distance: pair.distance, lastX: pair.x, lastY: pair.y } : null;
   }
 
   function preserveSelectionViewport() {
@@ -1045,14 +1049,22 @@ export default function Home() {
     const canvas = svgRef.current;
     const scroller = scrollRef.current;
     if (!gesture.navigating || !pair || !pinch || !canvas || !scroller) return;
+    // Pan by the incremental movement of the two-finger centre. The old calculation used
+    // the initial pinch position on every frame, so the scroll quickly hit an edge on small
+    // screens and left part of a zoomed image unreachable.
+    scroller.scrollLeft -= pair.x - pinch.lastX;
+    scroller.scrollTop -= pair.y - pinch.lastY;
+    pinch.lastX = pair.x; pinch.lastY = pair.y;
+
     const next = pinchZoom(pinch.zoom, pinch.distance, pair.distance);
-    const anchor = { clientX: pair.x, clientY: pair.y, anchorX: pinch.anchorX, anchorY: pinch.anchorY };
-    if (next === zoom) {
+    if (next !== pinch.zoom) {
       const bounds = canvas.getBoundingClientRect();
-      scroller.scrollLeft += bounds.left + anchor.anchorX * bounds.width - anchor.clientX;
-      scroller.scrollTop += bounds.top + anchor.anchorY * bounds.height - anchor.clientY;
-    } else {
-      pendingZoomRef.current = anchor;
+      pendingZoomRef.current = {
+        clientX: pair.x, clientY: pair.y,
+        anchorX: Math.max(0, Math.min(1, (pair.x - bounds.left) / bounds.width)),
+        anchorY: Math.max(0, Math.min(1, (pair.y - bounds.top) / bounds.height)),
+      };
+      pinch.zoom = next; pinch.distance = pair.distance;
       setZoom(next);
     }
   }

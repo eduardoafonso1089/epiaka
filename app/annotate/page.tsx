@@ -50,6 +50,16 @@ const demoTutorialCopy = {
 } as const;
 const demoTutorialNext = { pt: "Próximo", en: "Next", fr: "Suivant", es: "Siguiente" } as const;
 const demoTutorialModels = { pt: "Conhecer modelos locais", en: "Explore local models", fr: "Découvrir les modèles locaux", es: "Conocer modelos locales" } as const;
+const demoTutorialClickHere = { pt: "Clique aqui", en: "Click here", fr: "Cliquez ici", es: "Haz clic aquí" } as const;
+const demoTutorialDrawHere = { pt: "Desenhe aqui", en: "Draw here", fr: "Dessinez ici", es: "Dibuja aquí" } as const;
+const demoTutorialModifyHere = { pt: "Modifique aqui", en: "Edit here", fr: "Modifiez ici", es: "Modifica aquí" } as const;
+const demoTutorialClickPoint = { pt: "Clique no ponto", en: "Click the point", fr: "Cliquez sur le point", es: "Haz clic en el punto" } as const;
+const demoTutorialToolCopy = {
+  pt: { box: ["Selecione a ferramenta Caixa", "Clique na ferramenta destacada para começar."], select: ["Selecione a ferramenta de movimentação", "Clique na ferramenta Selecionar destacada para editar a caixa."] },
+  en: { box: ["Select the Box tool", "Click the highlighted tool to begin."], select: ["Select the move tool", "Click the highlighted Select tool to edit the box."] },
+  fr: { box: ["Sélectionnez l’outil Boîte", "Cliquez sur l’outil mis en évidence pour commencer."], select: ["Sélectionnez l’outil de déplacement", "Cliquez sur l’outil Sélection mis en évidence pour modifier la boîte."] },
+  es: { box: ["Selecciona la herramienta Caja", "Haz clic en la herramienta resaltada para empezar."], select: ["Selecciona la herramienta de movimiento", "Haz clic en la herramienta Seleccionar resaltada para editar la caja."] },
+} as const;
 const demoTutorialWrongDraw = { pt: "A anotação ficou fora do telhado destacado. Tente novamente.", en: "The annotation is outside the highlighted roof. Try again.", fr: "L’annotation est hors du toit mis en évidence. Réessayez.", es: "La anotación está fuera del tejado resaltado. Inténtalo de nuevo." } as const;
 
 function polygonArea(points: number[] = []) {
@@ -377,6 +387,7 @@ export default function Home() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [demoTutorialStep, setDemoTutorialStep] = useState<number | null>(null);
+  const [demoTutorialToolPrompt, setDemoTutorialToolPrompt] = useState<"box" | "select" | null>(null);
   const [classManagerOpen, setClassManagerOpen] = useState(false);
   const [preferencesTab, setPreferencesTab] = useState<"appearance" | "language">("appearance");
   const [language, setLanguage] = useState<Language>(storedLanguage);
@@ -786,7 +797,7 @@ export default function Home() {
       const tutorialAnnotations: Annotation[] = [];
       setLabels(demo.labels); setAnnotations(tutorialAnnotations);
       setActiveLabel(demo.labels[0].id); setBatchLabel(demo.labels[0].id); setNewLabelColor(nextLabelColor(demo.labels));
-      setHistory([]); setRedoHistory([]); setSelected(null); setMultiSelected([]); setSelectedVertex(null); setDemoTutorialStep(0);
+      setHistory([]); setRedoHistory([]); setSelected(null); setMultiSelected([]); setSelectedVertex(null); setDemoTutorialStep(0); setDemoTutorialToolPrompt("box");
       setSelectedClassIds([]); setSelectedAssetIds([]); setHiddenAnnotations([]); setHiddenLabels([]);
       setPendingDeleteAnnotationIds([]); setPendingDeleteClassIds([]); setSearch(""); setQuality(false); setReviewTab(false); setTool("select"); setZoom(92);
       setPanelLayout(defaultPanelLayout()); setLeftPanelCollapsed(false); setRightPanelCollapsed(false);
@@ -806,7 +817,7 @@ export default function Home() {
       setAnnotations([...demoAnnotationsRef.current]);
       setCurrent("demo-urban"); setSelected(null); setMultiSelected([]); setTool("select");
     }
-    setDemoTutorialStep(null);
+    setDemoTutorialStep(null); setDemoTutorialToolPrompt(null);
   }
 
   useEffect(() => {
@@ -816,13 +827,43 @@ export default function Home() {
   }, [loadDemoProject]);
 
   useEffect(() => {
+    if (demoTutorialToolPrompt === "box" && tool === "box") setDemoTutorialToolPrompt(null);
+    if (demoTutorialToolPrompt === "select" && tool === "select") setDemoTutorialToolPrompt(null);
+  }, [demoTutorialToolPrompt, tool]);
+
+  useIsomorphicLayoutEffect(() => {
+    const root = document.documentElement;
+    if (!demoTutorialToolPrompt) {
+      root.style.removeProperty("--demo-tutorial-tool-x");
+      root.style.removeProperty("--demo-tutorial-tool-y");
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(".demo-tutorial-tool-target");
+    const updatePosition = () => {
+      const bounds = target?.getBoundingClientRect();
+      if (!bounds) return;
+      root.style.setProperty("--demo-tutorial-tool-x", `${Math.round(bounds.left + bounds.width / 2)}px`);
+      root.style.setProperty("--demo-tutorial-tool-y", `${Math.round(bounds.bottom + 12)}px`);
+    };
+    updatePosition();
+    const observer = target ? new ResizeObserver(updatePosition) : null;
+    if (target) observer?.observe(target);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      observer?.disconnect(); window.removeEventListener("resize", updatePosition);
+      root.style.removeProperty("--demo-tutorial-tool-x"); root.style.removeProperty("--demo-tutorial-tool-y");
+    };
+  }, [demoTutorialToolPrompt]);
+
+  useEffect(() => {
     if (demoTutorialStep === 0) {
       const drawn = annotations.find((annotation) => annotation.asset === "demo-urban");
       if (drawn && annotationIntersectsRect(drawn, { x: 357, y: 68, width: 211, height: 214 })) {
         setDemoTutorialStep(1); setTool("select"); showToast(demoTutorialCopy[language][1][0]);
       } else if (drawn) {
         setAnnotations((items) => items.filter((annotation) => annotation.id !== drawn.id));
-        setSelected(null); setMultiSelected([]); setTool("box"); showToast(demoTutorialWrongDraw[language]);
+        setSelected(null); setMultiSelected([]); setTool("select"); setDemoTutorialToolPrompt("box");
+        showToast(demoTutorialWrongDraw[language]);
       }
     }
     if (demoTutorialStep === 2) {
@@ -833,12 +874,26 @@ export default function Home() {
     }
   }, [annotations, demoTutorialStep, language, showToast]);
 
-  // On phones, the lower-half tasks use the upper card position from the first
-  // instruction through their confirmation, so the card never jumps back over the work.
+  // On phones, keep the upper card immediately below the real controls height. A fixed
+  // offset overlapped the action row when labels wrapped or the viewport was very narrow.
   useEffect(() => {
-    if (demoTutorialStep !== null && demoTutorialStep >= 2) document.documentElement.dataset.demoTutorialCard = "top";
-    else delete document.documentElement.dataset.demoTutorialCard;
-    return () => { delete document.documentElement.dataset.demoTutorialCard; };
+    const root = document.documentElement;
+    if (demoTutorialStep === null || demoTutorialStep < 2) {
+      delete root.dataset.demoTutorialCard;
+      root.style.removeProperty("--demo-tutorial-card-top");
+      return;
+    }
+    root.dataset.demoTutorialCard = "top";
+    const controls = document.querySelector<HTMLElement>(".editor-controls");
+    const updatePosition = () => root.style.setProperty("--demo-tutorial-card-top", `${Math.ceil((controls?.getBoundingClientRect().bottom ?? 118) + 8)}px`);
+    updatePosition();
+    const observer = controls ? new ResizeObserver(updatePosition) : null;
+    if (controls) observer?.observe(controls);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      observer?.disconnect(); window.removeEventListener("resize", updatePosition);
+      delete root.dataset.demoTutorialCard; root.style.removeProperty("--demo-tutorial-card-top");
+    };
   }, [demoTutorialStep]);
 
   function editorPoint(clientX: number, clientY: number) {
@@ -2472,14 +2527,15 @@ export default function Home() {
       <section className={`editor ${touchMode ? "touch-editor" : ""}`}>
         <div className="editor-controls">
         <div className="tools">
-          <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} onClick={() => changeTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => changeTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
-          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} className={demoTutorialStep === 0 ? "demo-tutorial-tool-target" : undefined} onClick={() => changeTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => changeTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => changeTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => changeTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => changeTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
+          <div><ToolButton title={copy.select} keyHint="V" disabled={!canEditImage} active={tool === "select"} className={demoTutorialStep === 2 && demoTutorialToolPrompt === "select" ? "demo-tutorial-tool-target" : undefined} onClick={() => changeTool("select")}><MousePointer2 size={18} /></ToolButton><ToolButton title={`${copy.pan} · ${copy.middlePan}`} keyHint="H" disabled={!canEditImage} active={tool === "pan"} onClick={() => changeTool("pan")}><Hand size={18} /></ToolButton><ToolButton title="Guias de coordenadas X/Y" disabled={!canEditImage} active={coordinatesGuide} onClick={() => { setCoordinatesGuide((value) => !value); setCursorPoint(null); }}><Crosshair size={18} /></ToolButton></div><i />
+          <div><ToolButton title={copy.box} keyHint="B" disabled={!canEditImage} active={tool === "box"} className={demoTutorialStep === 0 && demoTutorialToolPrompt === "box" ? "demo-tutorial-tool-target" : undefined} onClick={() => changeTool("box")}><Square size={18} /></ToolButton><ToolButton title={copy.polygon} keyHint="P" disabled={!canEditImage} active={tool === "polygon"} onClick={() => changeTool("polygon")}><Pentagon size={18} /></ToolButton><ToolButton title={copy.freehand} keyHint="F" disabled={!canEditImage} active={tool === "freehand"} onClick={() => changeTool("freehand")}><PenLine size={18} /></ToolButton><ToolButton title={copy.line} keyHint="L" disabled={!canEditImage} active={tool === "line"} onClick={() => changeTool("line")}><Spline size={18} /></ToolButton><ToolButton title={copy.point} keyHint="K" disabled={!canEditImage} active={tool === "point"} onClick={() => changeTool("point")}><span className="point-icon" /></ToolButton><ToolButton title={tool === "sam" ? copy.samDeactivate : copy.sam} keyHint="S" disabled={!canEditImage} active={tool === "sam"} onClick={activateSam}><WandSparkles size={18} /></ToolButton></div><i />
           <div className="edit-tools"><ToolButton title={copy.simplify} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={simplifySelected}><ListRestart size={18} /></ToolButton><ToolButton title={copy.duplicate} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} onClick={duplicateSelected}><Copy size={17} /></ToolButton><ToolButton title={copy.merge} disabled={!canEditImage || selectedPolygons.length < 2} onClick={mergeSelected}><Combine size={18} /></ToolButton><ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "ring"} onClick={() => changeTool("ring")}><CircleMinus size={17} /></ToolButton><ToolButton title={copy.split} disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "split"} onClick={() => changeTool("split")}><Scissors size={17} /></ToolButton><ToolButton title={copy.transform} keyHint="T" disabled={!canEditImage || (activeAnnotation?.type !== "polygon" && activeAnnotation?.type !== "box")} active={tool === "transform"} onClick={() => changeTool("transform")}><Maximize2 size={17} /></ToolButton><ToolButton title={copy.reshape} keyHint="R" disabled={!canEditImage || activeAnnotation?.type !== "polygon"} active={tool === "reshape"} onClick={() => changeTool("reshape")}><PenTool size={17} /></ToolButton><ToolButton title={snapping ? copy.snapOn : copy.snapOff} disabled={!canEditImage} active={snapping} onClick={() => { setSnapping((value) => !value); setSnapGuide(null); }}><Magnet size={17} /></ToolButton></div><i />
           <div><ToolButton title={copy.undo} disabled={!canEditImage || !history.length} onClick={undo}><Undo2 size={18} /></ToolButton><ToolButton title={copy.redo} disabled={!canEditImage || !redoHistory.length} onClick={redo}><Redo2 size={18} /></ToolButton><ToolButton title={selectedVertex ? copy.deleteVertexTitle : polygonDraft.length ? copy.removeLastPointTitle : copy.deleteShape} disabled={!canEditImage || (!selected && !polygonDraft.length && !lineDraft.length)} onClick={deleteSelection}><Trash2 size={18} /></ToolButton></div><span className="spacer" />
           <label className={`stroke-control ${!canEditImage ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEditImage} type="range" min="1" max="10" step="1" value={lineThickness} onChange={(event) => setLineThickness(Number(event.target.value))} /><output>{lineThickness}px</output></label><div className="zoom" title={copy.shiftZoom}><button aria-label={copy.zoomOut} disabled={!canEditImage} onClick={() => applyZoom(zoom - 10)}><ZoomOut size={15} /></button><span>{zoom}%</span><button aria-label={copy.zoomIn} disabled={!canEditImage} onClick={() => applyZoom(zoom + 10)}><ZoomIn size={15} /></button></div><ToolButton title={copy.fitImage} disabled={!canEditImage} onClick={fitImageToViewport}><Focus size={16} /></ToolButton><ToolButton title={copy.removeLoadedAnnotations} disabled={!annotations.length} className="clear-annotations-control" onClick={requestDeleteAllAnnotations}><Trash2 size={16} /></ToolButton><ToolButton title={copy.shortcuts} onClick={() => setTutorialOpen(true)}><Keyboard size={16} /></ToolButton>
         </div>
         {canEditImage && <div className="drawing-actions">
           <span className="touch-instructions">{tool === "select" ? copy.touchEdit : tool === "freehand" || tool === "reshape" ? copy.touchTrace : copy.touchDraw}</span>
+          {touchMode && <button aria-pressed={tool === "pan"} onClick={() => changeTool(tool === "pan" ? "select" : "pan")}><Hand size={16} />{copy.pan}</button>}
           {(tool === "polygon" || tool === "ring" || tool === "line") && <>
             <button disabled={(tool === "line" ? lineDraft.length : polygonDraft.length) < (tool === "line" ? 4 : 6)} onClick={tool === "line" ? finishLine : finishPolygon}><Check size={16} />{copy.finishDrawing}</button>
             <button disabled={!(polygonDraft.length || lineDraft.length)} onClick={deleteSelection}><Undo2 size={16} />{copy.removeLastPointTitle}</button>
@@ -2538,7 +2594,8 @@ export default function Home() {
               return <g className={tool === "select" ? "movable-annotation" : ""} key={annotation.id} onPointerDown={(event) => beginAnnotationDrag(event, annotation)} onPointerMove={moveAnnotationPointer} onPointerUp={finishAnnotationPointer} onPointerCancel={clearPointerDrafts}><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius} ry={pointRadius * markerAspect} fill="#fff" stroke={label.color} strokeWidth={pointRadius * .42} /><ellipse cx={annotation.x} cy={annotation.y} rx={pointRadius * .34} ry={pointRadius * .34 * markerAspect} fill={label.color} /></g>;
             })}
             {selectionMarquee && <rect className="selection-marquee" x={Math.min(selectionMarquee.startX, selectionMarquee.currentX)} y={Math.min(selectionMarquee.startY, selectionMarquee.currentY)} width={Math.abs(selectionMarquee.currentX - selectionMarquee.startX)} height={Math.abs(selectionMarquee.currentY - selectionMarquee.startY)} />}
-            {[0, 2, 4].includes(demoTutorialStep ?? -1) && <><mask id="demo-tutorial-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect width="1000" height="650" fill="white" />{demoTutorialStep === 0 && <polygon points="357,68 568,72 567,282 357,277" fill="black" />}{demoTutorialStep === 2 && <rect x="92" y="394" width="160" height="152" rx="12" fill="black" />}{demoTutorialStep === 4 && <rect x="460" y="340" width="120" height="175" rx="10" fill="black" />}</mask><rect className="demo-tutorial-image-dim" width="1000" height="650" mask="url(#demo-tutorial-mask)" />{demoTutorialStep === 0 && <polygon className="demo-tutorial-target" points="357,68 568,72 567,282 357,277" />}{demoTutorialStep === 2 && <rect className="demo-tutorial-target" x="92" y="394" width="160" height="152" rx="12" />}{demoTutorialStep === 4 && <><rect className="demo-tutorial-model-region" x="460" y="340" width="120" height="175" rx="10" /><circle className="demo-tutorial-model-point" cx="525" cy="422" r="10" /></>}</>}
+            {(((demoTutorialStep === 0 || demoTutorialStep === 2) && demoTutorialToolPrompt === null) || demoTutorialStep === 4) && <g className="demo-tutorial-click-hint" transform={demoTutorialStep === 0 ? "translate(405 112)" : demoTutorialStep === 2 ? "translate(112 438)" : "translate(460 365)"}><rect x="0" y="0" width="120" height="30" rx="15" /><text x="60" y="20" textAnchor="middle">{demoTutorialStep === 0 ? demoTutorialDrawHere[language] : demoTutorialStep === 2 ? demoTutorialModifyHere[language] : demoTutorialClickPoint[language]}</text></g>}
+            {[0, 2, 4].includes(demoTutorialStep ?? -1) && <><mask id="demo-tutorial-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect width="1000" height="650" fill="white" />{demoTutorialStep === 0 && demoTutorialToolPrompt === null && <polygon points="357,68 568,72 567,282 357,277" fill="black" />}{demoTutorialStep === 2 && demoTutorialToolPrompt === null && <rect x="92" y="394" width="160" height="152" rx="12" fill="black" />}{demoTutorialStep === 4 && <rect x="460" y="340" width="120" height="175" rx="10" fill="black" />}</mask><rect className="demo-tutorial-image-dim" width="1000" height="650" mask="url(#demo-tutorial-mask)" />{demoTutorialStep === 0 && demoTutorialToolPrompt === null && <polygon className="demo-tutorial-target" points="357,68 568,72 567,282 357,277" />}{demoTutorialStep === 2 && demoTutorialToolPrompt === null && <rect className="demo-tutorial-target" x="92" y="394" width="160" height="152" rx="12" />}{demoTutorialStep === 4 && <><rect className="demo-tutorial-model-region" x="460" y="340" width="120" height="175" rx="10" /><circle className="demo-tutorial-model-point" cx="525" cy="422" r="10" /></>}</>}
             {tool === "transform" && (activeAnnotation?.type === "polygon" || activeAnnotation?.type === "box") && activeTransformBounds && activeTransformCenter && <g className="transform-overlay" transform={activeAnnotation.type === "box" ? `rotate(${(activeAnnotation.rotation ?? 0) * 180 / Math.PI} ${activeTransformCenter.x} ${activeTransformCenter.y})` : undefined}>
               <rect x={activeTransformBounds.x} y={activeTransformBounds.y} width={activeTransformBounds.width} height={activeTransformBounds.height} />
               <line x1={activeTransformCenter.x} y1={transformRotationAnchorY} x2={activeTransformCenter.x} y2={transformRotationY} />
@@ -2605,7 +2662,24 @@ export default function Home() {
     {preferencesOpen && <div className="modal-backdrop"><section className="sam-modal preferences-modal" role="dialog" aria-modal="true" aria-labelledby="preferences-title"><header><div><span><Settings2 size={18} /></span><div><h2 id="preferences-title">{copy.preferences}</h2><p>poligome.com</p></div></div><button onClick={() => setPreferencesOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="preferences-tabs"><button className={preferencesTab === "appearance" ? "active" : ""} onClick={() => setPreferencesTab("appearance")}><Sun size={14} />{copy.appearance}</button><button className={preferencesTab === "language" ? "active" : ""} onClick={() => setPreferencesTab("language")}><Languages size={14} />{copy.language}</button></div>{preferencesTab === "appearance" ? <div className="preference-options"><button className={themeMode === "system" ? "active" : ""} onClick={() => setThemeMode("system")}><Monitor size={20} /><b>{copy.system}</b></button><button className={themeMode === "light" ? "active" : ""} onClick={() => setThemeMode("light")}><Sun size={20} /><b>{copy.light}</b></button><button className={themeMode === "dark" ? "active" : ""} onClick={() => setThemeMode("dark")}><Moon size={20} /><b>{copy.dark}</b></button></div> : <div className="language-options"><button className={language === "pt" ? "active" : ""} onClick={() => setLanguage("pt")}><b>Português</b><span>PT-BR</span></button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}><b>English</b><span>EN</span></button><button className={language === "fr" ? "active" : ""} onClick={() => setLanguage("fr")}><b>Français</b><span>FR</span></button><button className={language === "es" ? "active" : ""} onClick={() => setLanguage("es")}><b>Español</b><span>ES</span></button></div>}<footer><button className="connect" onClick={() => setPreferencesOpen(false)}><Check size={15} /> {copy.close}</button></footer></section></div>}
     {samOpen && <div className="modal-backdrop"><section className="sam-modal sam-local-modal" role="dialog" aria-modal="true" aria-labelledby="sam-title"><header><div><span><WandSparkles size={18} /></span><div><h2 id="sam-title">{copy.samTitle}</h2><p>{copy.samSubtitle}</p></div></div><button onClick={() => setSamOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="hardware-warning"><b>{copy.beforeRun}</b><p><strong>{copy.samHardwareRecommended}</strong> {copy.samHardwareDetail}</p><p>{copy.samInstallerDetail}</p></div><div className="sam-oneclick"><b>{copy.oneClickSetup}</b><p>{copy.oneClickHint}</p><div><a className="primary" href="/poligome-sam-windows.bat" download><Download size={15} /><span><strong>{copy.windowsInstaller}</strong><small>Windows 10/11</small></span></a><a href="/poligome-sam-macos-linux.sh" download><Download size={15} /><span><strong>{copy.unixInstaller}</strong><small>macOS · Linux</small></span></a></div><small>{copy.autoDownloadModel}</small></div><div className="sam-relaunch"><div><b>{copy.installedAlready}</b><p>{copy.restartServerHint}</p></div><div><a className="windows" href="/poligome-sam-start-windows.bat" download><Power size={14} />{copy.restartWindows}</a><a href="/poligome-sam-start-macos-linux.sh" download><Power size={14} />{copy.restartUnix}</a></div></div><div className={`sam-status ${samConnectionState}`}><span /> <b>{samConnectionState === "ready" ? copy.samReady : samConnectionState === "loading" ? copy.samLoadingModel : samConnectionState === "checking" ? copy.samChecking : copy.samOffline}</b>{samRuntime && <small>{samRuntime}</small>}</div><details className="sam-advanced"><summary>{copy.advancedSetup}</summary><div className="sam-setup"><b>{copy.manualSetup}</b><ol><li><a href="https://github.com/facebookresearch/segment-anything#model-checkpoints" target="_blank" rel="noreferrer"><Download size={13} /> {copy.checkpointPage}</a></li><li><a href="/poligome-sam-local.py" download><Download size={13} /> {copy.connectorDownload}</a></li><li>{copy.samManualStep} <code>.pth</code>.</li></ol><pre>python poligome-sam-local.py --checkpoint sam_vit_b_01ec64.pth</pre></div><label>{copy.localAddress}<input type="url" placeholder="http://127.0.0.1:7860/predict" value={samEndpointDraft} onChange={(event) => setSamEndpointDraft(event.target.value)} /></label></details><div className="sam-contract"><b>{copy.noUpload}</b><p>{copy.samPrivacyIntro} <code>localhost</code>{copy.samPrivacyDetail}</p></div><footer><button onClick={() => setSamOpen(false)}>{copy.cancel}</button><button className="connect" disabled={samConnectionState === "checking"} onClick={() => void connectSam()}>{samConnectionState === "checking" ? <LoaderCircle className="spin" size={15} /> : <Link2 size={15} />} {copy.verifyUse}</button></footer></section></div>}
     {tutorialOpen && <div className="modal-backdrop"><section className="sam-modal tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorial-title"><header><div><span><Keyboard size={18} /></span><div><h2 id="tutorial-title">{copy.shortcuts}</h2><p>{copy.quickTip}</p></div></div><button onClick={() => setTutorialOpen(false)} aria-label={copy.close}><X size={19} /></button></header><div className="tutorial-grid"><section><ImagePlus size={16} /><div><b>{copy.importImages}</b><p>{copy.rasterImportHint}</p></div></section><section><Hand size={16} /><div><b>{copy.pan}</b><p>{copy.middlePan} · {copy.shiftZoom}</p></div></section><section><MousePointer2 size={16} /><div><b>{copy.select}</b><p>{copy.polygonTipDetail}</p></div></section><section><Maximize2 size={16} /><div><b>{copy.transform}</b><p>{copy.transformTip}</p></div></section><section><Pentagon size={16} /><div><b>{copy.polygon}</b><p>{copy.polygonFinish}</p></div></section><section><Tags size={16} /><div><b>{copy.shortcutHint}</b><p>{copy.vectorHint}</p></div></section></div><footer><button className="connect" onClick={() => setTutorialOpen(false)}><Check size={15} /> {copy.close}</button></footer></section></div>}
-    {demoTutorialStep !== null && <section className="demo-tutorial-card" role="dialog" aria-live="polite"><span>{demoTutorialStep < 2 ? "1 / 3" : demoTutorialStep < 4 ? "2 / 3" : "3 / 3"}</span><h2>{demoTutorialCopy[language][Math.min(demoTutorialStep, 4)][0]}</h2><p>{demoTutorialStep < 5 ? demoTutorialCopy[language][demoTutorialStep][1] : copy.sam}</p>{demoTutorialStep === 1 && <button onClick={() => { const box = demoAnnotationsRef.current.find((annotation) => annotation.id === "demo-b4"); setAnnotations(box ? [{ ...box, x: 112, y: 414, w: 120, h: 112, rotation: .42 }] : []); setCurrent("demo-park"); setSelected("demo-b4"); setMultiSelected(["demo-b4"]); setDemoTutorialStep(2); }}><ChevronRight size={15} />{demoTutorialNext[language]}</button>}{demoTutorialStep === 3 && <button onClick={() => { setAnnotations([]); setCurrent("demo-rural"); setSelected(null); setMultiSelected([]); setDemoTutorialStep(4); }}><ChevronRight size={15} />{demoTutorialNext[language]}</button>}{demoTutorialStep === 5 && <button onClick={() => { exitDemoTutorial(); openSamSettings(); }}><WandSparkles size={15} />{demoTutorialModels[language]}</button>}{demoTutorialStep !== 5 && <button className="demo-tutorial-skip" onClick={exitDemoTutorial}>{copy.close}</button>}</section>}
+    {demoTutorialToolPrompt && <div className="demo-tutorial-tool-hint" aria-hidden="true"><span>{demoTutorialClickHere[language]}</span></div>}
+    {demoTutorialStep !== null && <section className="demo-tutorial-card" role="dialog" aria-live="polite">
+      <span>{demoTutorialStep < 2 ? "1 / 3" : demoTutorialStep < 4 ? "2 / 3" : "3 / 3"}</span>
+      <h2>{demoTutorialToolPrompt ? demoTutorialToolCopy[language][demoTutorialToolPrompt][0] : demoTutorialCopy[language][Math.min(demoTutorialStep, 4)][0]}</h2>
+      <p>{demoTutorialToolPrompt ? demoTutorialToolCopy[language][demoTutorialToolPrompt][1] : demoTutorialStep < 5 ? demoTutorialCopy[language][demoTutorialStep][1] : copy.sam}</p>
+      {demoTutorialStep === 1 && <button onClick={() => {
+        const box = demoAnnotationsRef.current.find((annotation) => annotation.id === "demo-b4");
+        setAnnotations(box ? [{ ...box, x: 112, y: 414, w: 120, h: 112, rotation: .42 }] : []);
+        setCurrent("demo-park"); setSelected("demo-b4"); setMultiSelected(["demo-b4"]);
+        setTool("pan"); setDemoTutorialToolPrompt("select"); setDemoTutorialStep(2);
+      }}><ChevronRight size={15} />{demoTutorialNext[language]}</button>}
+      {demoTutorialStep === 3 && <button onClick={() => {
+        setAnnotations([]); setCurrent("demo-rural"); setSelected(null); setMultiSelected([]);
+        setDemoTutorialToolPrompt(null); setDemoTutorialStep(4);
+      }}><ChevronRight size={15} />{demoTutorialNext[language]}</button>}
+      {demoTutorialStep === 5 && <button onClick={() => { exitDemoTutorial(); openSamSettings(); }}><WandSparkles size={15} />{demoTutorialModels[language]}</button>}
+      {demoTutorialStep !== 5 && <button className="demo-tutorial-skip" onClick={exitDemoTutorial}>{copy.close}</button>}
+    </section>}
     {(leftOpen || rightOpen) && <button className="backdrop" onClick={() => { setLeftOpen(false); setRightOpen(false); }} aria-label={copy.closePanel} />}
   </main>;
 }

@@ -9,6 +9,7 @@ import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, openEditorProject, saveEditorProject } from "../session/editor-session-io";
 import { loadLocalImageAssets } from "../session/image-assets";
 import { CocoImportControl } from "../import/coco-import-control";
+import { RasterImportControl, type RasterImportResult } from "../import/raster-import-control";
 import { ExportControls } from "../export/export-controls";
 import { useEditorState } from "../state/use-editor-state";
 import { useCanvasInteractions } from "../interactions/use-canvas-interactions";
@@ -39,7 +40,7 @@ export function CanonicalEditorWorkbench() {
   const [projectName, setProjectName] = useState("Poligome V4");
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
-  const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4 ou adicione imagens.");
+  const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4, adicione imagens ou importe GeoTIFF/COG.");
   const objectUrls = useRef<string[]>([]);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -143,6 +144,15 @@ export function CanonicalEditorWorkbench() {
     }
   }
 
+  function applyRasterImport(result: RasterImportResult) {
+    objectUrls.current.push(result.objectUrl);
+    setAssets((items) => [...items, result.asset]);
+    setCurrent(result.asset.id);
+    setSessionDirty(true);
+    setMessage(result.message);
+    resetInteractionState();
+  }
+
   function applyCocoImport(result: { labels: Label[]; annotations: EditorAnnotation[]; message: string }) {
     setLabels(result.labels);
     if (!result.labels.some((label) => label.id === activeLabel)) setActiveLabel(result.labels[0]?.id ?? EMPTY_LABELS[0].id);
@@ -209,6 +219,7 @@ export function CanonicalEditorWorkbench() {
         <button onClick={loadDemo} disabled={loading}>Demo</button>
         <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V4</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
+        <RasterImportControl makeId={makeId} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />
         <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
         <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>

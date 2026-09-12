@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, PointerEvent as ReactPointerEvent, Ref } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, Ref } from "react";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { Label } from "../../lib/types";
 import type { SelectedVertex } from "../state/editor-state";
@@ -17,6 +17,7 @@ export type EditorCanvasProps = {
   selectedIds: string[];
   selectedVertex: SelectedVertex;
   selectionMarquee: SelectionMarquee | null;
+  overlay?: ReactNode;
   lineThickness: number;
   touchMode: boolean;
   touchRadius: number;
@@ -96,6 +97,7 @@ export function EditorCanvas(props: EditorCanvasProps) {
         onTransformEnd={props.onTransformEnd}
       />;
     })}
+    {props.overlay}
     {props.selectionMarquee && <SelectionLayer marquee={props.selectionMarquee} />}
   </svg>;
 }

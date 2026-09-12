@@ -12,6 +12,7 @@ import { useCanvasInteractions } from "../interactions/use-canvas-interactions";
 import { EditorCanvas } from "../canvas/editor-canvas";
 import { DrawingDraftLayer } from "../drawing/drawing-draft-layer";
 import { useDrawingInteractions, type DrawingTool } from "../drawing/use-drawing-interactions";
+import { useEditorViewport } from "../viewport/use-editor-viewport";
 
 const EMPTY_LABELS: Label[] = [{ id: "unlabeled", name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
@@ -33,9 +34,13 @@ export function CanonicalEditorWorkbench() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Carregue o demo para testar o editor canônico.");
   const objectUrls = useRef<string[]>([]);
-  const svgRef = useRef<SVGSVGElement>(null);
   const idCounter = useRef(0);
   const editor = useEditorState();
+  const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
+  const viewport = useEditorViewport({
+    image: { width: asset?.width ?? 1000, height: asset?.height ?? 650 },
+    initialZoom: 92,
+  });
 
   const makeId = useCallback((prefix: string) => {
     idCounter.current += 1;
@@ -45,9 +50,14 @@ export function CanonicalEditorWorkbench() {
     return `${prefix}-${random}-${idCounter.current}`;
   }, []);
 
-  const interactions = useCanvasInteractions({ svgRef, state: editor.state, dispatch: editor.dispatch, makeId });
+  const interactions = useCanvasInteractions({
+    svgRef: viewport.canvasRef,
+    state: editor.state,
+    dispatch: editor.dispatch,
+    makeId,
+  });
   const drawing = useDrawingInteractions({
-    svgRef,
+    svgRef: viewport.canvasRef,
     tool,
     assetId: current || null,
     labelId: activeLabel,
@@ -57,7 +67,6 @@ export function CanonicalEditorWorkbench() {
 
   useEffect(() => () => objectUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
-  const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
   const visibleAnnotations = useMemo(
     () => asset ? editor.annotations.filter((annotation) => annotation.asset === asset.id) : [],
     [asset, editor.annotations],
@@ -81,6 +90,7 @@ export function CanonicalEditorWorkbench() {
       setTool("select");
       drawing.cancelDraft();
       editor.replaceAnnotations(demo.annotations, true);
+      viewport.zoomTo(92);
       setMessage("Demo carregado no modelo canônico EditorAnnotation/V3.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha ao carregar demo.");
@@ -125,8 +135,12 @@ export function CanonicalEditorWorkbench() {
   const noopResize = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation, _corner: BoxCorner) => undefined, []);
 
   const imageIndex = asset ? assets.findIndex((item) => item.id === asset.id) : -1;
-  const aspectRatio = asset ? `${asset.width ?? 1000} / ${asset.height ?? 650}` : "1000 / 650";
   const selecting = tool === "select";
+  const handleScale = viewport.state.zoom < 100
+    ? Math.pow(100 / viewport.state.zoom, .6)
+    : 100 / viewport.state.zoom;
+  const markerRadius = 4.6 * handleScale;
+  const markerAspect = 650 * (asset?.width ?? 1000) / (1000 * (asset?.height ?? 650));
 
   return <main style={{ minHeight: "100vh", background: "#111315", color: "#f4f5f5", padding: 16, fontFamily: "system-ui, sans-serif" }}>
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
@@ -150,54 +164,67 @@ export function CanonicalEditorWorkbench() {
           <button onClick={() => drawing.finishDraft()} disabled={!drawing.canFinish}>Concluir forma</button>
           <button onClick={drawing.cancelDraft}>Cancelar</button>
         </>}
+        <span style={{ marginLeft: 8 }} />
+        <button onClick={() => viewport.zoomBy(-10)} disabled={!asset}>−</button>
+        <button onClick={() => viewport.zoomTo(92)} disabled={!asset}>{viewport.state.zoom}%</button>
+        <button onClick={() => viewport.zoomBy(10)} disabled={!asset}>+</button>
       </div>
 
-      <div style={{ fontSize: 13, opacity: .75, marginBottom: 8 }}>{message}</div>
+      <div style={{ fontSize: 13, opacity: .75, marginBottom: 8 }}>{message} <span style={{ opacity: .7 }}>Ctrl/⌘ + roda ajusta o zoom no cursor.</span></div>
 
-      <section style={{ position: "relative", width: "100%", aspectRatio, maxHeight: "78vh", margin: "0 auto", background: "#080909", overflow: "hidden", border: "1px solid #34383b", borderRadius: 8 }}>
-        {asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} />
-          : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>Nenhuma imagem carregada</div>}
+      <section
+        ref={viewport.scrollRef}
+        onScroll={viewport.onScroll}
+        onWheel={viewport.onWheel}
+        style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "#080909", overflow: "auto", border: "1px solid #34383b", borderRadius: 8 }}
+      >
+        <div style={{ position: "relative", width: viewport.layout.surfaceWidth, height: viewport.layout.surfaceHeight }}>
+          <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
+            {asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} />
+              : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>Nenhuma imagem carregada</div>}
 
-        {asset && <EditorCanvas
-          svgRef={svgRef}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none", cursor: selecting ? "default" : "crosshair" }}
-          annotations={visibleAnnotations}
-          labels={labels}
-          tool={tool}
-          selectedId={editor.selection.selected}
-          selectedIds={selectedIds}
-          selectedVertex={editor.selectedVertex}
-          selectionMarquee={null}
-          overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={3} />}
-          lineThickness={3}
-          touchMode={false}
-          touchRadius={22}
-          markerRadius={4.6}
-          markerAspect={650 * (asset.width ?? 1000) / (1000 * (asset.height ?? 650))}
-          boxTouchRadius={28}
-          boxRotationTouchRadius={20}
-          onPointerDown={selecting ? interactions.selectAtCanvas : drawing.onPointerDown}
-          onPointerMove={selecting ? (() => undefined) : drawing.onPointerMove}
-          onPointerUp={selecting ? (() => undefined) : drawing.onPointerUp}
-          onPointerCancel={selecting ? interactions.cancel : drawing.cancelDraft}
-          onBeginAnnotationDrag={selecting ? interactions.beginAnnotationDrag : noopAnnotation}
-          onMoveAnnotation={selecting ? interactions.moveAnnotation : noopElement}
-          onFinishAnnotation={selecting ? interactions.finishAnnotation : noopElement}
-          onBeginVertexDrag={selecting ? interactions.beginVertexDrag : noopVertex}
-          onMoveVertex={selecting ? interactions.moveVertex : noopElement}
-          onFinishVertex={selecting ? interactions.finishVertex : noopElement}
-          onInsertVertex={selecting ? interactions.insertVertex : noopInsert}
-          onResizeStart={selecting ? interactions.resizeStart : noopResize}
-          onResizeMove={selecting ? interactions.resizeMove : noopElement}
-          onResizeEnd={selecting ? interactions.resizeEnd : noopElement}
-          onRotateStart={selecting ? interactions.rotateStart : noopAnnotation}
-          onTransformMove={selecting ? interactions.transformMove : noopElement}
-          onTransformEnd={selecting ? interactions.transformEnd : noopElement}
-        />}
+            {asset && <EditorCanvas
+              svgRef={viewport.canvasRef}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none", cursor: selecting ? "default" : "crosshair" }}
+              annotations={visibleAnnotations}
+              labels={labels}
+              tool={tool}
+              selectedId={editor.selection.selected}
+              selectedIds={selectedIds}
+              selectedVertex={editor.selectedVertex}
+              selectionMarquee={null}
+              overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={3} />}
+              lineThickness={3 * handleScale}
+              touchMode={false}
+              touchRadius={22 * handleScale}
+              markerRadius={markerRadius}
+              markerAspect={markerAspect}
+              boxTouchRadius={28 * handleScale}
+              boxRotationTouchRadius={20 * handleScale}
+              onPointerDown={selecting ? interactions.selectAtCanvas : drawing.onPointerDown}
+              onPointerMove={selecting ? (() => undefined) : drawing.onPointerMove}
+              onPointerUp={selecting ? (() => undefined) : drawing.onPointerUp}
+              onPointerCancel={selecting ? interactions.cancel : drawing.cancelDraft}
+              onBeginAnnotationDrag={selecting ? interactions.beginAnnotationDrag : noopAnnotation}
+              onMoveAnnotation={selecting ? interactions.moveAnnotation : noopElement}
+              onFinishAnnotation={selecting ? interactions.finishAnnotation : noopElement}
+              onBeginVertexDrag={selecting ? interactions.beginVertexDrag : noopVertex}
+              onMoveVertex={selecting ? interactions.moveVertex : noopElement}
+              onFinishVertex={selecting ? interactions.finishVertex : noopElement}
+              onInsertVertex={selecting ? interactions.insertVertex : noopInsert}
+              onResizeStart={selecting ? interactions.resizeStart : noopResize}
+              onResizeMove={selecting ? interactions.resizeMove : noopElement}
+              onResizeEnd={selecting ? interactions.resizeEnd : noopElement}
+              onRotateStart={selecting ? interactions.rotateStart : noopAnnotation}
+              onTransformMove={selecting ? interactions.transformMove : noopElement}
+              onTransformEnd={selecting ? interactions.transformEnd : noopElement}
+            />}
+          </div>
+        </div>
       </section>
 
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>
-        <span>Ferramenta: {tool}</span><span>Formato interno: EditorAnnotation[]</span><span>Projeto: .plgm V3</span><span>Vértices: IDs estáveis</span><span>{editor.saved ? "salvo" : "alterado"}</span>
+        <span>Ferramenta: {tool}</span><span>Zoom: {viewport.state.zoom}%</span><span>Formato interno: EditorAnnotation[]</span><span>Projeto: .plgm V3</span><span>Vértices: IDs estáveis</span><span>{editor.saved ? "salvo" : "alterado"}</span>
       </footer>
     </div>
   </main>;

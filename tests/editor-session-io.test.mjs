@@ -11,9 +11,8 @@ test('session IO uses V4 image-pixel project APIs and canonical annotations',()=
   assert.doesNotMatch(source,/fromLegacyAnnotations|toLegacyAnnotations|ProjectV3/);
 });
 
-test('session IO composes real canonical codecs',()=>{
-  assert.match(source,/annotationToCoco/);
-  assert.match(source,/annotationToYolo/);
-  assert.match(source,/annotationToGeoJsonGeometry/);
-  assert.match(source,/cocoAnnotationToEditor/);
+test('session IO stays a narrow project and demo boundary instead of re-exporting codec facades',()=>{
+  assert.match(source,/createCanonicalDemoProject/);
+  assert.doesNotMatch(source,/annotationToCoco|annotationToYolo|annotationToGeoJsonGeometry|cocoAnnotationToEditor|cocoGeometryTypes/);
+  assert.doesNotMatch(source,/editorAnnotationsToCoco|editorAnnotationToYolo|editorAnnotationToGeoJson|importEditorCocoAnnotation|editorCocoGeometryTypes/);
 });

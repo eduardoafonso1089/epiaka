@@ -10,6 +10,14 @@ converter run on your computer, not in the cloud.
 
 Current refactor limitation: this branch does **not currently** expose the local SAM UI.
 
+> [!IMPORTANT]
+> **Status of `refactor/editor-architecture`:** the canonical source-pixel editor core is active,
+> but application-level parity with `main` is still in progress. The branch does **not currently**
+> expose the local SAM UI, advanced vector operations (snap/simplify/merge/split/reshape/hole creation),
+> the full image/annotation/class management panels, keyboard shortcuts, complete editor i18n, the
+> Quality/Review UI, selective COCO import, or cephalometric-landmark import. These are tracked as
+> parity decisions rather than silently treated as completed features.
+
 ## Image annotator
 
 | | Route | What it does | Exports |
@@ -31,9 +39,7 @@ labels, a deterministic training/validation split, `classes.txt`, and
 
 ## Geospatial input
 
-The image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly,
-reads them by tiles, and crops a region into the project as a regular image.
-Annotations drawn over a georeferenced crop can be exported as GeoJSON.
+The refactored image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly. COGs can be rendered natively as a tiled raster without a PNG intermediary, while the crop workflow remains available. Annotations over georeferenced assets can be exported as GeoJSON.
 
 Files that are not proper COGs still open, but the reader has to transfer far
 more than it needs. The local converter below turns them into real COGs.
@@ -67,9 +73,7 @@ origins. Keep both services bound to loopback; they are not public APIs.
 
 ## Interface
 
-Four languages — Portuguese, English, French, and Spanish — with light, dark,
-and system themes. Keyboard shortcuts cover the drawing tools, and the language
-and theme choices are remembered per browser.
+The landing page provides Portuguese, English, French, and Spanish plus light, dark, and system themes, and stores those preferences in the browser. The canonical editor honors the stored language/theme preference, but full translation coverage and the former keyboard-shortcut surface are still pending application-parity work on this branch.
 
 ## Development
 

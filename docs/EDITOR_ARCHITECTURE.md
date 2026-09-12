@@ -127,11 +127,27 @@ Internal geometry remains in image pixels.
 
 `/annotate-next`, `/anotar`, `legacy-page.tsx`, `EditorArchitectureBridge` and `legacy-annotation-adapter.ts` have been removed.
 
+## Application parity
+
+Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be decided/ported before the refactor is considered product-complete:
+
+- advanced vector operations: snapping, reshape, simplify, union/merge, split and polygon-hole creation;
+- image and annotation panels: search, reorder, delete, hide/show and list-based modifier selection;
+- class management: create/rename/color/delete/hide, quick label creation and batch reclassification;
+- local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
+- Quality/Review UI (`reviewScore` remains only in data types);
+- keyboard shortcuts from the previous annotator;
+- selective COCO category/annotation import and cephalometric-landmark import;
+- complete i18n coverage for the canonical workbench;
+- final visual-system decision for the canonical shell.
+
+Until D1/D2 product decisions are made, these missing surfaces must not be treated as dead legacy solely because they have no canonical consumer.
+
 ## Validation
 
 `.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build and the complete test suite for this branch.
 
-## Migration status
+## Core migration status
 
 1. Canonical `EditorAnnotation` + stable `Vertex[]`. **Done.**
 2. Canonical state, selection and gesture transactions. **Done.**

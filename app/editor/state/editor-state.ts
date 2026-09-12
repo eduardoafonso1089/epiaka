@@ -30,6 +30,8 @@ export type EditorAction =
   | { type: "replace-annotations"; annotations: EditorAnnotation[]; markSaved?: boolean }
   | { type: "add-annotation"; annotation: EditorAnnotation; select?: boolean }
   | { type: "delete-annotations"; ids: string[] }
+  | { type: "reorder-annotation"; id: string; delta: -1 | 1 }
+  | { type: "reclassify-annotations"; ids: string[]; labelId: string }
   | { type: "select-single"; id: string }
   | { type: "toggle-selection"; id: string }
   | { type: "set-selection"; selection: SelectionState }
@@ -91,6 +93,15 @@ function keepExistingSelection(state: EditorState, annotations: EditorAnnotation
   };
 }
 
+function reorderByDelta<T extends { id: string }>(items: T[], id: string, delta: -1 | 1) {
+  const index = items.findIndex((item) => item.id === id);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= items.length) return items;
+  const next = [...items];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "replace-annotations":
@@ -122,6 +133,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const next = snapshot(state);
       const annotations = state.annotations.filter((annotation) => !ids.has(annotation.id));
       return { ...next, annotations, ...keepExistingSelection(state, annotations) };
+    }
+
+    case "reorder-annotation": {
+      const annotations = reorderByDelta(state.annotations, action.id, action.delta);
+      return annotations === state.annotations ? state : mutate(state, annotations);
+    }
+
+    case "reclassify-annotations": {
+      const ids = new Set(action.ids);
+      if (!state.annotations.some((annotation) => ids.has(annotation.id) && annotation.label !== action.labelId)) return state;
+      const annotations = state.annotations.map((annotation) =>
+        ids.has(annotation.id) ? { ...annotation, label: action.labelId } : annotation,
+      );
+      return mutate(state, annotations);
     }
 
     case "select-single":

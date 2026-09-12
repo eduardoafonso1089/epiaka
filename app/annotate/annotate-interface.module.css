@@ -31,6 +31,7 @@
 }
 
 .routeRoot > :global(main) :global(header) > :global(strong) {
+  margin-right: 6px !important;
   font-size: 17px;
   letter-spacing: -.02em;
 }
@@ -38,10 +39,21 @@
 .routeRoot > :global(main) :global(button),
 .routeRoot > :global(main) :global(select),
 .routeRoot > :global(main) :global(input:not([type="color"])) {
-  border-color: var(--line);
+  min-height: 32px;
+  border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--control-bg);
   color: var(--ink);
+  transition: background .12s ease, border-color .12s ease, color .12s ease, opacity .12s ease;
+}
+
+.routeRoot > :global(main) :global(button) {
+  padding: 0 10px;
+}
+
+.routeRoot > :global(main) :global(select),
+.routeRoot > :global(main) :global(input:not([type="color"])) {
+  padding: 0 8px;
 }
 
 .routeRoot > :global(main) :global(button:hover:not(:disabled)),
@@ -55,8 +67,46 @@
   opacity: .42;
 }
 
+.routeRoot > :global(main) :global(header + div) {
+  gap: 5px !important;
+  margin-bottom: 0 !important;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px 9px 0 0;
+  background: var(--surface-soft);
+}
+
+.routeRoot > :global(main) :global(header + div) :global(button[aria-pressed="true"]) {
+  font-weight: 700;
+}
+
+.routeRoot > :global(main) :global(header + div + div + div) {
+  min-height: 34px;
+  margin: 0 !important;
+  padding: 7px 4px;
+  color: var(--muted);
+  font-size: 12px !important;
+}
+
 .routeRoot > :global(main) :global(section) {
   scrollbar-color: var(--line) transparent;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section) {
+  border-color: var(--line) !important;
+  border-radius: 10px !important;
+  background-color: var(--canvas-bg) !important;
+  background-image: radial-gradient(color-mix(in srgb, var(--line) 55%, transparent) .7px, transparent .7px) !important;
+  background-size: 14px 14px !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 20%, transparent);
+}
+
+.routeRoot > :global(main) :global(footer) {
+  min-height: 34px;
+  margin-top: 8px !important;
+  padding: 0 4px;
+  color: var(--muted);
+  opacity: 1 !important;
 }
 
 @media (max-width: 720px) {
@@ -68,5 +118,15 @@
     position: static;
     margin: -8px -8px 8px !important;
     padding: 8px;
+  }
+
+  .routeRoot > :global(main) :global(header + div) {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section) {
+    height: 58vh !important;
+    min-height: 300px !important;
   }
 }

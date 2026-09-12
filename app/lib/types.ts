@@ -63,8 +63,8 @@ export type Asset = {
   height?: number;
   geo?: GeoRef;
   raster?: RasterAsset;
-  /** Runtime-only File/Blob backing a local or bundled tiled raster. Never serialized. */
-  runtimeRasterSource?: Blob;
+  /** Runtime-only local/bundled tiled raster. Never serialized. */
+  runtimeRasterSource?: File;
   reviewScore?: number;
 };
 

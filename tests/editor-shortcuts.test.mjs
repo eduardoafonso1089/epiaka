@@ -18,6 +18,7 @@ test('advanced vector shortcuts are distinct from drawing tools', () => {
   assert.deepEqual(commandFromKeyboard(key('o')), {type:'vector-tool',tool:'hole'});
   assert.deepEqual(commandFromKeyboard(key('x')), {type:'vector-tool',tool:'split'});
   assert.deepEqual(commandFromKeyboard(key('r')), {type:'vector-tool',tool:'reshape'});
+  assert.deepEqual(commandFromKeyboard(key('t')), {type:'vector-tool',tool:'transform'});
 });
 
 test('history, delete and draft controls map consistently', () => {

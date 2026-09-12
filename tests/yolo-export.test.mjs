@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import JSZip from "jszip";
-import { exportYoloZip } from "../app/lib/exporters.ts";
+import { exportEditorYoloZip } from "../app/editor/export/export-files.ts";
 
-test("exports a complete YOLO dataset with paired, collision-safe files", async () => {
+test("exports a complete canonical YOLO dataset with paired, collision-safe files", async () => {
   let downloaded;
   const originalCreateObjectUrl = URL.createObjectURL;
   const originalRevokeObjectUrl = URL.revokeObjectURL;
@@ -33,23 +33,23 @@ test("exports a complete YOLO dataset with paired, collision-safe files", async 
       asset: "image-a",
       label: "object",
       type: "box",
-      x: 100,
-      y: 65,
-      w: 200,
-      h: 130,
+      x: 10,
+      y: 10,
+      width: 20,
+      height: 20,
     }, {
       id: "box-b",
       asset: "image-b",
       label: "object",
       type: "box",
-      x: 400,
-      y: 260,
-      w: 200,
-      h: 130,
+      x: 40,
+      y: 43.5,
+      width: 20,
+      height: 13,
       rotation: Math.PI / 2,
     }];
 
-    await exportYoloZip(assets, labels, annotations, "Test export");
+    await exportEditorYoloZip(assets, labels, annotations, "Test export");
     assert.ok(downloaded instanceof Blob);
 
     const zip = await JSZip.loadAsync(await downloaded.arrayBuffer());
@@ -64,7 +64,7 @@ test("exports a complete YOLO dataset with paired, collision-safe files", async 
     );
     assert.equal(
       await zip.file("labels/val/0002-same.txt").async("string"),
-      "0 0.500000 0.500000 0.130000 0.307692",
+      "0 0.500000 0.500000 0.130000 0.200000",
     );
     assert.match(await zip.file("data.yaml").async("string"), /train: images\/train\nval: images\/val/);
   } finally {

@@ -30,8 +30,7 @@ export type AdvancedVectorResult =
   | "reshape-removed"
   | "reshape-mixed"
   | "reshape-crossings"
-  | "reshape-direction"
-  | "transform-done";
+  | "reshape-direction";
 
 type Options = {
   svgRef: RefObject<SVGSVGElement | null>;
@@ -158,7 +157,6 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
       const angle = Math.atan2(point.y - stroke.center.y, point.x - stroke.center.x) - stroke.startAngle;
       dispatch({ type: "replace-annotation", annotation: transformPolygonAnnotation(stroke.original, stroke.center, scale, angle) });
       dispatch({ type: "commit-gesture" });
-      onResult?.("transform-done");
       return;
     }
 

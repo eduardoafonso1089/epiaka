@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Asset, Label } from "../../lib/types";
-import { getCopy, type Language } from "../../lib/i18n";
+import { getCopy, storedLanguage, type Language } from "../../lib/i18n";
 import type { EditorAnnotation } from "../models/annotation-model";
 import { exportEditorCoco, exportEditorGeoJson, exportEditorYoloZip } from "./export-files";
 
@@ -10,7 +10,7 @@ export function ExportControls({
   assets,
   labels,
   annotations,
-  language = "pt",
+  language,
   disabled = false,
   onMessage,
 }: {
@@ -22,7 +22,7 @@ export function ExportControls({
   onMessage?: (message: string) => void;
 }) {
   const [busy, setBusy] = useState<"coco" | "yolo" | "geojson" | null>(null);
-  const copy = getCopy(language);
+  const copy = getCopy(language ?? storedLanguage());
 
   function coco() {
     try {

@@ -2,8 +2,9 @@ import JSZip from "jszip";
 import { downloadBlob } from "./exporters";
 import { fill } from "./i18n";
 import type { Copy } from "./i18n";
-import type { Asset, Label } from "./types";
+import type { Annotation, Asset, Label } from "./types";
 import type { EditorAnnotation } from "../editor/models/annotation-model";
+import { fromLegacyAnnotations, toLegacyAnnotations } from "../editor/models/legacy-annotation-adapter";
 
 type PortableAsset = Omit<Asset, "src" | "local"> & {
   bundled_path?: string;
@@ -30,7 +31,7 @@ type ProjectManifest = {
   };
 };
 
-export type LoadedPoligomeProject = {
+export type LoadedPoligomeProjectV3 = {
   projectName: string;
   assets: Asset[];
   labels: Label[];
@@ -38,6 +39,10 @@ export type LoadedPoligomeProject = {
   layout?: ProjectLayout;
   objectUrls: string[];
   missingImages: number;
+};
+
+export type LoadedPoligomeProject = Omit<LoadedPoligomeProjectV3, "annotations"> & {
+  annotations: Annotation[];
 };
 
 function safeBaseName(name: string) {
@@ -120,7 +125,7 @@ function parseManifest(value: unknown, copy: Copy): ProjectManifest {
   };
 }
 
-export async function savePoligomeProject(projectName: string, assets: Asset[], labels: Label[], annotations: EditorAnnotation[], mode: ProjectSaveMode, copy: Copy, layout?: ProjectLayout) {
+export async function savePoligomeProjectV3(projectName: string, assets: Asset[], labels: Label[], annotations: EditorAnnotation[], mode: ProjectSaveMode, copy: Copy, layout?: ProjectLayout) {
   const zip = new JSZip();
   const portableAssets = await Promise.all(assets.map(async (asset, index): Promise<PortableAsset> => {
     const { src, local, ...metadata } = asset;
@@ -157,7 +162,7 @@ export async function savePoligomeProject(projectName: string, assets: Asset[], 
   return fileName;
 }
 
-export async function openPoligomeProject(file: File, copy: Copy): Promise<LoadedPoligomeProject> {
+export async function openPoligomeProjectV3(file: File, copy: Copy): Promise<LoadedPoligomeProjectV3> {
   const zip = await JSZip.loadAsync(file);
   const manifestEntry = zip.file("project.json");
   if (!manifestEntry) throw new Error(copy.errProjectManifest);
@@ -195,4 +200,15 @@ export async function openPoligomeProject(file: File, copy: Copy): Promise<Loade
     objectUrls.forEach((url) => URL.revokeObjectURL(url));
     throw error;
   }
+}
+
+/** @deprecated Temporary facade for legacy-page.tsx. Does not support V2 project files. */
+export async function savePoligomeProject(projectName: string, assets: Asset[], labels: Label[], annotations: Annotation[], mode: ProjectSaveMode, copy: Copy, layout?: ProjectLayout) {
+  return savePoligomeProjectV3(projectName, assets, labels, fromLegacyAnnotations(annotations), mode, copy, layout);
+}
+
+/** @deprecated Temporary facade for legacy-page.tsx. Does not support V2 project files. */
+export async function openPoligomeProject(file: File, copy: Copy): Promise<LoadedPoligomeProject> {
+  const loaded = await openPoligomeProjectV3(file, copy);
+  return { ...loaded, annotations: toLegacyAnnotations(loaded.annotations) };
 }

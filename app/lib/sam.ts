@@ -1,6 +1,5 @@
 import { contours } from "d3-contour";
 import { fill } from "./i18n";
-import { EDITOR_HEIGHT, EDITOR_WIDTH, polygonArea } from "./geometry";
 import type { Copy } from "./i18n";
 import type { Asset, SamPrompt } from "./types";
 
@@ -23,7 +22,13 @@ function readDataUrl(blob: Blob, copy: Copy) {
  */
 const SAM_LADO_MAX = 1600;
 
-type ImagemParaSam = { url: string; largura: number; altura: number };
+type ImagemParaSam = {
+  url: string;
+  larguraEnvio: number;
+  alturaEnvio: number;
+  larguraOrigem: number;
+  alturaOrigem: number;
+};
 
 function carregaImagem(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -35,38 +40,71 @@ function carregaImagem(src: string) {
   });
 }
 
+function validDimension(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 async function assetAsDataUrl(asset: Asset, copy: Copy): Promise<ImagemParaSam> {
-  const largura = asset.width ?? EDITOR_WIDTH;
-  const altura = asset.height ?? EDITOR_HEIGHT;
-  const fator = Math.min(1, SAM_LADO_MAX / Math.max(largura, altura));
+  let imagemCarregada: HTMLImageElement | null = null;
+  let larguraOrigem = validDimension(asset.width) ? asset.width : 0;
+  let alturaOrigem = validDimension(asset.height) ? asset.height : 0;
+
+  if (!larguraOrigem || !alturaOrigem) {
+    imagemCarregada = await carregaImagem(asset.src);
+    larguraOrigem = imagemCarregada.naturalWidth;
+    alturaOrigem = imagemCarregada.naturalHeight;
+  }
+
+  const fator = Math.min(1, SAM_LADO_MAX / Math.max(larguraOrigem, alturaOrigem));
 
   if (fator >= 1) {
-    // Already fits: keeping the original bytes avoids re-encoding and losing quality for nothing.
-    if (asset.src.startsWith("data:")) return { url: asset.src, largura, altura };
+    if (asset.src.startsWith("data:")) {
+      return {
+        url: asset.src,
+        larguraEnvio: larguraOrigem,
+        alturaEnvio: alturaOrigem,
+        larguraOrigem,
+        alturaOrigem,
+      };
+    }
     const response = await fetch(asset.src);
     if (!response.ok) throw new Error(copy.errSamPrepareImage);
-    return { url: await readDataUrl(await response.blob(), copy), largura, altura };
+    return {
+      url: await readDataUrl(await response.blob(), copy),
+      larguraEnvio: larguraOrigem,
+      alturaEnvio: alturaOrigem,
+      larguraOrigem,
+      alturaOrigem,
+    };
   }
 
   try {
-    const imagem = await carregaImagem(asset.src);
-    const alvoLargura = Math.max(1, Math.round(imagem.naturalWidth * fator));
-    const alvoAltura = Math.max(1, Math.round(imagem.naturalHeight * fator));
+    const imagem = imagemCarregada ?? await carregaImagem(asset.src);
+    const alvoLargura = Math.max(1, Math.round(larguraOrigem * fator));
+    const alvoAltura = Math.max(1, Math.round(alturaOrigem * fator));
     const tela = document.createElement("canvas");
     tela.width = alvoLargura;
     tela.height = alvoAltura;
     const contexto = tela.getContext("2d");
     if (!contexto) throw new Error("sem contexto 2D");
     contexto.drawImage(imagem, 0, 0, alvoLargura, alvoAltura);
-    // JPEG because the destination is a vision model, not a user file: at 0.9 the artefact
-    // stays below what SAM's own internal resizing introduces.
-    return { url: tela.toDataURL("image/jpeg", 0.9), largura: alvoLargura, altura: alvoAltura };
+    return {
+      url: tela.toDataURL("image/jpeg", 0.9),
+      larguraEnvio: alvoLargura,
+      alturaEnvio: alvoAltura,
+      larguraOrigem,
+      alturaOrigem,
+    };
   } catch {
-    // Canvas tainted by a cross-origin image, or a browser with no 2D: send the original.
-    // It is slow, but it works.
     const response = await fetch(asset.src);
     if (!response.ok) throw new Error(copy.errSamPrepareImage);
-    return { url: await readDataUrl(await response.blob(), copy), largura, altura };
+    return {
+      url: await readDataUrl(await response.blob(), copy),
+      larguraEnvio: larguraOrigem,
+      alturaEnvio: alturaOrigem,
+      larguraOrigem,
+      alturaOrigem,
+    };
   }
 }
 
@@ -87,6 +125,17 @@ function flattenPolygon(value: unknown): number[] | null {
     }
   }
   return null;
+}
+
+function polygonArea(points: number[]) {
+  let area = 0;
+  for (let index = 0; index + 3 < points.length; index += 2) {
+    area += points[index] * points[index + 3] - points[index + 2] * points[index + 1];
+  }
+  if (points.length >= 6) {
+    area += points.at(-2)! * points[1] - points[0] * points.at(-1)!;
+  }
+  return Math.abs(area) / 2;
 }
 
 function simplify(points: number[], tolerance = 2.2) {
@@ -114,42 +163,78 @@ function matrixToPolygon(mask: unknown[][]) {
   return candidates.sort((a, b) => polygonArea(b) - polygonArea(a))[0] ?? null;
 }
 
-function normalizePolygon(points: number[], width: number, height: number) {
-  const maxX = Math.max(...points.filter((_, index) => index % 2 === 0));
-  const maxY = Math.max(...points.filter((_, index) => index % 2 === 1));
-  const normalized = maxX <= 1.5 && maxY <= 1.5;
-  return simplify(points.map((coordinate, index) => {
-    if (normalized) return coordinate * (index % 2 ? EDITOR_HEIGHT : EDITOR_WIDTH);
-    return coordinate * (index % 2 ? EDITOR_HEIGHT / height : EDITOR_WIDTH / width);
-  })).map((coordinate, index) => Math.max(0, Math.min(index % 2 ? EDITOR_HEIGHT : EDITOR_WIDTH, coordinate)));
+function mapPolygonToSource(
+  points: number[],
+  responseWidth: number,
+  responseHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+) {
+  const xs = points.filter((_, index) => index % 2 === 0);
+  const ys = points.filter((_, index) => index % 2 === 1);
+  const normalized = Math.max(...xs) <= 1.5 && Math.max(...ys) <= 1.5;
+  const mapped = points.map((coordinate, index) => {
+    const isY = index % 2 === 1;
+    const responseSize = isY ? responseHeight : responseWidth;
+    const sourceSize = isY ? sourceHeight : sourceWidth;
+    const value = normalized ? coordinate * sourceSize : coordinate / responseSize * sourceSize;
+    return Math.max(0, Math.min(sourceSize, value));
+  });
+  return simplify(mapped);
 }
 
-function parseResponse(body: SamResponse, width: number, height: number, copy: Copy) {
+function parseResponse(
+  body: SamResponse,
+  responseWidth: number,
+  responseHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+  copy: Copy,
+) {
   const data = (body.data && typeof body.data === "object" ? body.data : body) as SamResponse;
   const masks = data.masks as unknown[] | undefined;
   const candidates = [data.polygon, data.polygons, data.contour, data.contours, masks?.[0]];
   for (const candidate of candidates) {
     const direct = flattenPolygon(candidate);
-    if (direct && direct.length >= 6) return normalizePolygon(direct, width, height);
+    if (direct && direct.length >= 6) {
+      return mapPolygonToSource(direct, responseWidth, responseHeight, sourceWidth, sourceHeight);
+    }
     if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
       const objectCandidate = candidate as SamResponse;
       const nested = flattenPolygon(objectCandidate.polygon ?? objectCandidate.segmentation ?? objectCandidate.points);
-      if (nested && nested.length >= 6) return normalizePolygon(nested, width, height);
+      if (nested && nested.length >= 6) {
+        return mapPolygonToSource(nested, responseWidth, responseHeight, sourceWidth, sourceHeight);
+      }
     }
   }
   const maskCandidate = data.mask ?? masks?.[0];
   if (Array.isArray(maskCandidate) && Array.isArray(maskCandidate[0])) {
     const polygon = matrixToPolygon(maskCandidate as unknown[][]);
-    if (polygon) return normalizePolygon(polygon, (maskCandidate[0] as unknown[]).length, maskCandidate.length);
+    if (polygon) {
+      return mapPolygonToSource(
+        polygon,
+        (maskCandidate[0] as unknown[]).length,
+        maskCandidate.length,
+        sourceWidth,
+        sourceHeight,
+      );
+    }
   }
   throw new Error(copy.errSamNoPolygon);
 }
 
 export async function requestSamMask({ endpoint, asset, prompts, copy }: { endpoint: string; asset: Asset; prompts: SamPrompt[]; copy: Copy }) {
-  // The dimensions come from what was actually sent: if the image was downscaled, the points
-  // and the polygon coming back have to speak in its scale, otherwise the mask is offset.
-  const { url: image, largura: width, altura: height } = await assetAsDataUrl(asset, copy);
-  const pointCoords = prompts.map((prompt) => [prompt.x / EDITOR_WIDTH * width, prompt.y / EDITOR_HEIGHT * height]);
+  const {
+    url: image,
+    larguraEnvio,
+    alturaEnvio,
+    larguraOrigem,
+    alturaOrigem,
+  } = await assetAsDataUrl(asset, copy);
+  const pointCoords = prompts.map((prompt) => [
+    prompt.x / larguraOrigem * larguraEnvio,
+    prompt.y / alturaOrigem * alturaEnvio,
+  ]);
   const pointLabels = prompts.map((prompt) => prompt.label);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 180_000);
@@ -168,7 +253,14 @@ export async function requestSamMask({ endpoint, asset, prompts, copy }: { endpo
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(fill(copy.errSamHttp, { status: response.status }));
-    return parseResponse(await response.json() as SamResponse, width, height, copy);
+    return parseResponse(
+      await response.json() as SamResponse,
+      larguraEnvio,
+      alturaEnvio,
+      larguraOrigem,
+      alturaOrigem,
+      copy,
+    );
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(copy.errSamTimeout);

@@ -62,6 +62,8 @@ The `.plgm` extension therefore identifies the current Poligome project containe
 
 `app/editor/interactions/vertex-interactions.ts` uses `EditorAnnotation[]` and stable `vertexId` references for hit-testing and linked topology. No index-based vertex identity remains in the new interaction layer.
 
+`app/editor/interactions/use-canvas-interactions.ts` owns canonical pointer callbacks for annotation drag, vertex drag/insertion, box resize/rotation and canvas deselection. Continuous gestures use editor-state transactions rather than creating one undo snapshot per pointer move.
+
 ## Canonical geometry
 
 `app/editor/geometry/annotation-geometry.ts` owns geometry operations over the canonical model:
@@ -82,9 +84,12 @@ New editor code should use this module rather than `app/lib/geometry.ts`. The la
 - undo and redo history;
 - single/multiple selection;
 - selected vertex by `vertexId`;
-- saved/dirty state.
+- saved/dirty state;
+- active gesture snapshot.
 
-All geometry mutations in the reducer target annotation IDs and stable vertex IDs. `use-editor-state.ts` exposes the reducer through a small React API and derives the selected annotation(s) without duplicating state.
+Continuous pointer edits use `begin-gesture`, live geometry mutations and `commit-gesture` / `cancel-gesture`. A complete drag, resize or rotation therefore creates a single undo entry rather than one entry per `pointermove`.
+
+`use-editor-state.ts` exposes the reducer through a small React API and derives the selected annotation(s) without duplicating state.
 
 This state is the intended replacement for the legacy combination of `annotations`, `history`, `redoHistory`, `selected`, `multiSelected` and `selectedVertex`.
 
@@ -112,16 +117,20 @@ Selection extraction lives under `app/editor/selection`:
 
 Selection no longer imports `app/lib/types.ts` or `app/lib/geometry.ts`.
 
-## Export boundary
+## Canonical input/output boundary
 
-`app/editor/export/annotation-export.ts` converts canonical `EditorAnnotation` geometry directly into external format payloads:
+Canonical producers now exist for the major annotation sources:
 
-- COCO segmentation/bbox/keypoints;
-- YOLO detection/segmentation rows;
-- GeoJSON geometry;
-- rotated box corners and export bounds.
+- drawing tools via `app/editor/drawing/annotation-builder.ts`;
+- demo data via `createCanonicalDemoProject()`;
+- COCO via `app/editor/import/coco-import.ts`;
+- SAM/model output via canonical model-output helpers.
 
-Flat numeric coordinate arrays are allowed here because they are required by those external formats. They are no longer treated as the editor's internal geometry representation.
+`app/editor/export/annotation-export.ts` converts canonical geometry directly into external payloads for COCO, YOLO and GeoJSON.
+
+Flat numeric coordinate arrays are allowed at import/export transport boundaries because those external formats use them. They are no longer the editor's internal geometry representation.
+
+`app/editor/session/editor-session-io.ts` is the canonical session boundary for project V3 persistence, demo loading and the import/export codecs. It has no dependency on the legacy annotation adapter.
 
 ## Route split
 
@@ -132,6 +141,12 @@ Flat numeric coordinate arrays are allowed here because they are required by tho
 ```
 
 The previous monolithic route implementation lives in `legacy-page.tsx` while functionality is extracted into focused modules. New editor code should be added under `app/editor` rather than growing `legacy-page.tsx` further.
+
+The remaining route cut is now mostly orchestration: replacing its legacy React annotation state with `useEditorState`, wiring `EditorCanvas`, then deleting the duplicated SVG/interaction code.
+
+## Validation
+
+`.github/workflows/editor-refactor.yml` defines a Node 22.13 validation workflow for this branch that runs the Next build and the test suite. The workflow file is present, but no successful status has been observed through the available connector yet, so the branch must not be described as build-green until a run is visible.
 
 ## Migration status
 
@@ -149,14 +164,17 @@ The previous monolithic route implementation lives in `legacy-page.tsx` while fu
 12. Add canonical annotation geometry and ID-based vertex interactions. **Done.**
 13. Move selection to canonical annotations. **Done.**
 14. Introduce canonical reducer/hook for annotations, history, selection and vertex state. **Done.**
-15. Add `AnnotationLayer` + `EditorCanvas` canonical rendering composition. **Done.**
-16. Add canonical COCO/YOLO/GeoJSON export codecs. **Done.**
-17. Migrate annotation producers (drawing tools, demo, import and model output) to `EditorAnnotation`. **Next.**
-18. Replace route React state with `useEditorState` and wire `EditorCanvas` into the route.
-19. Delete deprecated project façades, `legacy-annotation-adapter.ts` and obsolete flat geometry APIs.
-20. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
-21. Remove `legacy-page.tsx` once the remaining panels/tools are extracted.
+15. Add gesture transactions so drag/resize/rotate create one undo step. **Done.**
+16. Add `AnnotationLayer` + `EditorCanvas` canonical rendering composition. **Done.**
+17. Add canonical canvas interaction callbacks. **Done.**
+18. Add canonical COCO/YOLO/GeoJSON export codecs. **Done.**
+19. Add canonical producers for drawing, demo, COCO import and SAM/model output. **Done.**
+20. Add canonical session IO boundary. **Done.**
+21. Replace route React annotation state with `useEditorState` and wire `EditorCanvas`. **Next.**
+22. Delete deprecated project façades, `legacy-annotation-adapter.ts` and obsolete flat geometry APIs.
+23. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
+24. Remove `legacy-page.tsx` once the remaining panels/tools are extracted.
 
 ## Tests
 
-The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, canonical vertex mutations, canonical annotation geometry, canonical state/undo/redo, canonical export codecs, interaction ownership, annotation/canvas layer contracts, vertex hit-testing/topology, selection semantics, and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.
+The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, canonical vertex mutations, canonical annotation geometry, canonical state/undo/redo including gesture transactions, canonical export/import codecs, canvas interaction contracts, annotation/canvas layer contracts, vertex hit-testing/topology, selection semantics, session IO and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.

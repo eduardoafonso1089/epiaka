@@ -1,6 +1,6 @@
 import type { DrawingTool } from "../drawing/use-drawing-interactions";
 
-export type VectorTool = "hole" | "split" | "reshape" | null;
+export type VectorTool = "hole" | "split" | "reshape" | "transform" | null;
 export type ShortcutCommand =
   | { type: "undo" }
   | { type: "redo" }
@@ -37,6 +37,7 @@ export function commandFromKeyboard(event: Pick<KeyboardEvent, "key" | "ctrlKey"
   if (key === "o") return { type: "vector-tool", tool: "hole" };
   if (key === "x") return { type: "vector-tool", tool: "split" };
   if (key === "r") return { type: "vector-tool", tool: "reshape" };
+  if (key === "t") return { type: "vector-tool", tool: "transform" };
   if (!modifier && event.key.length === 1) return { type: "label-key", key: event.key };
   return null;
 }

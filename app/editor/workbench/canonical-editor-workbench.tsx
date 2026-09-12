@@ -105,7 +105,7 @@ export function CanonicalEditorWorkbench() {
         <strong style={{ marginRight: 12 }}>Poligome · editor canônico</strong>
         <button onClick={loadDemo} disabled={loading}>Carregar demo</button>
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
-        <button onClick={() => editor.redo()} disabled={!editor.redo.length}>Refazer</button>
+        <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
         <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V3</button>
         <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button>
         <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>

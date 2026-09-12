@@ -26,8 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Next app
-        run: npm run build:pages
+      - name: Build verified app
+        run: npm run build
 
       - name: Run tests
         run: node --import tsx --test tests/*.test.mjs

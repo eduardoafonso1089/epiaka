@@ -11,10 +11,12 @@ export function VectorToolbar({
   snapEnabled,
   vectorTool,
   canSimplify,
+  canDuplicate,
   canMerge,
   canEditPolygon,
   onToggleSnap,
   onSimplify,
+  onDuplicate,
   onMerge,
   onVectorTool,
 }: {
@@ -22,10 +24,12 @@ export function VectorToolbar({
   snapEnabled: boolean;
   vectorTool: VectorTool;
   canSimplify: boolean;
+  canDuplicate: boolean;
   canMerge: boolean;
   canEditPolygon: boolean;
   onToggleSnap: () => void;
   onSimplify: () => void;
+  onDuplicate: () => void;
   onMerge: () => void;
   onVectorTool: (tool: VectorTool) => void;
 }) {
@@ -39,6 +43,7 @@ export function VectorToolbar({
   return <div className={ui.vectorBar}>
     <button type="button" aria-pressed={snapEnabled} onClick={onToggleSnap}>{snapEnabled ? copy.snapOn : copy.snapOff}</button>
     <button type="button" disabled={!canSimplify} onClick={onSimplify}>{copy.simplify}</button>
+    <button type="button" disabled={!canDuplicate} onClick={onDuplicate}>{copy.duplicate}</button>
     <button type="button" disabled={!canMerge} onClick={onMerge}>{copy.merge}</button>
     {toolButton("hole", "Buraco (O)", !canEditPolygon)}
     {toolButton("split", `${copy.split} (X)`, !canEditPolygon)}

@@ -33,15 +33,6 @@ import { simplifyPolygonAnnotation, unionPolygonAnnotations } from "../geometry/
 import { VectorToolbar } from "../vector/vector-toolbar";
 
 const EMPTY_LABELS: Label[] = [{ id: UNLABELED_ID, name: "Sem label", color: "#929a95", key: "" }];
-const TOOLS: Array<{ id: DrawingTool; label: string }> = [
-  { id: "select", label: "Selecionar (V)" },
-  { id: "pan", label: "Mão (H)" },
-  { id: "box", label: "Caixa (B)" },
-  { id: "polygon", label: "Polígono (P)" },
-  { id: "line", label: "Linha (L)" },
-  { id: "point", label: "Ponto (K)" },
-  { id: "freehand", label: "Livre (F)" },
-];
 
 export function CanonicalEditorWorkbench() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -59,7 +50,7 @@ export function CanonicalEditorWorkbench() {
   const [hiddenLabelIds, setHiddenLabelIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
-  const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4, adicione imagens ou importe GeoTIFF/COG.");
+  const [message, setMessage] = useState("");
   const objectUrls = useRef<string[]>([]);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +58,15 @@ export function CanonicalEditorWorkbench() {
   const demoQueryHandled = useRef(false);
   const editor = useEditorState();
   const copy = getCopy(language);
+  const tools: Array<{ id: DrawingTool; label: string }> = [
+    { id: "select", label: copy.select },
+    { id: "pan", label: copy.pan },
+    { id: "box", label: copy.box },
+    { id: "polygon", label: copy.polygon },
+    { id: "line", label: copy.line },
+    { id: "point", label: copy.point },
+    { id: "freehand", label: copy.freehand },
+  ];
   const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
   const imageSize = { width: asset?.width ?? 1, height: asset?.height ?? 1 };
   const viewport = useEditorViewport({ image: imageSize, initialZoom: 92 });
@@ -108,8 +108,8 @@ export function CanonicalEditorWorkbench() {
 
   const vectorResultMessage = useCallback((result: AdvancedVectorResult) => {
     const messages: Record<AdvancedVectorResult, string> = {
-      "hole-added": "Buraco adicionado ao polígono.",
-      "hole-invalid": "O buraco deve ficar inteiramente dentro do polígono e não pode tocar outros anéis.",
+      "hole-added": copy.toastReshapeAdded,
+      "hole-invalid": copy.toastReshapeCross,
       "split-done": copy.toastSplitDone,
       "split-invalid": copy.toastSplitNeedsCross,
       "reshape-added": copy.toastReshapeAdded,
@@ -146,9 +146,17 @@ export function CanonicalEditorWorkbench() {
   }, []);
   useEffect(() => () => objectUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
   useEffect(() => {
-    setLanguage(storedLanguage());
+    const stored = storedLanguage();
+    setLanguage(stored);
+    setMessage(getCopy(stored).ready);
     document.documentElement.dataset.theme = storedTheme();
   }, []);
+
+  function changeLanguage(next: Language) {
+    setLanguage(next);
+    localStorage.setItem("poligome-language", next);
+    setMessage(getCopy(next).ready);
+  }
 
   function resetInteractionState() {
     setTool("select");
@@ -178,9 +186,9 @@ export function CanonicalEditorWorkbench() {
       resetTransientVisibility();
       setSessionDirty(false);
       resetInteractionState();
-      setMessage("Demo carregado em coordenadas de pixel da imagem.");
+      setMessage(copy.demoReady);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao carregar demo.");
+      setMessage(error instanceof Error ? error.message : copy.demoError);
     } finally {
       setLoading(false);
     }
@@ -209,9 +217,9 @@ export function CanonicalEditorWorkbench() {
       resetTransientVisibility();
       setSessionDirty(false);
       resetInteractionState();
-      setMessage(loaded.missingImages ? `Projeto V4 aberto. ${loaded.missingImages} imagem(ns) ausente(s).` : `Projeto V4 aberto: ${file.name}`);
+      setMessage(`${copy.projectOpened}: ${file.name}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao abrir projeto V4.");
+      setMessage(error instanceof Error ? error.message : copy.projectOpenError);
     } finally {
       setLoading(false);
     }
@@ -228,7 +236,7 @@ export function CanonicalEditorWorkbench() {
         if (!current) setCurrent(loaded.assets[0].id);
         setSessionDirty(true);
       }
-      setMessage(`${loaded.assets.length} imagem(ns) adicionada(s)${loaded.rejected.length ? `; ${loaded.rejected.length} rejeitada(s)` : ""}.`);
+      setMessage(`${copy.importImages}: ${loaded.assets.length}${loaded.rejected.length ? ` · ${loaded.rejected.length}` : ""}.`);
     } finally {
       setLoading(false);
     }
@@ -440,9 +448,9 @@ export function CanonicalEditorWorkbench() {
       const name = await saveEditorProject(projectName, assets, labels, editor.annotations, saveMode, copy);
       editor.markSaved();
       setSessionDirty(false);
-      setMessage(`Projeto V4 salvo: ${name}`);
+      setMessage(`${copy.projectSaved}: ${name}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao salvar projeto.");
+      setMessage(error instanceof Error ? error.message : copy.projectSaveError);
     } finally {
       setLoading(false);
     }
@@ -509,34 +517,37 @@ export function CanonicalEditorWorkbench() {
 
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-        <strong style={{ marginRight: 8 }}>Poligome · editor canônico</strong>
-        <button onClick={() => void loadDemo()} disabled={loading}>Demo</button>
-        <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V4</button>
-        <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
-        <RasterImportControl makeId={makeId} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />
-        <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
-        <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
+        <strong style={{ marginRight: 8 }}>{copy.appTitle}</strong>
+        <button onClick={() => void loadDemo()} disabled={loading}>{copy.tryDemo}</button>
+        <button onClick={() => projectInputRef.current?.click()} disabled={loading}>{copy.openProject}</button>
+        <button onClick={() => imageInputRef.current?.click()} disabled={loading}>{copy.importImages}</button>
+        <RasterImportControl makeId={makeId} language={language} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />
+        <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} language={language} disabled={loading} onImported={applyCocoImport} />
+        <ExportControls assets={assets} labels={labels} annotations={editor.annotations} language={language} disabled={loading} onMessage={setMessage} />
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>{copy.undo}</button>
         <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>{copy.redo}</button>
         <select aria-label={copy.saveProjectDescription} value={saveMode} onChange={(event) => setSaveMode(event.target.value as "annotations" | "complete")} disabled={loading}>
           <option value="complete">{copy.imagesAndAnnotations}</option>
           <option value="annotations">{copy.annotationsOnly}</option>
         </select>
-        <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V4</button>
-        <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button>
-        <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>
-        <span style={{ opacity: .7, marginLeft: "auto" }}>{asset ? `${imageIndex + 1}/${assets.length} · ${activeAssetAnnotations.length} anotações` : "sem imagem"}</span>
+        <button onClick={saveProject} disabled={loading || !assets.length}>{copy.saveProject}</button>
+        <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← {copy.images}</button>
+        <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>{copy.images} →</button>
+        <select aria-label={copy.language} value={language} onChange={(event) => changeLanguage(event.target.value as Language)}>
+          <option value="pt">PT</option><option value="en">EN</option><option value="fr">FR</option><option value="es">ES</option>
+        </select>
+        <span style={{ opacity: .7, marginLeft: "auto" }}>{asset ? `${imageIndex + 1}/${assets.length} · ${activeAssetAnnotations.length} ${copy.imageAnnotations}` : copy.imageNotLoaded}</span>
       </header>
 
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-        {TOOLS.map((entry) => <button key={entry.id} onClick={() => chooseTool(entry.id)} aria-pressed={tool === entry.id && !vectorTool} style={{ fontWeight: tool === entry.id && !vectorTool ? 700 : 400 }}>{entry.label}</button>)}
-        <select value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)} disabled={!labels.length}>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select>
+        {tools.map((entry) => <button key={entry.id} onClick={() => chooseTool(entry.id)} aria-pressed={tool === entry.id && !vectorTool} style={{ fontWeight: tool === entry.id && !vectorTool ? 700 : 400 }}>{entry.label}</button>)}
+        <select value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)} disabled={!labels.length}>{labels.map((label) => <option key={label.id} value={label.id}>{label.id === UNLABELED_ID ? copy.unlabeled : label.name}</option>)}</select>
         {(tool === "polygon" || tool === "line") && drawing.draft && <><button onClick={() => drawing.finishDraft()} disabled={!drawing.canFinish}>{copy.finishDrawing}</button><button onClick={drawing.cancelDraft}>{copy.cancel}</button></>}
         {vectorTool === "hole" && advanced.draft && <><button onClick={() => advanced.finishHole()} disabled={!advanced.canFinish}>{copy.finishDrawing}</button><button onClick={advanced.cancel}>{copy.cancel}</button></>}
         <span style={{ marginLeft: 8 }} />
-        <button onClick={() => viewport.zoomBy(-10)} disabled={!asset}>−</button>
-        <button onClick={() => viewport.zoomTo(92)} disabled={!asset}>{viewport.state.zoom}%</button>
-        <button onClick={() => viewport.zoomBy(10)} disabled={!asset}>+</button>
+        <button title={copy.zoomOut} onClick={() => viewport.zoomBy(-10)} disabled={!asset}>−</button>
+        <button title={copy.fitImage} onClick={() => viewport.zoomTo(92)} disabled={!asset}>{viewport.state.zoom}%</button>
+        <button title={copy.zoomIn} onClick={() => viewport.zoomBy(10)} disabled={!asset}>+</button>
       </div>
 
       <VectorToolbar
@@ -553,7 +564,7 @@ export function CanonicalEditorWorkbench() {
       />
 
       <div style={{ fontSize: 13, opacity: .75, margin: "8px 0" }}>
-        {message} <span style={{ opacity: .7 }}>{touch.touchMode ? "Dois dedos: zoom e pan. Mão: pan com um dedo." : `${copy.shortcuts}: V H B P F L K · O hole · X split · R reshape · Enter concluir · Esc cancelar · Delete excluir.`}</span>
+        {message} <span style={{ opacity: .7 }}>{touch.touchMode ? copy.touchDraw : `${copy.shortcuts}: V H B P F L K · O · X · R · Enter · Esc · Delete.`}</span>
       </div>
 
       <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "var(--canvas-bg)", overflow: "auto", border: "1px solid var(--line)", borderRadius: 8, overscrollBehavior: "contain" }}>
@@ -561,7 +572,7 @@ export function CanonicalEditorWorkbench() {
           <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
             {asset?.raster?.mode === "tiled" ? <CogTiledLayer asset={asset} viewport={viewport.state} layout={viewport.layout} onError={setMessage} />
               : asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} />
-              : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? "Imagem ausente" : "Nenhuma imagem carregada"}</div>}
+              : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? copy.imageMissingHint : copy.imageNotLoaded}</div>}
             {asset && !asset.missing && <EditorCanvas
               imageSize={imageSize}
               svgRef={viewport.canvasRef}
@@ -654,15 +665,12 @@ export function CanonicalEditorWorkbench() {
       />
 
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>
-        <span>Ferramenta: {vectorTool ?? tool}</span>
-        <span>Snap: {snapEnabled ? "on" : "off"}</span>
+        <span>{tools.find((entry) => entry.id === tool)?.label ?? tool}</span>
+        <span>{snapEnabled ? copy.snapStateOn : copy.snapStateOff}</span>
         <span>Zoom: {viewport.state.zoom}%</span>
-        <span>Coordenadas: pixels da imagem</span>
-        <span>Formato interno: EditorAnnotation[]</span>
-        <span>Projeto: .plgm V4</span>
-        <span>Vértices: IDs estáveis</span>
-        {asset?.raster?.mode === "tiled" && <span>Raster: COG tiled</span>}
-        <span>{projectDirty ? "alterado" : "salvo"}</span>
+        <span>{copy.localOnly}</span>
+        {asset?.raster?.mode === "tiled" && <span>COG tiled</span>}
+        <span>{projectDirty ? copy.saving : copy.saved}</span>
       </footer>
     </div>
   </main>;

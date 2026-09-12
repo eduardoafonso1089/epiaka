@@ -15,6 +15,10 @@ export type ViewportState = {
   scrollTop: number;
 };
 
+const MIN_ZOOM = 10;
+const BASE_MAX_ZOOM = 400;
+const ABSOLUTE_MAX_ZOOM = 50_000;
+
 /** Pure viewport model. Canonical annotation coordinates are source-image pixels. */
 export class ViewportController {
   constructor(private state: ViewportState) {}
@@ -23,12 +27,20 @@ export class ViewportController {
     return { ...this.state, viewport: { ...this.state.viewport }, image: { ...this.state.image } };
   }
 
+  maxZoom() {
+    const nativeWidthZoom = this.state.image.width / Math.max(1, this.state.viewport.width) * 100;
+    return Math.min(ABSOLUTE_MAX_ZOOM, Math.max(BASE_MAX_ZOOM, Math.ceil(nativeWidthZoom * 2)));
+  }
+
+  private clampZoom(zoom: number) {
+    return Math.max(MIN_ZOOM, Math.min(this.maxZoom(), zoom));
+  }
+
   layout() {
     return canvasLayout(this.state.viewport, this.state.image, this.state.zoom);
   }
 
   transform(frame: ScreenFrame) {
-    // annotation space === image space in the canonical editor.
     return new ViewportTransform(frame, this.state.image, this.state.image);
   }
 
@@ -44,16 +56,18 @@ export class ViewportController {
 
   setViewport(viewport: Size2D) {
     this.state = { ...this.state, viewport: { ...viewport } };
+    this.state = { ...this.state, zoom: this.clampZoom(this.state.zoom) };
     this.state = { ...this.state, ...this.clampScroll(this.state.scrollLeft, this.state.scrollTop) };
   }
 
   setImage(image: Size2D) {
     this.state = { ...this.state, image: { ...image } };
+    this.state = { ...this.state, zoom: this.clampZoom(this.state.zoom) };
     this.state = { ...this.state, ...this.clampScroll(this.state.scrollLeft, this.state.scrollTop) };
   }
 
   setZoom(zoom: number) {
-    this.state = { ...this.state, zoom: Math.max(10, Math.min(400, zoom)) };
+    this.state = { ...this.state, zoom: this.clampZoom(zoom) };
     this.state = { ...this.state, ...this.clampScroll(this.state.scrollLeft, this.state.scrollTop) };
   }
 
@@ -77,7 +91,7 @@ export class ViewportController {
   }
 
   zoomAt(nextZoom: number, frame: ScreenFrame, pointer: Point2D) {
-    const target = Math.max(10, Math.min(400, Math.round(nextZoom)));
+    const target = Math.round(this.clampZoom(nextZoom));
     if (target === this.state.zoom) return this.snapshot();
 
     const anchorX = Math.max(0, Math.min(1, (pointer.x - frame.left) / Math.max(1, frame.width)));

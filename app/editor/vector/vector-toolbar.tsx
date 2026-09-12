@@ -2,6 +2,7 @@
 
 import { getCopy } from "../../lib/i18n";
 import type { VectorTool } from "../commands/editor-shortcuts";
+import ui from "../editor-interface.module.css";
 
 type Copy = ReturnType<typeof getCopy>;
 
@@ -33,10 +34,9 @@ export function VectorToolbar({
     aria-pressed={vectorTool === id}
     disabled={disabled}
     onClick={() => onVectorTool(vectorTool === id ? null : id)}
-    style={{ fontWeight: vectorTool === id ? 700 : 400 }}
   >{label}</button>;
 
-  return <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+  return <div className={ui.vectorBar}>
     <button type="button" aria-pressed={snapEnabled} onClick={onToggleSnap}>{snapEnabled ? copy.snapOn : copy.snapOff}</button>
     <button type="button" disabled={!canSimplify} onClick={onSimplify}>{copy.simplify}</button>
     <button type="button" disabled={!canMerge} onClick={onMerge}>{copy.merge}</button>

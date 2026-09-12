@@ -5,17 +5,17 @@ import { geoReference } from '../app/lib/georeference.ts';
 
 const labels=[{id:'weed',name:'Weed',color:'#00ff00',key:'1'}];
 
-test('canonical COCO document is assembled from EditorAnnotation geometry',()=>{
-  const assets=[{id:'img',name:'image.png',src:'',width:1000,height:650}];
+test('canonical COCO document exports source-image pixel geometry',()=>{
+  const assets=[{id:'img',name:'image.png',src:'',width:2000,height:1300}];
   const annotations=[{id:'p',asset:'img',label:'weed',type:'point',x:250,y:325}];
   const document=buildCocoDocument(assets,labels,annotations);
-  assert.equal(document.info.version,'3.0');
+  assert.equal(document.info.version,'4.0');
   assert.equal(document.images[0].file_name,'image.png');
   assert.deepEqual(document.annotations[0].keypoints,[250,325,2]);
   assert.equal(document.annotations[0].num_keypoints,1);
 });
 
-test('canonical GeoJSON exports georeferenced polygon to WGS84',()=>{
+test('canonical GeoJSON maps source-image pixels through raster georeference',()=>{
   const geo=geoReference('source.tif',1000,650,{transform:[1,0,500000,0,-1,7600000],crs:'EPSG:31983'});
   const assets=[{id:'img',name:'crop.png',src:'',width:1000,height:650,geo}];
   const annotations=[{

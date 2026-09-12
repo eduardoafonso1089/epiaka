@@ -7,6 +7,7 @@ import { TouchGesture, pinchZoom } from "../../lib/touch-gestures";
 export type TouchNavigationOptions = {
   tool: string;
   zoom: number;
+  maxZoom?: number;
   panBy: (pointerDx: number, pointerDy: number) => void;
   pinchPan: (
     zoom: number,
@@ -31,6 +32,7 @@ type PanState = {
 export function useTouchNavigation({
   tool,
   zoom,
+  maxZoom = 400,
   panBy,
   pinchPan,
   cancelEditing,
@@ -89,7 +91,7 @@ export function useTouchNavigation({
       const pair = gesture.pair();
       const pinch = pinchRef.current;
       if (pair && pinch) {
-        const nextZoom = pinchZoom(pinch.initialZoom, pinch.initialDistance, pair.distance);
+        const nextZoom = pinchZoom(pinch.initialZoom, pinch.initialDistance, pair.distance, maxZoom);
         const currentCenter = { x: pair.x, y: pair.y };
         pinchPan(nextZoom, pinch.previousCenter, currentCenter);
         pinch.previousCenter = currentCenter;
@@ -108,7 +110,7 @@ export function useTouchNavigation({
       event.preventDefault();
       event.stopPropagation();
     }
-  }, [panBy, pinchPan, tool]);
+  }, [maxZoom, panBy, pinchPan, tool]);
 
   const finishTouch = useCallback((event: ReactPointerEvent<SVGSVGElement>, cancelled: boolean) => {
     if (event.pointerType !== "touch") return;

@@ -100,12 +100,12 @@ export function EditorManagementPanels(props: Props) {
   }
 
   return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations} · ${copy.manageClasses}`} className={ui.managementGrid}>
-    <button className={classes(ui.mobilePanelToggle, ui.mobilePanelToggleLeft)} aria-label={copy.openImages} onClick={() => { setLeftOpen(true); setRightOpen(false); }}>☰</button>
-    <button className={classes(ui.mobilePanelToggle, ui.mobilePanelToggleRight)} aria-label={copy.classes} onClick={() => { setRightOpen(true); setLeftOpen(false); }}>•••</button>
-    {(leftOpen || rightOpen) && <button className={ui.mobileBackdrop} aria-label={copy.closePanel} onClick={() => { setLeftOpen(false); setRightOpen(false); }} />}
+    <button data-mobile-toggle="images" aria-label={copy.openImages} onClick={() => { setLeftOpen(true); setRightOpen(false); }}>☰</button>
+    <button data-mobile-toggle="right" aria-label={copy.classes} onClick={() => { setRightOpen(true); setLeftOpen(false); }}>•••</button>
+    {(leftOpen || rightOpen) && <button data-mobile-backdrop="true" aria-label={copy.closePanel} onClick={() => { setLeftOpen(false); setRightOpen(false); }} />}
 
-    <div className={classes(ui.panelCard, ui.imagePanel, leftOpen && ui.mobilePanelOpen)}>
-      <div className={ui.mobileDrawerHeader}><strong>{copy.images}</strong><button aria-label={copy.closePanel} onClick={() => setLeftOpen(false)}>×</button></div>
+    <div data-panel="images" data-open={leftOpen ? "true" : "false"} className={ui.panelCard}>
+      <div data-drawer-header="true"><strong>{copy.images}</strong><button aria-label={copy.closePanel} onClick={() => setLeftOpen(false)}>×</button></div>
       <div className={ui.panelHeader}>
         <strong>{copy.images}</strong><small className={ui.counter}>{assets.length}</small>
       </div>
@@ -126,8 +126,8 @@ export function EditorManagementPanels(props: Props) {
       </div>
     </div>
 
-    <div className={classes(ui.rightPanel, rightOpen && ui.mobilePanelOpen)}>
-      <div className={ui.mobileDrawerHeader}><strong>{copy.annotations}</strong><button aria-label={copy.closePanel} onClick={() => setRightOpen(false)}>×</button></div>
+    <div data-panel="right" data-open={rightOpen ? "true" : "false"}>
+      <div data-drawer-header="true"><strong>{copy.annotations}</strong><button aria-label={copy.closePanel} onClick={() => setRightOpen(false)}>×</button></div>
       <div className={ui.panelCard}>
         <div className={ui.panelHeader}>
           <strong>{copy.annotations}</strong><small className={ui.counter}>{activeAssetAnnotations.length}</small>

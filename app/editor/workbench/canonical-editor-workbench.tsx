@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy } from "../../lib/i18n";
+import type { EditorAnnotation } from "../models/annotation-model";
+import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, saveEditorProject } from "../session/editor-session-io";
 import { useEditorState } from "../state/use-editor-state";
 import { useCanvasInteractions } from "../interactions/use-canvas-interactions";
@@ -117,10 +119,10 @@ export function CanonicalEditorWorkbench() {
   }
 
   const noopElement = useCallback((_event: ReactPointerEvent<SVGElement>) => undefined, []);
-  const noopAnnotation = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: never) => undefined, []);
-  const noopVertex = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: never, _id: string) => undefined, []);
-  const noopInsert = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: never, _id: string, _x: number, _y: number) => undefined, []);
-  const noopResize = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: never, _corner: never) => undefined, []);
+  const noopAnnotation = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation) => undefined, []);
+  const noopVertex = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation, _id: string) => undefined, []);
+  const noopInsert = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation, _id: string, _x: number, _y: number) => undefined, []);
+  const noopResize = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation, _corner: BoxCorner) => undefined, []);
 
   const imageIndex = asset ? assets.findIndex((item) => item.id === asset.id) : -1;
   const aspectRatio = asset ? `${asset.width ?? 1000} / ${asset.height ?? 650}` : "1000 / 650";
@@ -140,12 +142,7 @@ export function CanonicalEditorWorkbench() {
       </header>
 
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-        {TOOLS.map((entry) => <button
-          key={entry.id}
-          onClick={() => chooseTool(entry.id)}
-          aria-pressed={tool === entry.id}
-          style={{ fontWeight: tool === entry.id ? 700 : 400 }}
-        >{entry.label}</button>)}
+        {TOOLS.map((entry) => <button key={entry.id} onClick={() => chooseTool(entry.id)} aria-pressed={tool === entry.id} style={{ fontWeight: tool === entry.id ? 700 : 400 }}>{entry.label}</button>)}
         <select value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)} disabled={!labels.length}>
           {labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
         </select>
@@ -200,11 +197,7 @@ export function CanonicalEditorWorkbench() {
       </section>
 
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>
-        <span>Ferramenta: {tool}</span>
-        <span>Formato interno: EditorAnnotation[]</span>
-        <span>Projeto: .plgm V3</span>
-        <span>Vértices: IDs estáveis</span>
-        <span>{editor.saved ? "salvo" : "alterado"}</span>
+        <span>Ferramenta: {tool}</span><span>Formato interno: EditorAnnotation[]</span><span>Projeto: .plgm V3</span><span>Vértices: IDs estáveis</span><span>{editor.saved ? "salvo" : "alterado"}</span>
       </footer>
     </div>
   </main>;

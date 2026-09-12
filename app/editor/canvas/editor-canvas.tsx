@@ -29,6 +29,10 @@ export type EditorCanvasProps = {
   className?: string;
   style?: CSSProperties;
   ariaLabel?: string;
+  onPointerDownCapture?: (event: ReactPointerEvent<SVGSVGElement>) => void;
+  onPointerMoveCapture?: (event: ReactPointerEvent<SVGSVGElement>) => void;
+  onPointerUpCapture?: (event: ReactPointerEvent<SVGSVGElement>) => void;
+  onPointerCancelCapture?: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerDown: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerMove: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerUp: (event: ReactPointerEvent<SVGSVGElement>) => void;
@@ -59,6 +63,10 @@ export function EditorCanvas(props: EditorCanvasProps) {
     aria-label={props.ariaLabel}
     viewBox="0 0 1000 650"
     preserveAspectRatio="none"
+    onPointerDownCapture={props.onPointerDownCapture}
+    onPointerMoveCapture={props.onPointerMoveCapture}
+    onPointerUpCapture={props.onPointerUpCapture}
+    onPointerCancelCapture={props.onPointerCancelCapture}
     onPointerDown={props.onPointerDown}
     onPointerMove={props.onPointerMove}
     onPointerUp={props.onPointerUp}

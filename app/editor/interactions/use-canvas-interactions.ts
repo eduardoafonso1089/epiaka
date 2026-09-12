@@ -1,18 +1,24 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import type { EditorAction, EditorState } from "../state/editor-state";
 import { annotationBounds, resizeBoxFromCorner } from "../geometry/annotation-geometry";
-import { selectSingle } from "../selection/selection-model";
+import {
+  selectRange,
+  selectSingle,
+  selectionFromMarquee,
+  type SelectionMarquee,
+} from "../selection/selection-model";
 
 export type CanvasInteractionOptions = {
   svgRef: RefObject<SVGSVGElement | null>;
   state: EditorState;
   dispatch: (action: EditorAction) => void;
   makeId: (prefix: string) => string;
+  activeAssetId?: string | null;
 };
 
 type DragState = {
@@ -50,11 +56,17 @@ function eventPoint(svgRef: RefObject<SVGSVGElement | null>, event: ReactPointer
   return svg ? pointInEditor(svg, event.clientX, event.clientY) : null;
 }
 
-export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: CanvasInteractionOptions) {
+export function useCanvasInteractions({ svgRef, state, dispatch, makeId, activeAssetId }: CanvasInteractionOptions) {
   const annotationDrag = useRef<DragState | null>(null);
   const vertexDrag = useRef<VertexDragState | null>(null);
   const boxTransform = useRef<BoxTransformState | null>(null);
+  const marqueeRef = useRef<SelectionMarquee | null>(null);
+  const marqueePointerRef = useRef<number | null>(null);
+  const [selectionMarquee, setSelectionMarquee] = useState<SelectionMarquee | null>(null);
 
+  const selectionScope = activeAssetId
+    ? state.annotations.filter((annotation) => annotation.asset === activeAssetId)
+    : state.annotations;
   const selectedIds = state.selection.multiSelected.length
     ? state.selection.multiSelected
     : state.selection.selected ? [state.selection.selected] : [];
@@ -64,12 +76,23 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
     const point = eventPoint(svgRef, event);
     if (!point) return;
     event.stopPropagation();
+
+    const additive = event.ctrlKey || event.metaKey;
+    if (event.shiftKey) {
+      dispatch({ type: "set-selection", selection: selectRange(selectionScope, state.selection, annotation.id, additive) });
+      return;
+    }
+    if (additive) {
+      dispatch({ type: "toggle-selection", id: annotation.id });
+      return;
+    }
+
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const ids = selectedIds.includes(annotation.id) ? selectedIds : [annotation.id];
     if (!selectedIds.includes(annotation.id)) dispatch({ type: "set-selection", selection: selectSingle(annotation.id) });
     dispatch({ type: "begin-gesture" });
     annotationDrag.current = { pointerId: event.pointerId, start: point, last: point, annotationIds: ids };
-  }, [dispatch, selectedIds, svgRef]);
+  }, [dispatch, selectedIds, selectionScope, state.selection, svgRef]);
 
   const moveAnnotation = useCallback((event: ReactPointerEvent<SVGElement>) => {
     const drag = annotationDrag.current;
@@ -116,13 +139,7 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
 
   const insertVertex = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, afterVertexId: string, x: number, y: number) => {
     event.stopPropagation();
-    dispatch({
-      type: "insert-vertex",
-      annotationId: annotation.id,
-      afterVertexId,
-      vertexId: makeId(`${annotation.id}:v`),
-      point: { x, y },
-    });
+    dispatch({ type: "insert-vertex", annotationId: annotation.id, afterVertexId, vertexId: makeId(`${annotation.id}:v`), point: { x, y } });
   }, [dispatch, makeId]);
 
   const resizeStart = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, corner: BoxCorner) => {
@@ -144,10 +161,7 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
     if (!transform || transform.kind !== "resize" || transform.pointerId !== event.pointerId || !transform.corner) return;
     const point = eventPoint(svgRef, event);
     if (!point) return;
-    dispatch({
-      type: "replace-annotation",
-      annotation: resizeBoxFromCorner(transform.annotation, transform.corner, point),
-    });
+    dispatch({ type: "replace-annotation", annotation: resizeBoxFromCorner(transform.annotation, transform.corner, point) });
   }, [dispatch, svgRef]);
 
   const rotateStart = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation) => {
@@ -183,16 +197,51 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
     dispatch({ type: "commit-gesture" });
   }, [dispatch]);
 
+  const selectAtCanvas = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.target !== event.currentTarget || event.button !== 0) return;
+    const point = pointInEditor(event.currentTarget, event.clientX, event.clientY);
+    const additiveIds = event.ctrlKey || event.metaKey || event.shiftKey
+      ? [...new Set(state.selection.multiSelected.length ? state.selection.multiSelected : state.selection.selected ? [state.selection.selected] : [])]
+      : [];
+    const marquee: SelectionMarquee = {
+      startX: point.x,
+      startY: point.y,
+      currentX: point.x,
+      currentY: point.y,
+      additiveIds,
+    };
+    marqueePointerRef.current = event.pointerId;
+    marqueeRef.current = marquee;
+    setSelectionMarquee(marquee);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, [state.selection.multiSelected, state.selection.selected]);
+
+  const moveCanvasSelection = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    if (marqueePointerRef.current !== event.pointerId || !marqueeRef.current) return;
+    const point = pointInEditor(event.currentTarget, event.clientX, event.clientY);
+    const marquee = { ...marqueeRef.current, currentX: point.x, currentY: point.y };
+    marqueeRef.current = marquee;
+    setSelectionMarquee(marquee);
+  }, []);
+
+  const finishCanvasSelection = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    if (marqueePointerRef.current !== event.pointerId || !marqueeRef.current) return;
+    const point = pointInEditor(event.currentTarget, event.clientX, event.clientY);
+    const marquee = { ...marqueeRef.current, currentX: point.x, currentY: point.y };
+    dispatch({ type: "set-selection", selection: selectionFromMarquee(selectionScope, marquee) });
+    marqueePointerRef.current = null;
+    marqueeRef.current = null;
+    setSelectionMarquee(null);
+  }, [dispatch, selectionScope]);
+
   const cancel = useCallback(() => {
     annotationDrag.current = null;
     vertexDrag.current = null;
     boxTransform.current = null;
+    marqueePointerRef.current = null;
+    marqueeRef.current = null;
+    setSelectionMarquee(null);
     dispatch({ type: "cancel-gesture" });
-  }, [dispatch]);
-
-  const selectAtCanvas = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.target !== event.currentTarget) return;
-    dispatch({ type: "clear-selection" });
   }, [dispatch]);
 
   const activeBounds = state.selection.selected
@@ -204,6 +253,7 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
 
   return {
     activeBounds,
+    selectionMarquee,
     beginAnnotationDrag,
     moveAnnotation,
     finishAnnotation,
@@ -219,5 +269,7 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
     transformEnd,
     cancel,
     selectAtCanvas,
+    moveCanvasSelection,
+    finishCanvasSelection,
   };
 }

@@ -202,10 +202,79 @@
   scrollbar-gutter: stable both-edges;
 }
 
-/* The panel component is layout-transparent; its first child occupies the left rail and
- * the right-panel wrapper occupies the right rail. */
+/* Management is transparent to the grid. Its image card and right group become the same
+ * fixed rails used by the pre-refactor interface. */
 .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) {
   display: contents !important;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(1)) {
+  grid-column: 1;
+  grid-row: 2 / 5;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 12px 9px !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 0 !important;
+  border-right: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)) {
+  grid-column: 3;
+  grid-row: 2 / 5;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)) > :global(div) {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px 9px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="list"]) {
+  min-height: 0;
+  max-height: none !important;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="panelHeader"]) {
+  min-height: 34px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="panelHeader"]) :global(strong) {
+  font-size: 11px;
+  letter-spacing: .09em;
+  color: var(--muted);
+}
+
+/* Mobile drawer controls are absent on desktop. */
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button) {
+  display: none;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div) > :global(div:first-child):has(> :global(button[aria-label])) {
+  display: none;
 }
 
 /* Quality/Review was intentionally kept in code but hidden from the standard editor UI
@@ -255,6 +324,80 @@
   .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
     max-width: 120px;
   }
+
+  /* Same mobile behaviour as before: editor stays full screen and both rails become drawers. */
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(1)),
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)) {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    width: min(310px, 86vw);
+    height: 100vh;
+    border: 0 !important;
+    background: var(--surface) !important;
+    box-shadow: 0 0 40px rgba(22,39,28,.20) !important;
+    transition: transform .22s ease;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(1)) {
+    left: 0;
+    transform: translateX(-105%);
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)) {
+    right: 0;
+    transform: translateX(105%);
+  }
+
+  /* React leaves an inline CSS-module token only when open; :has(close button) identifies the
+   * active drawer without coupling the route to the module's generated class name. */
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(1)):has(> :global(div:first-child button:focus)),
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)):has(> :global(div:first-child button:focus)) {
+    transform: translateX(0);
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(1)),
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(2)) {
+    position: fixed;
+    top: 13px;
+    z-index: 110;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 17px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(1)) { left: 10px; }
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(2)) { right: 10px; }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(3)) {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgba(16,27,20,.36);
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div) > :global(div:first-child):has(> :global(button[aria-label])) {
+    min-height: 53px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
 }
 
 @media (max-width: 560px) {
@@ -296,5 +439,10 @@
   .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(3)) {
     min-height: 38px;
     padding-inline: 8px !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(1)),
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(2)) {
+    top: 10px;
   }
 }

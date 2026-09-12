@@ -89,6 +89,10 @@ function orientPolygon(coordinates: number[][][]) {
   });
 }
 
+function finitePair(value: readonly number[]) {
+  return value.length >= 2 && Number.isFinite(value[0]) && Number.isFinite(value[1]);
+}
+
 export function buildGeoJson(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
   const labelMap = new Map(labels.map((label) => [label.id, label]));
@@ -104,12 +108,16 @@ export function buildGeoJson(assets: Asset[], labels: Label[], annotations: Edit
     if (!projections.has(geo.crs)) projections.set(geo.crs, toWgs84(geo.crs));
     const transform = rasterTransform(geo);
     const project = (x: number, y: number): [number, number] => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("rasterInvalidCoordinates");
       const native = transformPoint(
         transform,
         geo.window.x + x / width * geo.window.w,
         geo.window.y + y / height * geo.window.h,
       );
-      return projections.get(geo.crs)!(native);
+      if (!finitePair(native)) throw new Error("rasterInvalidCoordinates");
+      const projected = projections.get(geo.crs)!(native);
+      if (!finitePair(projected)) throw new Error("rasterInvalidCoordinates");
+      return [projected[0], projected[1]];
     };
     const geometry = annotationToGeoJsonGeometry(annotation, project) as { type: string; coordinates: unknown };
     if (geometry.type === "Polygon") orientPolygon(geometry.coordinates as number[][][]);

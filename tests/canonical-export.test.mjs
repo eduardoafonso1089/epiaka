@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { annotationToCoco, annotationToGeoJsonGeometry, annotationToYolo, boxCorners } from '../app/editor/export/annotation-export.ts';
 
 const labels=[{id:'weed',name:'Weed',color:'#00ff00',key:'1'}];
-const assets=[{id:'img',name:'image.png',src:'',width:2000,height:1300}];
+const asset={id:'img',name:'image.png',src:'',width:2000,height:1300};
+const assets=[asset];
 
-test('canonical polygon export uses vertices without legacy pts',()=>{
+test('canonical polygon export preserves source-image pixels and normalizes only for YOLO',()=>{
   const polygon={
     id:'p',asset:'img',label:'weed',type:'polygon',holes:[],
     vertices:[
@@ -15,10 +16,9 @@ test('canonical polygon export uses vertices without legacy pts',()=>{
     ],
   };
   const coco=annotationToCoco(polygon,0,assets,labels);
-  assert.deepEqual(coco.segmentation[0],[200,200,600,200,600,600]);
-  // The source triangle has area 20,000 editor units. Scaling both axes by 2 gives 80,000 px².
-  assert.equal(coco.area,80000);
-  assert.equal(annotationToYolo(polygon,labels),'0 0.100000 0.153846 0.300000 0.153846 0.300000 0.461538');
+  assert.deepEqual(coco.segmentation[0],[100,100,300,100,300,300]);
+  assert.equal(coco.area,20000);
+  assert.equal(annotationToYolo(polygon,labels,asset),'0 0.050000 0.076923 0.150000 0.076923 0.150000 0.230769');
 });
 
 test('rotated box export derives corners from canonical width and height',()=>{

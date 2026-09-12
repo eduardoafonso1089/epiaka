@@ -1,5 +1,5 @@
-import type { Annotation } from "../../lib/types";
-import { annotationIntersectsRect } from "../../lib/geometry";
+import type { EditorAnnotation } from "../models/annotation-model";
+import { annotationBounds } from "../geometry/annotation-geometry";
 
 export type SelectionState = {
   selected: string | null;
@@ -24,6 +24,15 @@ export function normalizedSelectionRect(marquee: SelectionMarquee) {
   };
 }
 
+export function annotationIntersectsRect(
+  annotation: EditorAnnotation,
+  rect: { x: number; y: number; width: number; height: number },
+) {
+  const bounds = annotationBounds(annotation);
+  return bounds.x <= rect.x + rect.width && bounds.x + bounds.width >= rect.x &&
+    bounds.y <= rect.y + rect.height && bounds.y + bounds.height >= rect.y;
+}
+
 export function toggleSelection(state: SelectionState, id: string): SelectionState {
   const base = state.selected && !state.multiSelected.includes(state.selected)
     ? [...state.multiSelected, state.selected]
@@ -43,7 +52,7 @@ export function selectSingle(id: string): SelectionState {
 }
 
 export function selectRange(
-  annotations: Annotation[],
+  annotations: EditorAnnotation[],
   state: SelectionState,
   targetId: string,
   additive = false,
@@ -61,7 +70,7 @@ export function selectRange(
 }
 
 export function selectionFromMarquee(
-  annotations: Annotation[],
+  annotations: EditorAnnotation[],
   marquee: SelectionMarquee,
   clickThreshold = 4,
 ): SelectionState {

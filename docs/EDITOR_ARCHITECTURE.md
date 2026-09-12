@@ -85,6 +85,8 @@ Pan and pinch mutate viewport state only.
 - dirty/saved state;
 - active gesture transaction.
 
+It also owns canonical annotation ordering and batch reclassification. Reordering is constrained to annotations belonging to the same asset, and batch reclassification is a single undoable editor operation.
+
 `app/editor/interactions/use-canvas-interactions.ts` handles annotation drag, vertex drag/insertion, rotated box resize/rotation and marquee selection directly in source-image pixels.
 
 A continuous drag/resize/rotation creates one undo step.
@@ -132,14 +134,18 @@ Internal geometry remains in image pixels.
 Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be ported before the refactor is considered product-complete:
 
 - advanced vector operations: snapping, reshape, simplify, union/merge, split and polygon-hole creation;
-- image and annotation panels: search, reorder, delete, hide/show and list-based modifier selection;
-- class management: create/rename/color/delete/hide, quick label creation and batch reclassification;
 - local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
-- Quality/Review UI, including image/annotation/class `reviewScore` persistence and source-pixel quality summaries;
 - keyboard shortcuts from the previous annotator;
 - selective COCO category/annotation import;
 - complete i18n coverage for the canonical workbench;
 - final visual-system decision for the canonical shell.
+
+The following application surfaces have already been restored on the canonical architecture and are no longer parity debt:
+
+- image panel: search, select, reorder and delete;
+- annotation panel: hide/show, delete, asset-local reorder, select-all and Shift/Ctrl/Cmd list selection;
+- class management: quick label creation, rename, color, hide/show, protected `Sem label`, delete with reclassification to `Sem label`, active class selection and batch reclassification;
+- Quality/Review, including image/annotation/class scores and source-pixel dataset summaries.
 
 Cephalometric-landmark import is **not part of Poligome parity** and must not be ported into the canonical editor.
 
@@ -149,6 +155,18 @@ Cephalometric-landmark import is **not part of Poligome parity** and must not be
 - **D2 — parity scope.** Quality/Review is retained as an important platform capability and is part of the parity target. Cephalometric landmarks are explicitly out of scope because they are unrelated to the product. Other parity items remain in scope unless separately decided otherwise.
 
 Modules reachable only from parity-pending UI must not be treated as dead legacy solely because they have no current canonical consumer.
+
+## Management panels
+
+The canonical management surface lives under `app/editor/panels`.
+
+- `panel-model.ts` contains pure operations for image ordering and class lifecycle;
+- `editor-management-panels.tsx` renders the responsive image, annotation and class panels;
+- hiding an annotation or class is transient UI state and never rewrites geometry;
+- deleting an image deletes only annotations owned by that asset;
+- deleting a class preserves its annotations by moving them to the protected `unlabeled` class;
+- annotation reorder never crosses asset boundaries;
+- batch class changes are recorded through `EditorState`, so one batch operation corresponds to one undo step.
 
 ## Quality and review
 
@@ -165,6 +183,8 @@ Quality metrics must never reintroduce the removed `1000×650` normalization.
 ## Validation
 
 `.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build, the complete test suite, the i18n parity-debt gate, cross-branch export goldens, the demo-route smoke test and the COG benchmark.
+
+The i18n debt allowlist is expected to shrink whenever a canonical UI surface starts consuming keys that were previously only used by `main`.
 
 ## Core migration status
 

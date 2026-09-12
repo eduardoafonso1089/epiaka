@@ -41,6 +41,7 @@ export function CanonicalEditorWorkbench() {
   const [current, setCurrent] = useState("");
   const [projectName, setProjectName] = useState("Poligome V4");
   const [language, setLanguage] = useState<Language>("pt");
+  const [saveMode, setSaveMode] = useState<"annotations" | "complete">("complete");
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
   const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4, adicione imagens ou importe GeoTIFF/COG.");
@@ -200,7 +201,7 @@ export function CanonicalEditorWorkbench() {
     if (!assets.length) return;
     setLoading(true);
     try {
-      const name = await saveEditorProject(projectName, assets, labels, editor.annotations, "complete", copy);
+      const name = await saveEditorProject(projectName, assets, labels, editor.annotations, saveMode, copy);
       editor.markSaved();
       setSessionDirty(false);
       setMessage(`Projeto V4 salvo: ${name}`);
@@ -242,6 +243,10 @@ export function CanonicalEditorWorkbench() {
         <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
         <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
+        <select aria-label={copy.saveProjectDescription} value={saveMode} onChange={(event) => setSaveMode(event.target.value as "annotations" | "complete")} disabled={loading}>
+          <option value="complete">{copy.imagesAndAnnotations}</option>
+          <option value="annotations">{copy.annotationsOnly}</option>
+        </select>
         <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V4</button>
         <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button>
         <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>

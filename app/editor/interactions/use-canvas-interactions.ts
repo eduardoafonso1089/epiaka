@@ -7,6 +7,7 @@ import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import type { EditorAction, EditorState } from "../state/editor-state";
 import { annotationBounds, resizeBoxFromCorner } from "../geometry/annotation-geometry";
+import { snapPointToAnnotations } from "../geometry/vector-operations";
 import { clientPointToImage } from "../viewport/svg-image-space";
 import { selectRange, selectSingle, selectionFromMarquee, type SelectionMarquee } from "../selection/selection-model";
 
@@ -17,6 +18,7 @@ export type CanvasInteractionOptions = {
   dispatch: (action: EditorAction) => void;
   makeId: (prefix: string) => string;
   activeAssetId?: string | null;
+  snap?: { enabled: boolean; tolerance: number; annotations: EditorAnnotation[] };
 };
 
 type DragState = { pointerId: number; last: { x: number; y: number }; annotationIds: string[] };
@@ -35,7 +37,7 @@ function eventPoint(svgRef: RefObject<SVGSVGElement | null>, imageSize: Size2D, 
   return svg ? clientPointToImage(svg, event.clientX, event.clientY, imageSize) : null;
 }
 
-export function useCanvasInteractions({ svgRef, imageSize, state, dispatch, makeId, activeAssetId }: CanvasInteractionOptions) {
+export function useCanvasInteractions({ svgRef, imageSize, state, dispatch, makeId, activeAssetId, snap }: CanvasInteractionOptions) {
   const annotationDrag = useRef<DragState | null>(null);
   const vertexDrag = useRef<VertexDragState | null>(null);
   const boxTransform = useRef<BoxTransformState | null>(null);
@@ -98,10 +100,13 @@ export function useCanvasInteractions({ svgRef, imageSize, state, dispatch, make
   const moveVertex = useCallback((event: ReactPointerEvent<SVGElement>) => {
     const drag = vertexDrag.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const point = eventPoint(svgRef, imageSize, event);
-    if (!point) return;
+    const raw = eventPoint(svgRef, imageSize, event);
+    if (!raw) return;
+    const point = snap?.enabled
+      ? snapPointToAnnotations(raw, snap.annotations, drag.annotationId, snap.tolerance)
+      : raw;
     dispatch({ type: "update-vertex", annotationId: drag.annotationId, vertexId: drag.vertexId, point });
-  }, [dispatch, imageSize, svgRef]);
+  }, [dispatch, imageSize, snap, svgRef]);
 
   const finishVertex = useCallback((event: ReactPointerEvent<SVGElement>) => {
     const drag = vertexDrag.current;
@@ -112,8 +117,10 @@ export function useCanvasInteractions({ svgRef, imageSize, state, dispatch, make
 
   const insertVertex = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, afterVertexId: string, x: number, y: number) => {
     event.stopPropagation();
-    dispatch({ type: "insert-vertex", annotationId: annotation.id, afterVertexId, vertexId: makeId(`${annotation.id}:v`), point: { x, y } });
-  }, [dispatch, makeId]);
+    const raw = { x, y };
+    const point = snap?.enabled ? snapPointToAnnotations(raw, snap.annotations, annotation.id, snap.tolerance) : raw;
+    dispatch({ type: "insert-vertex", annotationId: annotation.id, afterVertexId, vertexId: makeId(`${annotation.id}:v`), point });
+  }, [dispatch, makeId, snap]);
 
   const resizeStart = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, corner: BoxCorner) => {
     if (annotation.type !== "box") return;

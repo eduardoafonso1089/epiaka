@@ -135,7 +135,6 @@ Internal geometry remains in image pixels.
 Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be ported before the refactor is considered product-complete:
 
 - local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
-- complete i18n coverage for the canonical workbench;
 - final visual-system decision for the canonical shell.
 
 The following application surfaces have already been restored on the canonical architecture and are no longer parity debt:
@@ -146,7 +145,8 @@ The following application surfaces have already been restored on the canonical a
 - Quality/Review, including image/annotation/class scores and source-pixel dataset summaries;
 - advanced vector operations: snapping, simplify, union/merge, split, polygon-hole creation and reshape;
 - keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys;
-- selective COCO import by geometry type and individual annotation record, matched only against loaded images.
+- selective COCO import by geometry type and individual annotation record, matched only against loaded images;
+- i18n for the active canonical editor surface in Portuguese, English, French and Spanish, including the shell, COCO import, raster import and export controls, with the selected language persisted in browser storage.
 
 Cephalometric-landmark import is **not part of Poligome parity** and must not be ported into the canonical editor.
 
@@ -205,6 +205,17 @@ Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` 
 
 Keyboard commands are ignored while an input, textarea, select or content-editable element owns focus.
 
+## Internationalization
+
+The active canonical editor consumes the shared `getCopy()` translations and supports `pt`, `en`, `fr` and `es`.
+
+- `CanonicalEditorWorkbench` owns the language selector and persists it under `poligome-language`;
+- `storedLanguage()` restores the same preference on subsequent visits;
+- the selected language is propagated explicitly to COCO import, raster import and export controls;
+- standalone controls fall back to `storedLanguage()` when no explicit language is supplied;
+- source-contract tests protect language persistence and propagation;
+- the i18n parity allowlist represents translation keys belonging to application surfaces that are still absent from the canonical editor, not untranslated labels in the active canonical shell.
+
 ## Quality and review
 
 The canonical implementation lives under `app/editor/review`.
@@ -221,7 +232,7 @@ Quality metrics must never reintroduce the removed `1000×650` normalization.
 
 `.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build, the complete test suite, the i18n parity-debt gate, cross-branch export goldens, the demo-route smoke test and the COG benchmark.
 
-The i18n debt allowlist is expected to shrink whenever a canonical UI surface starts consuming keys that were previously only used by `main`.
+The i18n debt allowlist is expected to shrink whenever a canonical UI surface starts consuming keys that were previously only used by `main`. Keys associated with surfaces that have not yet been ported, especially SAM and legacy preference/help affordances, remain explicit debt until those surfaces are either ported or deliberately retired.
 
 ## Core migration status
 

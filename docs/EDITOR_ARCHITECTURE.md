@@ -1,6 +1,6 @@
 # Editor architecture
 
-The editor refactor on `refactor/editor-architecture` now uses the canonical stack directly at `/annotate`. The previous legacy route, bridge and annotation adapters have been removed.
+The editor refactor on `refactor/editor-architecture` uses the canonical stack directly at `/annotate`. The previous legacy route, bridge and annotation adapters have been removed.
 
 ## Core rules
 
@@ -21,25 +21,11 @@ The active editor uses two relevant spaces:
 
 `app/editor/viewport/svg-image-space.ts` converts client coordinates into image pixels by inverting the SVG screen CTM, with a bounding-rectangle fallback for environments without SVG CTM support.
 
-`EditorCanvas` uses the current image dimensions as its SVG viewBox. There is no fixed `1000×650` annotation space in the canonical editor.
-
-Screen-space controls such as handles and touch targets are converted into image units at render time so they keep a stable visual size across zoom levels and image resolutions.
+`EditorCanvas` uses the current image dimensions as its SVG viewBox. There is no fixed `1000×650` annotation space in the canonical editor. Screen-space controls such as handles and touch targets are converted into image units at render time so they keep a stable visual size across zoom levels and image resolutions.
 
 ## Annotation model
 
-`app/editor/models/annotation-model.ts` defines the only active editor representation:
-
-```ts
-type Vertex = { id: string; x: number; y: number };
-
-type PolygonAnnotation = {
-  type: "polygon";
-  vertices: Vertex[];
-  holes: Vertex[][];
-};
-```
-
-Boxes use `x`, `y`, `width`, `height` and optional rotation. Points use `x` and `y`. Every coordinate is expressed in source-image pixels.
+`app/editor/models/annotation-model.ts` defines the active representation. Polygon and line geometry use stable `Vertex[]`; boxes use `x`, `y`, `width`, `height` and optional rotation; points use `x` and `y`. Every coordinate is expressed in source-image pixels.
 
 There is no legacy annotation adapter in the active codebase.
 
@@ -54,18 +40,11 @@ The `.plgm` manifest is strictly V4:
 }
 ```
 
-The canonical APIs are:
-
-- `savePoligomeProjectV4()`
-- `openPoligomeProjectV4()`
-
-V3 and older manifests are rejected instead of migrated.
+The canonical APIs are `savePoligomeProjectV4()` and `openPoligomeProjectV4()`. V3 and older manifests are rejected instead of migrated.
 
 ## Viewport and touch
 
-`app/editor/viewport/viewport-controller.ts` owns viewport size, image size, zoom and scroll.
-
-`app/editor/viewport/use-editor-viewport.ts` connects the pure viewport model to the DOM. `app/editor/viewport/use-touch-navigation.ts` arbitrates mobile gestures:
+`app/editor/viewport/viewport-controller.ts` owns viewport size, image size, zoom and scroll. `app/editor/viewport/use-touch-navigation.ts` arbitrates mobile gestures:
 
 - one-finger pan in the Hand tool;
 - two-finger pinch + pan in any tool;
@@ -76,34 +55,13 @@ Pan and pinch mutate viewport state only.
 
 ## State and interactions
 
-`app/editor/state/editor-state.ts` owns:
+`app/editor/state/editor-state.ts` owns annotations, undo/redo, selection, selected vertex, dirty/saved state and gesture transactions. It also owns canonical annotation ordering, batch reclassification and atomic batch replacement.
 
-- `EditorAnnotation[]`;
-- undo/redo history;
-- single/multiple selection;
-- selected vertex by ID;
-- dirty/saved state;
-- active gesture transaction.
-
-It also owns canonical annotation ordering, batch reclassification and atomic batch replacement. Reordering is constrained to annotations belonging to the same asset, batch reclassification is a single undoable editor operation, and merge/split can replace multiple annotations in one history snapshot.
-
-`app/editor/interactions/use-canvas-interactions.ts` handles annotation drag, vertex drag/insertion, rotated box resize/rotation, marquee selection and source-pixel snapping for vertex editing.
-
-A continuous drag/resize/rotation creates one undo step.
+Reordering is constrained to annotations belonging to the same asset. Batch reclassification is a single undoable editor operation. Merge/split can replace multiple annotations in one history snapshot. A continuous drag/resize/rotation creates one undo step.
 
 ## Rendering
 
-Rendering is composed under `app/editor/layers` and `app/editor/canvas`:
-
-- `annotation-layer.tsx`
-- `polygon-layer.tsx`
-- `polyline-layer.tsx`
-- `box-layer.tsx`
-- `point-layer.tsx`
-- `vertex-handles.tsx`
-- `editor-canvas.tsx`
-
-The rendering stack has no dependency on flat `pts`, index-based vertex identity or legacy `w/h` box fields.
+Rendering is composed under `app/editor/layers` and `app/editor/canvas`. The rendering stack has no dependency on flat `pts`, index-based vertex identity or legacy `w/h` box fields.
 
 ## Import/export
 
@@ -111,12 +69,18 @@ Internal geometry remains in image pixels.
 
 - COCO uses image pixels directly.
 - COCO import scales only when the document dimensions differ from the loaded image dimensions.
-- Selective COCO import first plans records against loaded image basenames, then lets the user filter geometry types and individual annotation records before labels or geometry are materialized.
+- Selective COCO import plans records against loaded image basenames, then lets the user filter geometry types and individual annotation records before labels or geometry are materialized.
 - YOLO normalization happens only at export using the actual asset width/height.
 - GeoJSON projects image pixels through raster/georeference metadata.
 - Flat coordinate arrays are allowed only at external format boundaries.
 
 `app/editor/session/editor-session-io.ts` is the canonical project/demo/import/export boundary.
+
+## Native COG rendering
+
+Native tiled COG assets use the full source-raster dimensions as the logical image extent. The renderer plans only visible tiles plus one-tile overscan, uses the existing GeoTIFF overview/range machinery, cancels obsolete reads and keeps a bounded 64-entry LRU tile cache.
+
+`ViewportController.maxZoom()` scales dynamically for large rasters so native-resolution and deep-zoom inspection remain possible without changing annotation geometry.
 
 ## Route
 
@@ -132,30 +96,36 @@ Internal geometry remains in image pixels.
 
 ## Application parity
 
-Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be ported before the refactor is considered product-complete:
-
-- local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
-- final visual-system decision for the canonical shell.
-
-The following application surfaces have already been restored on the canonical architecture and are no longer parity debt:
+The agreed application surface for this branch has been restored on the canonical architecture:
 
 - image panel: search, select, reorder and delete;
 - annotation panel: hide/show, delete, asset-local reorder, select-all and Shift/Ctrl/Cmd list selection;
-- class management: quick label creation, rename, color, hide/show, protected `Sem label`, delete with reclassification to `Sem label`, active class selection and batch reclassification;
+- class management: quick label creation, rename, color, hide/show, protected `Sem label`, delete with reclassification, active class selection and batch reclassification;
 - Quality/Review, including image/annotation/class scores and source-pixel dataset summaries;
 - advanced vector operations: snapping, simplify, union/merge, split, polygon-hole creation and reshape;
 - keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys;
-- selective COCO import by geometry type and individual annotation record, matched only against loaded images;
-- i18n for the active canonical editor surface in Portuguese, English, French and Spanish, including the shell, COCO import, raster import and export controls, with the selected language persisted in browser storage.
+- selective COCO import by geometry type and individual annotation record;
+- PT/EN/FR/ES internationalization for the active canonical editor surface;
+- canonical visual/interface structure using the shared Poligome visual tokens.
 
-Cephalometric-landmark import is **not part of Poligome parity** and must not be ported into the canonical editor.
+Cephalometric-landmark import is not part of Poligome and must not be ported into the canonical editor.
 
 ### Product decisions recorded on 2026-09-12
 
-- **D1 — merge strategy: option B.** Keep implementing application parity on `refactor/editor-architecture`; merge into `main` only when the canonical editor has recovered the agreed product surface. Do not restore the legacy annotator as the production `/annotate` route.
-- **D2 — parity scope.** Quality/Review is retained as an important platform capability and is part of the parity target. Cephalometric landmarks are explicitly out of scope because they are unrelated to the product. Other parity items remain in scope unless separately decided otherwise.
+- **D1 — merge strategy: option B.** Implement application parity on `refactor/editor-architecture`; merge into `main` only when the canonical editor has recovered the agreed product surface. Do not restore the legacy annotator as the production `/annotate` route.
+- **D2 — parity scope.** Quality/Review is retained as an important platform capability. Cephalometric landmarks are explicitly out of scope.
+- **SAM integration.** SAM is not a merge blocker for this refactor branch. Its canonical implementation will be integrated from a separate branch. `app/lib/sam.ts` and its local connector assets must therefore not be deleted as orphaned legacy during this refactor.
 
-Modules reachable only from parity-pending UI must not be treated as dead legacy solely because they have no current canonical consumer.
+## Interface structure
+
+There is no separate runtime or operating-system shell in Poligome. In this documentation, the UI is described as the **editor interface structure**.
+
+The canonical editor reuses the application-wide design tokens from `app/globals.css` (`--paper`, `--surface`, `--line`, `--green`, `--canvas-bg`, and related tokens) rather than defining a separate theme. Editor-specific composition lives in:
+
+- `app/editor/editor-interface.module.css` for management, vector and review surfaces;
+- `app/annotate/annotate-interface.module.css` for the `/annotate` route frame and responsive layout.
+
+The goal is to preserve the Poligome visual identity without re-coupling the canonical editor to the legacy annotator DOM. Inline styles are reserved for values that are genuinely runtime-derived, such as canvas position/size, class colors and metric widths.
 
 ## Management panels
 
@@ -185,45 +155,18 @@ Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` 
 
 ## Keyboard commands
 
-`app/editor/commands/editor-shortcuts.ts` translates keyboard input into editor commands. The current canonical shortcuts include:
-
-- `V` select;
-- `H` hand/pan;
-- `B` box;
-- `P` polygon;
-- `F` freehand;
-- `L` line;
-- `K` point;
-- `O` polygon hole;
-- `X` split;
-- `R` reshape;
-- `Enter` finish the active draft;
-- `Esc` cancel the active draft/tool;
-- `Delete`/`Backspace` delete the selected vertex first, otherwise selected annotations;
-- `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y` for undo/redo;
-- unmodified class shortcut keys select their corresponding label.
+`app/editor/commands/editor-shortcuts.ts` translates keyboard input into editor commands. Current canonical shortcuts include `V`, `H`, `B`, `P`, `F`, `L`, `K`, `O`, `X`, `R`, `Enter`, `Esc`, `Delete`/`Backspace`, `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y`. Unmodified class shortcut keys select their corresponding label.
 
 Keyboard commands are ignored while an input, textarea, select or content-editable element owns focus.
-
-## Internationalization
-
-The active canonical editor consumes the shared `getCopy()` translations and supports `pt`, `en`, `fr` and `es`.
-
-- `CanonicalEditorWorkbench` owns the language selector and persists it under `poligome-language`;
-- `storedLanguage()` restores the same preference on subsequent visits;
-- the selected language is propagated explicitly to COCO import, raster import and export controls;
-- standalone controls fall back to `storedLanguage()` when no explicit language is supplied;
-- source-contract tests protect language persistence and propagation;
-- the i18n parity allowlist represents translation keys belonging to application surfaces that are still absent from the canonical editor, not untranslated labels in the active canonical shell.
 
 ## Quality and review
 
 The canonical implementation lives under `app/editor/review`.
 
-- `quality-review-model.ts` computes per-image instance balance, per-class instance counts and polygon/box areas directly in native source-image pixels.
+- `quality-review-model.ts` computes per-image instance balance, per-class instance counts and polygon/box areas directly in native source-image pixels;
 - polygon holes are subtracted from segmentation area;
 - points and lines contribute zero segmentation area;
-- image, annotation and class review scores remain independent 1–5 values persisted by the existing V4 project model;
+- image, annotation and class review scores remain independent 1–5 values persisted by the V4 project model;
 - `quality-review-panel.tsx` is the application panel for the quality/review surface.
 
 Quality metrics must never reintroduce the removed `1000×650` normalization.
@@ -232,7 +175,7 @@ Quality metrics must never reintroduce the removed `1000×650` normalization.
 
 `.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build, the complete test suite, the i18n parity-debt gate, cross-branch export goldens, the demo-route smoke test and the COG benchmark.
 
-The i18n debt allowlist is expected to shrink whenever a canonical UI surface starts consuming keys that were previously only used by `main`. Keys associated with surfaces that have not yet been ported, especially SAM and legacy preference/help affordances, remain explicit debt until those surfaces are either ported or deliberately retired.
+The i18n debt allowlist must shrink whenever a canonical UI surface starts consuming keys previously used only by `main`. Remaining entries may include UI intentionally deferred to another branch, such as SAM, and must not be mistaken for active-interface translation regressions.
 
 ## Core migration status
 
@@ -245,4 +188,4 @@ The i18n debt allowlist is expected to shrink whenever a canonical UI surface st
 7. Strict V4 project persistence. **Done.**
 8. Replace `/annotate` with the canonical editor. **Done.**
 9. Delete duplicate/legacy routes, bridge and annotation adapters. **Done.**
-10. Remove only utilities proven to be legacy and behaviorally superseded. A module must **not** be deleted solely because its application UI has not yet been ported. In particular, `app/lib/sam.ts` and modules reachable only from parity-pending UI are protected until the relevant product decision and port are complete. `app/lib/sam.ts` currently also needs migration away from the removed normalized-geometry helpers before it can be reactivated. **Guarded cleanup, not blanket orphan deletion.**
+10. Remove only utilities proven to be legacy and behaviorally superseded. A module must not be deleted solely because its UI is being integrated from another branch. **Guarded cleanup, not blanket orphan deletion.**

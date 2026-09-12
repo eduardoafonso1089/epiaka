@@ -17,6 +17,7 @@ import { DrawingDraftLayer } from "../drawing/drawing-draft-layer";
 import { useDrawingInteractions, type DrawingTool } from "../drawing/use-drawing-interactions";
 import { useEditorViewport } from "../viewport/use-editor-viewport";
 import { useTouchNavigation } from "../viewport/use-touch-navigation";
+import { screenPixelsToImageUnits } from "../viewport/svg-image-space";
 
 const EMPTY_LABELS: Label[] = [{ id: "unlabeled", name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
@@ -35,17 +36,18 @@ export function CanonicalEditorWorkbench() {
   const [activeLabel, setActiveLabel] = useState(EMPTY_LABELS[0].id);
   const [tool, setTool] = useState<DrawingTool>("select");
   const [current, setCurrent] = useState("");
-  const [projectName, setProjectName] = useState("Poligome V3");
+  const [projectName, setProjectName] = useState("Poligome V4");
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
-  const [message, setMessage] = useState("Carregue o demo, abra um .plgm V3 ou adicione imagens.");
+  const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4 ou adicione imagens.");
   const objectUrls = useRef<string[]>([]);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
   const editor = useEditorState();
   const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
-  const viewport = useEditorViewport({ image: { width: asset?.width ?? 1000, height: asset?.height ?? 650 }, initialZoom: 92 });
+  const imageSize = { width: asset?.width ?? 1, height: asset?.height ?? 1 };
+  const viewport = useEditorViewport({ image: imageSize, initialZoom: 92 });
 
   const makeId = useCallback((prefix: string) => {
     idCounter.current += 1;
@@ -53,8 +55,8 @@ export function CanonicalEditorWorkbench() {
     return `${prefix}-${random}-${idCounter.current}`;
   }, []);
 
-  const interactions = useCanvasInteractions({ svgRef: viewport.canvasRef, state: editor.state, dispatch: editor.dispatch, makeId, activeAssetId: current || null });
-  const drawing = useDrawingInteractions({ svgRef: viewport.canvasRef, tool, assetId: current || null, labelId: activeLabel, makeId, addAnnotation: editor.addAnnotation });
+  const interactions = useCanvasInteractions({ svgRef: viewport.canvasRef, imageSize, state: editor.state, dispatch: editor.dispatch, makeId, activeAssetId: current || null });
+  const drawing = useDrawingInteractions({ svgRef: viewport.canvasRef, imageSize, tool, assetId: current || null, labelId: activeLabel, makeId, addAnnotation: editor.addAnnotation });
   const touch = useTouchNavigation({
     tool,
     zoom: viewport.state.zoom,
@@ -95,7 +97,7 @@ export function CanonicalEditorWorkbench() {
       editor.replaceAnnotations(demo.annotations, true);
       setSessionDirty(false);
       resetInteractionState();
-      setMessage("Demo carregado no modelo canônico EditorAnnotation/V3.");
+      setMessage("Demo carregado em coordenadas de pixel da imagem.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha ao carregar demo.");
     } finally {
@@ -116,9 +118,9 @@ export function CanonicalEditorWorkbench() {
       editor.replaceAnnotations(loaded.annotations, true);
       setSessionDirty(false);
       resetInteractionState();
-      setMessage(loaded.missingImages ? `Projeto V3 aberto. ${loaded.missingImages} imagem(ns) ausente(s).` : `Projeto V3 aberto: ${file.name}`);
+      setMessage(loaded.missingImages ? `Projeto V4 aberto. ${loaded.missingImages} imagem(ns) ausente(s).` : `Projeto V4 aberto: ${file.name}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao abrir projeto V3.");
+      setMessage(error instanceof Error ? error.message : "Falha ao abrir projeto V4.");
     } finally {
       setLoading(false);
     }
@@ -173,7 +175,7 @@ export function CanonicalEditorWorkbench() {
       const name = await saveEditorProject(projectName, assets, labels, editor.annotations, "complete", getCopy("pt"));
       editor.markSaved();
       setSessionDirty(false);
-      setMessage(`Projeto V3 salvo: ${name}`);
+      setMessage(`Projeto V4 salvo: ${name}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Falha ao salvar projeto.");
     } finally {
@@ -190,9 +192,11 @@ export function CanonicalEditorWorkbench() {
   const imageIndex = asset ? assets.findIndex((item) => item.id === asset.id) : -1;
   const selecting = tool === "select";
   const panning = tool === "pan";
-  const handleScale = viewport.state.zoom < 100 ? Math.pow(100 / viewport.state.zoom, .6) : 100 / viewport.state.zoom;
-  const markerRadius = 4.6 * handleScale;
-  const markerAspect = 650 * (asset?.width ?? 1000) / (1000 * (asset?.height ?? 650));
+  const markerRadius = screenPixelsToImageUnits(4.6, imageSize, viewport.layout.width);
+  const lineThickness = screenPixelsToImageUnits(3, imageSize, viewport.layout.width);
+  const touchRadius = screenPixelsToImageUnits(22, imageSize, viewport.layout.width);
+  const boxTouchRadius = screenPixelsToImageUnits(28, imageSize, viewport.layout.width);
+  const boxRotationTouchRadius = screenPixelsToImageUnits(20, imageSize, viewport.layout.width);
   const canvasCursor = panning ? (touch.navigating ? "grabbing" : "grab") : selecting ? "default" : "crosshair";
 
   return <main style={{ minHeight: "100vh", background: "#111315", color: "#f4f5f5", padding: 16, fontFamily: "system-ui, sans-serif" }}>
@@ -203,13 +207,13 @@ export function CanonicalEditorWorkbench() {
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
         <strong style={{ marginRight: 8 }}>Poligome · editor canônico</strong>
         <button onClick={loadDemo} disabled={loading}>Demo</button>
-        <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V3</button>
+        <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V4</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
         <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
         <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
         <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
-        <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V3</button>
+        <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V4</button>
         <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button>
         <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>
         <span style={{ opacity: .7, marginLeft: "auto" }}>{asset ? `${imageIndex + 1}/${assets.length} · ${visibleAnnotations.length} anotações` : "sem imagem"}</span>
@@ -234,6 +238,7 @@ export function CanonicalEditorWorkbench() {
           <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
             {asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} /> : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? "Imagem ausente" : "Nenhuma imagem carregada"}</div>}
             {asset && !asset.missing && <EditorCanvas
+              imageSize={imageSize}
               svgRef={viewport.canvasRef}
               style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none", cursor: canvasCursor }}
               annotations={visibleAnnotations}
@@ -243,14 +248,14 @@ export function CanonicalEditorWorkbench() {
               selectedIds={selectedIds}
               selectedVertex={editor.selectedVertex}
               selectionMarquee={interactions.selectionMarquee}
-              overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={3} />}
-              lineThickness={3 * handleScale}
+              overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={lineThickness} />}
+              lineThickness={lineThickness}
               touchMode={touch.touchMode}
-              touchRadius={22 * handleScale}
+              touchRadius={touchRadius}
               markerRadius={markerRadius}
-              markerAspect={markerAspect}
-              boxTouchRadius={28 * handleScale}
-              boxRotationTouchRadius={20 * handleScale}
+              markerAspect={1}
+              boxTouchRadius={boxTouchRadius}
+              boxRotationTouchRadius={boxRotationTouchRadius}
               onPointerDownCapture={touch.onPointerDownCapture}
               onPointerMoveCapture={touch.onPointerMoveCapture}
               onPointerUpCapture={touch.onPointerUpCapture}
@@ -280,9 +285,9 @@ export function CanonicalEditorWorkbench() {
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>
         <span>Ferramenta: {tool}</span>
         <span>Zoom: {viewport.state.zoom}%</span>
-        <span>Espaço lógico: 1000×650</span>
+        <span>Coordenadas: pixels da imagem</span>
         <span>Formato interno: EditorAnnotation[]</span>
-        <span>Projeto: .plgm V3</span>
+        <span>Projeto: .plgm V4</span>
         <span>Vértices: IDs estáveis</span>
         <span>{projectDirty ? "alterado" : "salvo"}</span>
       </footer>

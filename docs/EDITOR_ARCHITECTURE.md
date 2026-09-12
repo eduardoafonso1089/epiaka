@@ -35,7 +35,7 @@ type PolygonAnnotation = {
 
 Boxes use explicit `width`/`height`, and points use explicit `x`/`y` coordinates.
 
-`app/editor/models/legacy-annotation-adapter.ts` is a temporary boundary only for `legacy-page.tsx`. It is not part of the persisted V3 format. It will disappear when the route component is fully migrated.
+`app/editor/models/legacy-annotation-adapter.ts` is a temporary in-memory boundary for `legacy-page.tsx`. It is not part of project persistence and does not provide backward compatibility for old project manifests.
 
 ## Project format V3
 
@@ -49,6 +49,8 @@ V3 changes:
 - flat `pts` arrays are not stored in the manifest;
 - V2 manifests are rejected rather than silently migrated.
 
+The canonical project API is `savePoligomeProjectV3()` / `openPoligomeProjectV3()`, both typed with `EditorAnnotation[]`. The old function names remain only as deprecated in-memory façades for the route that has not yet migrated its React state.
+
 The `.plgm` extension therefore identifies the current Poligome project container, not a promise of backward compatibility with earlier manifest versions.
 
 ## Viewport
@@ -59,25 +61,31 @@ The `.plgm` extension therefore identifies the current Poligome project containe
 
 `app/editor/interactions/interaction-controller.ts` provides explicit pointer ownership for editor gestures. Supported modes are `idle`, `select`, `draw`, `edit`, `pan`, `resize`, `rotate` and `model`.
 
-`app/editor/interactions/vertex-interactions.ts` contains pure hit-testing and topology helpers used to migrate vertex gestures out of the route component.
+`app/editor/interactions/vertex-interactions.ts` uses `EditorAnnotation[]` and stable `vertexId` references for hit-testing and linked topology. No index-based vertex identity remains in the new interaction layer.
 
-## Editable vertices
+## Canonical geometry
 
-`Vertex[]` is no longer treated as an optional transient representation. It is the target geometry model for polygon/polyline annotations and the persisted V3 project format.
+`app/editor/geometry/annotation-geometry.ts` owns geometry operations over the canonical model:
 
-`app/lib/geometry.ts` currently still exposes flat-array functions because `legacy-page.tsx` calls them. Those functions internally route insert/update/delete and edge-midpoint operations through `Vertex[]`. They are transitional APIs and should be deleted with the legacy route.
+- bounds;
+- translation;
+- vertex insertion/update/deletion by ID;
+- edge midpoint generation;
+- editor-boundary clamping.
+
+New editor code should use this module rather than `app/lib/geometry.ts`. The latter remains only for `legacy-page.tsx` and flat-array utilities that have not yet been deleted.
 
 ## Extracted rendering layers
 
 Rendering extraction lives under `app/editor/layers`:
 
-- `vertex-handles.tsx` — shared vertex and edge-insertion controls for polygons and polylines;
-- `polygon-layer.tsx` — presentational polygon path + vertex controls;
-- `polyline-layer.tsx` — presentational polyline + shared vertex controls;
-- `box-layer.tsx` — box geometry and resize/rotation controls;
-- `point-layer.tsx` — point annotation rendering.
+- `vertex-handles.tsx` — consumes `Vertex[]` directly and emits vertex IDs;
+- `polygon-layer.tsx` — consumes `PolygonAnnotation`;
+- `polyline-layer.tsx` — consumes `PolylineAnnotation`;
+- `box-layer.tsx` — consumes `BoxAnnotation` with `width`/`height`;
+- `point-layer.tsx` — consumes `PointAnnotation`.
 
-These components are stateless and receive editor state and callbacks rather than importing global project state.
+The new rendering stack has no dependency on the legacy `Annotation` type or flat `pts` arrays.
 
 ## Selection
 
@@ -86,7 +94,7 @@ Selection extraction lives under `app/editor/selection`:
 - `selection-model.ts` — marquee normalization, single selection, toggle selection, range selection and additive marquee selection;
 - `selection-layer.tsx` — stateless SVG marquee rendering.
 
-The existing route still owns the React state, but selection semantics can migrate to these pure functions without duplicating policy inside pointer handlers.
+The existing route still owns the React state, but selection semantics can now migrate to these pure functions without duplicating policy inside pointer handlers.
 
 ## Route split
 
@@ -110,12 +118,13 @@ The previous monolithic route implementation lives in `legacy-page.tsx` while fu
 8. Extract pure selection semantics and marquee rendering. **Done.**
 9. Introduce the canonical `EditorAnnotation` model. **Done.**
 10. Move `.plgm` persistence to strict vertex-based V3 and drop V2 compatibility. **Done.**
-11. Wire extracted annotation layers and selection into the route. **Next.**
-12. Replace legacy selection and vertex pointer handlers with the extracted interaction modules.
-13. Move route state from legacy `Annotation` to `EditorAnnotation` and delete `legacy-annotation-adapter.ts`.
-14. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
-15. Remove `legacy-page.tsx` once all rendering and interactions have moved.
+11. Move extracted layers to canonical annotation types and vertex IDs. **Done.**
+12. Add canonical annotation geometry and ID-based vertex interactions. **Done.**
+13. Wire extracted annotation layers and selection into the route. **Next.**
+14. Move route React state from legacy `Annotation` to `EditorAnnotation` and delete deprecated project façades plus `legacy-annotation-adapter.ts`.
+15. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
+16. Remove `legacy-page.tsx` once all rendering and interactions have moved.
 
 ## Tests
 
-The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, vertex serialization and geometry compatibility, interaction ownership, annotation layer contracts, vertex hit-testing/topology, selection semantics, and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.
+The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, canonical vertex mutations, canonical annotation geometry, interaction ownership, annotation layer contracts, vertex hit-testing/topology, selection semantics, and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.

@@ -13,9 +13,11 @@ import { RasterImportControl, type RasterImportResult } from "../import/raster-i
 import { ExportControls } from "../export/export-controls";
 import { useEditorState } from "../state/use-editor-state";
 import { useCanvasInteractions } from "../interactions/use-canvas-interactions";
+import { useAdvancedVectorInteractions, type AdvancedVectorResult } from "../interactions/use-advanced-vector-interactions";
 import { EditorCanvas } from "../canvas/editor-canvas";
 import { DrawingDraftLayer } from "../drawing/drawing-draft-layer";
 import { useDrawingInteractions, type DrawingTool } from "../drawing/use-drawing-interactions";
+import { AdvancedVectorDraftLayer } from "../layers/advanced-vector-draft-layer";
 import { useEditorViewport } from "../viewport/use-editor-viewport";
 import { useTouchNavigation } from "../viewport/use-touch-navigation";
 import { screenPixelsToImageUnits } from "../viewport/svg-image-space";
@@ -26,16 +28,19 @@ import { setAssetReviewScore, setLabelReviewScore } from "../review/quality-revi
 import { EditorManagementPanels } from "../panels/editor-management-panels";
 import { createLabel as createPanelLabel, moveItemById, recolorLabel, renameLabel, UNLABELED_ID } from "../panels/panel-model";
 import { selectRange } from "../selection/selection-model";
+import { commandFromKeyboard, isEditableShortcutTarget, type VectorTool } from "../commands/editor-shortcuts";
+import { simplifyPolygonAnnotation, unionPolygonAnnotations } from "../geometry/vector-operations";
+import { VectorToolbar } from "../vector/vector-toolbar";
 
 const EMPTY_LABELS: Label[] = [{ id: UNLABELED_ID, name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
-  { id: "select", label: "Selecionar" },
-  { id: "pan", label: "Mão" },
-  { id: "box", label: "Caixa" },
-  { id: "polygon", label: "Polígono" },
-  { id: "line", label: "Linha" },
-  { id: "point", label: "Ponto" },
-  { id: "freehand", label: "Livre" },
+  { id: "select", label: "Selecionar (V)" },
+  { id: "pan", label: "Mão (H)" },
+  { id: "box", label: "Caixa (B)" },
+  { id: "polygon", label: "Polígono (P)" },
+  { id: "line", label: "Linha (L)" },
+  { id: "point", label: "Ponto (K)" },
+  { id: "freehand", label: "Livre (F)" },
 ];
 
 export function CanonicalEditorWorkbench() {
@@ -43,6 +48,8 @@ export function CanonicalEditorWorkbench() {
   const [labels, setLabels] = useState<Label[]>(EMPTY_LABELS);
   const [activeLabel, setActiveLabel] = useState(EMPTY_LABELS[0].id);
   const [tool, setTool] = useState<DrawingTool>("select");
+  const [vectorTool, setVectorTool] = useState<VectorTool>(null);
+  const [snapEnabled, setSnapEnabled] = useState(true);
   const [current, setCurrent] = useState("");
   const [projectName, setProjectName] = useState("Poligome V4");
   const [language, setLanguage] = useState<Language>("pt");
@@ -70,14 +77,66 @@ export function CanonicalEditorWorkbench() {
     return `${prefix}-${random}-${idCounter.current}`;
   }, []);
 
-  const interactions = useCanvasInteractions({ svgRef: viewport.canvasRef, imageSize, state: editor.state, dispatch: editor.dispatch, makeId, activeAssetId: current || null });
+  const activeAssetAnnotations = useMemo(
+    () => asset ? editor.annotations.filter((annotation) => annotation.asset === asset.id) : [],
+    [asset, editor.annotations],
+  );
+  const visibleAnnotations = useMemo(
+    () => activeAssetAnnotations.filter((annotation) => !hiddenAnnotationIds.has(annotation.id) && !hiddenLabelIds.has(annotation.label)),
+    [activeAssetAnnotations, hiddenAnnotationIds, hiddenLabelIds],
+  );
+  const selectedIds = editor.selection.multiSelected.length ? editor.selection.multiSelected : editor.selection.selected ? [editor.selection.selected] : [];
+  const selectedPolygons = useMemo(
+    () => editor.annotations.filter((annotation): annotation is Extract<EditorAnnotation, { type: "polygon" }> => selectedIds.includes(annotation.id) && annotation.type === "polygon" && annotation.asset === asset?.id),
+    [asset?.id, editor.annotations, selectedIds],
+  );
+  const activePolygon = editor.selectedAnnotation?.type === "polygon" && editor.selectedAnnotation.asset === asset?.id ? editor.selectedAnnotation : null;
+  const activeColor = labels.find((label) => label.id === activeLabel)?.color ?? "#929a95";
+  const projectDirty = sessionDirty || !editor.saved;
+  const snapTolerance = screenPixelsToImageUnits(13, imageSize, viewport.layout.width);
+
+  const interactions = useCanvasInteractions({
+    svgRef: viewport.canvasRef,
+    imageSize,
+    state: editor.state,
+    dispatch: editor.dispatch,
+    makeId,
+    activeAssetId: current || null,
+    snap: { enabled: snapEnabled, tolerance: snapTolerance, annotations: visibleAnnotations },
+  });
   const drawing = useDrawingInteractions({ svgRef: viewport.canvasRef, imageSize, tool, assetId: current || null, labelId: activeLabel, makeId, addAnnotation: editor.addAnnotation });
+
+  const vectorResultMessage = useCallback((result: AdvancedVectorResult) => {
+    const messages: Record<AdvancedVectorResult, string> = {
+      "hole-added": "Buraco adicionado ao polígono.",
+      "hole-invalid": "O buraco deve ficar inteiramente dentro do polígono e não pode tocar outros anéis.",
+      "split-done": copy.toastSplitDone,
+      "split-invalid": copy.toastSplitNeedsCross,
+      "reshape-added": copy.toastReshapeAdded,
+      "reshape-removed": copy.toastReshapeRemoved,
+      "reshape-mixed": copy.toastReshapeMixed,
+      "reshape-crossings": copy.toastReshapeCross,
+      "reshape-direction": copy.toastReshapeAddDirection,
+    };
+    setMessage(messages[result]);
+  }, [copy]);
+
+  const advanced = useAdvancedVectorInteractions({
+    svgRef: viewport.canvasRef,
+    imageSize,
+    tool: vectorTool,
+    activePolygon,
+    makeId,
+    dispatch: editor.dispatch,
+    onResult: vectorResultMessage,
+  });
+
   const touch = useTouchNavigation({
     tool,
     zoom: viewport.state.zoom,
     panBy: viewport.panBy,
     pinchPan: viewport.pinchPan,
-    cancelEditing: interactions.cancel,
+    cancelEditing: () => { interactions.cancel(); advanced.cancel(); },
     cancelDrawing: drawing.cancelDraft,
   });
 
@@ -91,21 +150,11 @@ export function CanonicalEditorWorkbench() {
     document.documentElement.dataset.theme = storedTheme();
   }, []);
 
-  const activeAssetAnnotations = useMemo(
-    () => asset ? editor.annotations.filter((annotation) => annotation.asset === asset.id) : [],
-    [asset, editor.annotations],
-  );
-  const visibleAnnotations = useMemo(
-    () => activeAssetAnnotations.filter((annotation) => !hiddenAnnotationIds.has(annotation.id) && !hiddenLabelIds.has(annotation.label)),
-    [activeAssetAnnotations, hiddenAnnotationIds, hiddenLabelIds],
-  );
-  const selectedIds = editor.selection.multiSelected.length ? editor.selection.multiSelected : editor.selection.selected ? [editor.selection.selected] : [];
-  const activeColor = labels.find((label) => label.id === activeLabel)?.color ?? "#929a95";
-  const projectDirty = sessionDirty || !editor.saved;
-
   function resetInteractionState() {
     setTool("select");
+    setVectorTool(null);
     drawing.cancelDraft();
+    advanced.cancel();
     editor.dispatch({ type: "clear-selection" });
     viewport.zoomTo(92);
   }
@@ -202,18 +251,32 @@ export function CanonicalEditorWorkbench() {
     setSessionDirty(true);
     setMessage(result.message);
     drawing.cancelDraft();
+    advanced.cancel();
+    setVectorTool(null);
     setTool("select");
   }
 
   function chooseTool(next: DrawingTool) {
     if (next !== tool) drawing.cancelDraft();
+    advanced.cancel();
+    setVectorTool(null);
     setTool(next);
     if (next !== "select") editor.dispatch({ type: "clear-selection" });
+  }
+
+  function chooseVectorTool(next: VectorTool) {
+    drawing.cancelDraft();
+    interactions.cancel();
+    advanced.cancel();
+    setTool("select");
+    setVectorTool(next);
   }
 
   function selectAsset(id: string) {
     if (!assets.some((item) => item.id === id)) return;
     drawing.cancelDraft();
+    advanced.cancel();
+    setVectorTool(null);
     setCurrent(id);
     editor.dispatch({ type: "clear-selection" });
     viewport.zoomTo(92);
@@ -334,6 +397,25 @@ export function CanonicalEditorWorkbench() {
     setSessionDirty(true);
   }
 
+  function simplifySelected() {
+    if (!activePolygon) return;
+    const tolerance = screenPixelsToImageUnits(4, imageSize, viewport.layout.width);
+    const simplified = simplifyPolygonAnnotation(activePolygon, tolerance);
+    if (simplified === activePolygon) return;
+    editor.dispatch({ type: "replace-annotation", annotation: simplified });
+    setMessage(copy.toastSimplified);
+  }
+
+  function mergeSelected() {
+    if (selectedPolygons.length < 2) return;
+    const sameLabel = selectedPolygons.every((polygon) => polygon.label === selectedPolygons[0].label);
+    if (!sameLabel) { setMessage(copy.toastMergeSameClass); return; }
+    const merged = unionPolygonAnnotations(selectedPolygons, makeId);
+    if (merged.length !== 1) { setMessage(copy.toastMergeFailed); return; }
+    editor.dispatch({ type: "replace-annotations-batch", removeIds: selectedPolygons.map((polygon) => polygon.id), annotations: merged, selectIds: merged.map((polygon) => polygon.id) });
+    setMessage(copy.toastMerged);
+  }
+
   function reviewAsset(score: number) {
     if (!asset) return;
     setAssets((items) => setAssetReviewScore(items, asset.id, score));
@@ -366,6 +448,40 @@ export function CanonicalEditorWorkbench() {
     }
   }
 
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return;
+      const command = commandFromKeyboard(event);
+      if (!command) return;
+      if (["undo", "redo", "delete", "finish-draft", "escape"].includes(command.type)) event.preventDefault();
+      if (command.type === "undo") { editor.undo(); return; }
+      if (command.type === "redo") { editor.redo(); return; }
+      if (command.type === "delete") {
+        if (editor.selectedVertex) editor.dispatch({ type: "delete-vertex", annotationId: editor.selectedVertex.annotationId, vertexId: editor.selectedVertex.vertexId });
+        else deleteAnnotations(selectedIds);
+        return;
+      }
+      if (command.type === "finish-draft") {
+        if (vectorTool === "hole") advanced.finishHole();
+        else drawing.finishDraft();
+        return;
+      }
+      if (command.type === "escape") {
+        drawing.cancelDraft(); advanced.cancel(); interactions.cancel(); setVectorTool(null);
+        if (tool !== "select") setTool("select"); else editor.dispatch({ type: "clear-selection" });
+        return;
+      }
+      if (command.type === "tool") { if (asset && !asset.missing) chooseTool(command.tool); return; }
+      if (command.type === "vector-tool") { if (activePolygon) chooseVectorTool(command.tool); return; }
+      if (command.type === "label-key") {
+        const label = labels.find((item) => item.key === command.key);
+        if (label) setActiveLabel(label.id);
+      }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [activePolygon, advanced, asset, drawing, editor, interactions, labels, selectedIds, tool, vectorTool]);
+
   const noopElement = useCallback((_event: ReactPointerEvent<SVGElement>) => undefined, []);
   const noopAnnotation = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation) => undefined, []);
   const noopVertex = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation, _id: string) => undefined, []);
@@ -373,14 +489,19 @@ export function CanonicalEditorWorkbench() {
   const noopResize = useCallback((_event: ReactPointerEvent<SVGElement>, _annotation: EditorAnnotation, _corner: BoxCorner) => undefined, []);
 
   const imageIndex = asset ? assets.findIndex((item) => item.id === asset.id) : -1;
-  const selecting = tool === "select";
+  const selecting = tool === "select" && !vectorTool;
+  const vectorEditing = Boolean(vectorTool);
   const panning = tool === "pan";
   const markerRadius = screenPixelsToImageUnits(4.6, imageSize, viewport.layout.width);
   const lineThickness = screenPixelsToImageUnits(3, imageSize, viewport.layout.width);
   const touchRadius = screenPixelsToImageUnits(22, imageSize, viewport.layout.width);
   const boxTouchRadius = screenPixelsToImageUnits(28, imageSize, viewport.layout.width);
   const boxRotationTouchRadius = screenPixelsToImageUnits(20, imageSize, viewport.layout.width);
-  const canvasCursor = panning ? (touch.navigating ? "grabbing" : "grab") : selecting ? "default" : "crosshair";
+  const canvasCursor = panning ? (touch.navigating ? "grabbing" : "grab") : vectorEditing || !selecting ? "crosshair" : "default";
+  const overlay = <>
+    <DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={lineThickness} />
+    <AdvancedVectorDraftLayer draft={advanced.draft} color={activeColor} lineThickness={lineThickness} />
+  </>;
 
   return <main style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>
     <input ref={projectInputRef} type="file" accept=".plgm,application/vnd.poligome.project+zip" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void openProject(file); event.currentTarget.value = ""; }} />
@@ -395,8 +516,8 @@ export function CanonicalEditorWorkbench() {
         <RasterImportControl makeId={makeId} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />
         <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
         <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
-        <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
-        <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
+        <button onClick={() => editor.undo()} disabled={!editor.history.length}>{copy.undo}</button>
+        <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>{copy.redo}</button>
         <select aria-label={copy.saveProjectDescription} value={saveMode} onChange={(event) => setSaveMode(event.target.value as "annotations" | "complete")} disabled={loading}>
           <option value="complete">{copy.imagesAndAnnotations}</option>
           <option value="annotations">{copy.annotationsOnly}</option>
@@ -408,17 +529,31 @@ export function CanonicalEditorWorkbench() {
       </header>
 
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-        {TOOLS.map((entry) => <button key={entry.id} onClick={() => chooseTool(entry.id)} aria-pressed={tool === entry.id} style={{ fontWeight: tool === entry.id ? 700 : 400 }}>{entry.label}</button>)}
+        {TOOLS.map((entry) => <button key={entry.id} onClick={() => chooseTool(entry.id)} aria-pressed={tool === entry.id && !vectorTool} style={{ fontWeight: tool === entry.id && !vectorTool ? 700 : 400 }}>{entry.label}</button>)}
         <select value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)} disabled={!labels.length}>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select>
-        {(tool === "polygon" || tool === "line") && drawing.draft && <><button onClick={() => drawing.finishDraft()} disabled={!drawing.canFinish}>Concluir forma</button><button onClick={drawing.cancelDraft}>Cancelar</button></>}
+        {(tool === "polygon" || tool === "line") && drawing.draft && <><button onClick={() => drawing.finishDraft()} disabled={!drawing.canFinish}>{copy.finishDrawing}</button><button onClick={drawing.cancelDraft}>{copy.cancel}</button></>}
+        {vectorTool === "hole" && advanced.draft && <><button onClick={() => advanced.finishHole()} disabled={!advanced.canFinish}>{copy.finishDrawing}</button><button onClick={advanced.cancel}>{copy.cancel}</button></>}
         <span style={{ marginLeft: 8 }} />
         <button onClick={() => viewport.zoomBy(-10)} disabled={!asset}>−</button>
         <button onClick={() => viewport.zoomTo(92)} disabled={!asset}>{viewport.state.zoom}%</button>
         <button onClick={() => viewport.zoomBy(10)} disabled={!asset}>+</button>
       </div>
 
-      <div style={{ fontSize: 13, opacity: .75, marginBottom: 8 }}>
-        {message} <span style={{ opacity: .7 }}>{touch.touchMode ? "Dois dedos: zoom e pan. Mão: pan com um dedo." : "Ctrl/⌘ + roda ajusta o zoom no cursor."}</span>
+      <VectorToolbar
+        copy={copy}
+        snapEnabled={snapEnabled}
+        vectorTool={vectorTool}
+        canSimplify={Boolean(activePolygon)}
+        canMerge={selectedPolygons.length >= 2}
+        canEditPolygon={Boolean(activePolygon)}
+        onToggleSnap={() => setSnapEnabled((value) => !value)}
+        onSimplify={simplifySelected}
+        onMerge={mergeSelected}
+        onVectorTool={chooseVectorTool}
+      />
+
+      <div style={{ fontSize: 13, opacity: .75, margin: "8px 0" }}>
+        {message} <span style={{ opacity: .7 }}>{touch.touchMode ? "Dois dedos: zoom e pan. Mão: pan com um dedo." : `${copy.shortcuts}: V H B P F L K · O hole · X split · R reshape · Enter concluir · Esc cancelar · Delete excluir.`}</span>
       </div>
 
       <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "var(--canvas-bg)", overflow: "auto", border: "1px solid var(--line)", borderRadius: 8, overscrollBehavior: "contain" }}>
@@ -438,7 +573,7 @@ export function CanonicalEditorWorkbench() {
               selectedIds={selectedIds}
               selectedVertex={editor.selectedVertex}
               selectionMarquee={interactions.selectionMarquee}
-              overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={lineThickness} />}
+              overlay={overlay}
               lineThickness={lineThickness}
               touchMode={touch.touchMode}
               touchRadius={touchRadius}
@@ -450,10 +585,10 @@ export function CanonicalEditorWorkbench() {
               onPointerMoveCapture={touch.onPointerMoveCapture}
               onPointerUpCapture={touch.onPointerUpCapture}
               onPointerCancelCapture={touch.onPointerCancelCapture}
-              onPointerDown={selecting ? interactions.selectAtCanvas : drawing.onPointerDown}
-              onPointerMove={selecting ? interactions.moveCanvasSelection : drawing.onPointerMove}
-              onPointerUp={selecting ? interactions.finishCanvasSelection : drawing.onPointerUp}
-              onPointerCancel={selecting ? interactions.cancel : drawing.cancelDraft}
+              onPointerDown={vectorEditing ? advanced.onPointerDown : selecting ? interactions.selectAtCanvas : drawing.onPointerDown}
+              onPointerMove={vectorEditing ? advanced.onPointerMove : selecting ? interactions.moveCanvasSelection : drawing.onPointerMove}
+              onPointerUp={vectorEditing ? advanced.onPointerUp : selecting ? interactions.finishCanvasSelection : drawing.onPointerUp}
+              onPointerCancel={vectorEditing ? advanced.cancel : selecting ? interactions.cancel : drawing.cancelDraft}
               onBeginAnnotationDrag={selecting ? interactions.beginAnnotationDrag : noopAnnotation}
               onMoveAnnotation={selecting ? interactions.moveAnnotation : noopElement}
               onFinishAnnotation={selecting ? interactions.finishAnnotation : noopElement}
@@ -519,7 +654,8 @@ export function CanonicalEditorWorkbench() {
       />
 
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>
-        <span>Ferramenta: {tool}</span>
+        <span>Ferramenta: {vectorTool ?? tool}</span>
+        <span>Snap: {snapEnabled ? "on" : "off"}</span>
         <span>Zoom: {viewport.state.zoom}%</span>
         <span>Coordenadas: pixels da imagem</span>
         <span>Formato interno: EditorAnnotation[]</span>

@@ -16,7 +16,8 @@ test('canonical polygon export uses vertices without legacy pts',()=>{
   };
   const coco=annotationToCoco(polygon,0,assets,labels);
   assert.deepEqual(coco.segmentation[0],[200,200,600,200,600,600]);
-  assert.equal(coco.area,160000);
+  // The source triangle has area 20,000 editor units. Scaling both axes by 2 gives 80,000 px².
+  assert.equal(coco.area,80000);
   assert.equal(annotationToYolo(polygon,labels),'0 0.100000 0.153846 0.300000 0.153846 0.300000 0.461538');
 });
 

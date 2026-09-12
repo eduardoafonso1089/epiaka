@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy } from "../../lib/i18n";
 import type { EditorAnnotation } from "../models/annotation-model";
@@ -61,6 +61,11 @@ const rowStyle = {
   alignItems: "center",
 } as const;
 
+const annotationRowStyle = {
+  ...rowStyle,
+  gridTemplateColumns: "minmax(0,1fr) auto auto auto auto",
+} as const;
+
 function stop(event: MouseEvent) {
   event.stopPropagation();
 }
@@ -75,6 +80,12 @@ export function EditorManagementPanels(props: Props) {
   const [newLabelColor, setNewLabelColor] = useState("#6c8cff");
   const [batchLabel, setBatchLabel] = useState(activeLabelId);
 
+  useEffect(() => {
+    if (!labels.some((label) => label.id === batchLabel)) {
+      setBatchLabel(labels.some((label) => label.id === activeLabelId) ? activeLabelId : labels[0]?.id ?? UNLABELED_ID);
+    }
+  }, [activeLabelId, batchLabel, labels]);
+
   const filteredAssets = useMemo(() => {
     const query = imageSearch.trim().toLocaleLowerCase();
     return query ? assets.filter((asset) => asset.name.toLocaleLowerCase().includes(query)) : assets;
@@ -88,7 +99,7 @@ export function EditorManagementPanels(props: Props) {
     setNewLabelName("");
   }
 
-  return <section aria-label="Editor management" style={{ display: "grid", gridTemplateColumns: "minmax(220px, .9fr) minmax(260px, 1.1fr) minmax(280px, 1.2fr)", gap: 10, marginTop: 10 }}>
+  return <section aria-label="Editor management" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 10, marginTop: 10 }}>
     <div style={panelStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
         <strong>{copy.images}</strong><small>{assets.length}</small>
@@ -132,7 +143,7 @@ export function EditorManagementPanels(props: Props) {
           const label = labels.find((item) => item.id === annotation.label);
           const selected = selectedIds.includes(annotation.id);
           const hidden = hiddenAnnotationIds.has(annotation.id) || hiddenLabelIds.has(annotation.label);
-          return <div key={annotation.id} style={{ ...rowStyle, outline: selected ? "1px solid var(--ink)" : "none", borderRadius: 5, padding: 3, opacity: hidden ? .5 : 1 }}>
+          return <div key={annotation.id} style={{ ...annotationRowStyle, outline: selected ? "1px solid var(--ink)" : "none", borderRadius: 5, padding: 3, opacity: hidden ? .5 : 1 }}>
             <button
               onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}
               style={{ textAlign: "left", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -141,6 +152,7 @@ export function EditorManagementPanels(props: Props) {
               {label?.name ?? annotation.label} · {annotation.type} #{index + 1}
             </button>
             <button title={copy.reorderAnnotation} disabled={index <= 0} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, -1); }}>↑</button>
+            <button title={copy.reorderAnnotation} disabled={index >= activeAssetAnnotations.length - 1} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, 1); }}>↓</button>
             <button title={hidden ? copy.showAnnotation : copy.hideAnnotation} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? "○" : "●"}</button>
             <button title={copy.deleteShape} onClick={(event) => { stop(event); props.onDeleteAnnotations([annotation.id]); }}>×</button>
           </div>;
@@ -153,7 +165,8 @@ export function EditorManagementPanels(props: Props) {
         <strong>{copy.manageClasses}</strong><small>{labels.length}</small>
       </div>
       <small style={{ display: "block", opacity: .7, marginTop: 4 }}>{copy.classManagerHint}</small>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 4, marginTop: 8 }}>
+      <div style={{ marginTop: 8 }}><b>{copy.labelStudio}</b><small style={{ display: "block", opacity: .7 }}>{copy.labelStudioHint}</small></div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 4, marginTop: 6 }}>
         <input aria-label={copy.className} value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createClass(); }} placeholder={copy.className} />
         <input aria-label={copy.labelColor} type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} />
         <button onClick={createClass} disabled={!newLabelName.trim()}>{copy.createLabel}</button>

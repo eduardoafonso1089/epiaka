@@ -142,4 +142,4 @@ Internal geometry remains in image pixels.
 7. Strict V4 project persistence. **Done.**
 8. Replace `/annotate` with the canonical editor. **Done.**
 9. Delete duplicate/legacy routes, bridge and annotation adapters. **Done.**
-10. Remove any remaining orphaned legacy utility modules after CI confirms they have no consumers. **Next.**
+10. Remove only utilities proven to be legacy and behaviorally superseded. A module must **not** be deleted solely because its application UI has not yet been ported. In particular, `app/lib/sam.ts` and modules reachable only from parity-pending UI are protected until the relevant product decision and port are complete. `app/lib/sam.ts` currently also needs migration away from the removed normalized-geometry helpers before it can be reactivated. **Guarded cleanup, not blanket orphan deletion.**

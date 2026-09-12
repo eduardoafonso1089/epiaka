@@ -69,6 +69,7 @@ export function EditorManagementPanels(props: Props) {
   }, [assets, imageSearch]);
   const selectedIds = selection.multiSelected.length ? selection.multiSelected : selection.selected ? [selection.selected] : [];
   const activeSelectedIds = selectedIds.filter((id) => activeAssetAnnotations.some((annotation) => annotation.id === id));
+  const labelName = (label: Label) => label.id === UNLABELED_ID ? copy.unlabeled : label.name;
 
   function createClass() {
     if (!newLabelName.trim()) return;
@@ -111,7 +112,7 @@ export function EditorManagementPanels(props: Props) {
       {activeSelectedIds.length > 0 && <div className={ui.batchRow}>
         <small>{activeSelectedIds.length} {copy.batchSelection}</small>
         <select value={batchLabel} onChange={(event) => setBatchLabel(event.target.value)} aria-label={copy.changeClass}>
-          {labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
+          {labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}
         </select>
         <button onClick={() => props.onBatchReclassify(activeSelectedIds, batchLabel)}>{copy.applyClass}</button>
       </div>}
@@ -124,7 +125,7 @@ export function EditorManagementPanels(props: Props) {
           return <div key={annotation.id} className={classes(ui.annotationRow, selected && ui.rowSelected, hidden && ui.rowHidden)}>
             <button className={ui.rowMain} onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}>
               <span className={ui.labelDot} style={dotStyle} />
-              {label?.name ?? annotation.label} · {annotation.type} #{index + 1}
+              {label ? labelName(label) : annotation.label} · {annotation.type} #{index + 1}
             </button>
             <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index <= 0} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, -1); }}>↑</button>
             <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index >= activeAssetAnnotations.length - 1} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, 1); }}>↓</button>
@@ -152,8 +153,8 @@ export function EditorManagementPanels(props: Props) {
           const hidden = hiddenLabelIds.has(label.id);
           const count = annotations.filter((annotation) => annotation.label === label.id).length;
           return <div key={label.id} className={classes(ui.labelRow, hidden && ui.rowHidden)}>
-            <input className={ui.colorInput} aria-label={`${copy.labelColor}: ${label.name}`} type="color" value={label.color} disabled={protectedLabel} onChange={(event) => props.onRecolorLabel(label.id, event.target.value)} />
-            <input aria-label={`${copy.renameClass}: ${label.name}`} key={`${label.id}-${label.name}`} defaultValue={label.name} disabled={protectedLabel} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+            <input className={ui.colorInput} aria-label={`${copy.labelColor}: ${labelName(label)}`} type="color" value={label.color} disabled={protectedLabel} onChange={(event) => props.onRecolorLabel(label.id, event.target.value)} />
+            <input aria-label={`${copy.renameClass}: ${labelName(label)}`} key={`${label.id}-${label.name}-${copy.unlabeled}`} defaultValue={labelName(label)} disabled={protectedLabel} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
             <small>{count}</small>
             <button className={ui.rowAction} title={hidden ? copy.showClass : copy.hideClass} onClick={() => props.onToggleLabelVisibility(label.id)}>{hidden ? "○" : "●"}</button>
             <button className={classes(ui.rowAction, ui.dangerAction)} title={protectedLabel ? copy.unlabeledProtected : copy.deleteClass} disabled={protectedLabel} onClick={() => props.onDeleteLabel(label.id)}>×</button>
@@ -161,7 +162,7 @@ export function EditorManagementPanels(props: Props) {
         })}
       </div>
       <div className={ui.activeClass}>
-        <label>{copy.newAnnotationClass}: <select value={activeLabelId} onChange={(event) => props.onActiveLabelChange(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label>
+        <label>{copy.newAnnotationClass}: <select value={activeLabelId} onChange={(event) => props.onActiveLabelChange(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select></label>
       </div>
     </div>
   </section>;

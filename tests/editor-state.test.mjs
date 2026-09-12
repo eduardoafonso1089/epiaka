@@ -23,6 +23,30 @@ test('vertex edits are addressed by stable ids and participate in undo/redo', ()
   assert.deepEqual([state.annotations[0].vertices[1].x,state.annotations[0].vertices[1].y],[120,20]);
 });
 
+test('continuous gesture records one undo snapshot', () => {
+  let state=createEditorState([polygon]);
+  state=editorReducer(state,{type:'begin-gesture'});
+  state=editorReducer(state,{type:'update-vertex',annotationId:'p',vertexId:'p:v1',point:{x:110,y:15}});
+  state=editorReducer(state,{type:'update-vertex',annotationId:'p',vertexId:'p:v1',point:{x:120,y:20}});
+  state=editorReducer(state,{type:'update-vertex',annotationId:'p',vertexId:'p:v1',point:{x:130,y:25}});
+  assert.equal(state.history.length,0);
+  state=editorReducer(state,{type:'commit-gesture'});
+  assert.equal(state.history.length,1);
+  assert.deepEqual([state.annotations[0].vertices[1].x,state.annotations[0].vertices[1].y],[130,25]);
+  state=editorReducer(state,{type:'undo'});
+  assert.deepEqual([state.annotations[0].vertices[1].x,state.annotations[0].vertices[1].y],[100,10]);
+});
+
+test('cancel gesture restores geometry and does not create history', () => {
+  let state=createEditorState([polygon]);
+  state=editorReducer(state,{type:'begin-gesture'});
+  state=editorReducer(state,{type:'translate-annotations',ids:['p'],dx:40,dy:30});
+  assert.deepEqual([state.annotations[0].vertices[0].x,state.annotations[0].vertices[0].y],[50,40]);
+  state=editorReducer(state,{type:'cancel-gesture'});
+  assert.deepEqual([state.annotations[0].vertices[0].x,state.annotations[0].vertices[0].y],[10,10]);
+  assert.equal(state.history.length,0);
+});
+
 test('inserted vertices keep explicit identity', () => {
   let state=createEditorState([polygon]);
   state=editorReducer(state,{type:'insert-vertex',annotationId:'p',afterVertexId:'p:v0',vertexId:'p:new',point:{x:55,y:10}});

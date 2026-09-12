@@ -1,14 +1,13 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { edgeMidpoints } from "../../lib/geometry";
-import { verticesFromFlatPoints } from "../models/vertex-model";
+import type { Vertex } from "../models/vertex-model";
 
-export type SelectedVertex = { annotationId: string; vertexIndex: number } | null;
+export type SelectedVertex = { annotationId: string; vertexId: string } | null;
 
 export type VertexHandlesProps = {
   annotationId: string;
-  points: number[];
+  vertices: Vertex[];
   open?: boolean;
   selectedVertex: SelectedVertex;
   touchMode: boolean;
@@ -16,20 +15,32 @@ export type VertexHandlesProps = {
   markerRadius: number;
   markerAspect: number;
   color: string;
-  onBeginVertexDrag: (event: ReactPointerEvent<SVGElement>, vertexIndex: number) => void;
+  onBeginVertexDrag: (event: ReactPointerEvent<SVGElement>, vertexId: string) => void;
   onMoveVertex: (event: ReactPointerEvent<SVGElement>) => void;
   onFinishVertex: (event: ReactPointerEvent<SVGElement>) => void;
   onCancel: () => void;
-  onInsertVertex: (event: ReactPointerEvent<SVGElement>, edgeIndex: number, x: number, y: number) => void;
+  onInsertVertex: (event: ReactPointerEvent<SVGElement>, afterVertexId: string, x: number, y: number) => void;
 };
 
-/**
- * Rendering-only vertex controls shared by polygons and polylines.
- * Persisted flat points are adapted to the richer Vertex[] model at this boundary.
- */
+function edgeMidpoints(vertices: Vertex[], open: boolean) {
+  if (vertices.length < 2) return [];
+  const limit = open ? vertices.length - 1 : vertices.length;
+  return Array.from({ length: limit }, (_, index) => {
+    const current = vertices[index];
+    const next = vertices[(index + 1) % vertices.length];
+    return {
+      id: `${current.id}->${next.id}`,
+      afterVertexId: current.id,
+      x: (current.x + next.x) / 2,
+      y: (current.y + next.y) / 2,
+    };
+  });
+}
+
+/** Rendering-only vertex controls shared by polygons and polylines. */
 export function VertexHandles({
   annotationId,
-  points,
+  vertices,
   open = false,
   selectedVertex,
   touchMode,
@@ -43,15 +54,14 @@ export function VertexHandles({
   onCancel,
   onInsertVertex,
 }: VertexHandlesProps) {
-  const vertices = verticesFromFlatPoints(points, (index) => `${annotationId}:v${index}`);
-  const midpoints = edgeMidpoints(points, open);
+  const midpoints = edgeMidpoints(vertices, open);
 
   return <>
-    {midpoints.map((midpoint) => <g key={`${annotationId}:e${midpoint.edgeIndex}`}>
+    {midpoints.map((midpoint) => <g key={midpoint.id}>
       {touchMode && <ellipse
         className="touch-handle-hit"
-        data-edge-index={midpoint.edgeIndex}
-        onPointerDown={(event) => onInsertVertex(event, midpoint.edgeIndex, midpoint.x, midpoint.y)}
+        data-edge-after-vertex-id={midpoint.afterVertexId}
+        onPointerDown={(event) => onInsertVertex(event, midpoint.afterVertexId, midpoint.x, midpoint.y)}
         onPointerMove={onMoveVertex}
         onPointerUp={onFinishVertex}
         onPointerCancel={onCancel}
@@ -64,8 +74,8 @@ export function VertexHandles({
       />}
       <ellipse
         className="edge-handle"
-        data-edge-index={midpoint.edgeIndex}
-        onPointerDown={(event) => onInsertVertex(event, midpoint.edgeIndex, midpoint.x, midpoint.y)}
+        data-edge-after-vertex-id={midpoint.afterVertexId}
+        onPointerDown={(event) => onInsertVertex(event, midpoint.afterVertexId, midpoint.x, midpoint.y)}
         onPointerMove={onMoveVertex}
         onPointerUp={onFinishVertex}
         onPointerCancel={onCancel}
@@ -76,13 +86,13 @@ export function VertexHandles({
         strokeWidth={markerRadius * .22}
       />
     </g>)}
-    {vertices.map((vertex, vertexIndex) => {
-      const isSelected = selectedVertex?.annotationId === annotationId && selectedVertex.vertexIndex === vertexIndex;
+    {vertices.map((vertex) => {
+      const isSelected = selectedVertex?.annotationId === annotationId && selectedVertex.vertexId === vertex.id;
       return <g key={vertex.id} data-vertex-id={vertex.id}>
         {touchMode && <ellipse
           className="touch-handle-hit"
           data-vertex-id={vertex.id}
-          onPointerDown={(event) => onBeginVertexDrag(event, vertexIndex)}
+          onPointerDown={(event) => onBeginVertexDrag(event, vertex.id)}
           onPointerMove={onMoveVertex}
           onPointerUp={onFinishVertex}
           onPointerCancel={onCancel}
@@ -96,7 +106,7 @@ export function VertexHandles({
         <ellipse
           className={`vertex-handle ${isSelected ? "selected" : ""}`}
           data-vertex-id={vertex.id}
-          onPointerDown={(event) => onBeginVertexDrag(event, vertexIndex)}
+          onPointerDown={(event) => onBeginVertexDrag(event, vertex.id)}
           onPointerMove={onMoveVertex}
           onPointerUp={onFinishVertex}
           onPointerCancel={onCancel}

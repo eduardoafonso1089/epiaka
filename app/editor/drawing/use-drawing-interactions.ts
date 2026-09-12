@@ -13,7 +13,7 @@ import {
   type BoxDraft,
 } from "./annotation-builder";
 
-export type DrawingTool = "select" | "box" | "polygon" | "line" | "point" | "freehand";
+export type DrawingTool = "select" | "pan" | "box" | "polygon" | "line" | "point" | "freehand";
 
 export type DrawingDraft =
   | { type: "box"; box: BoxDraft }
@@ -29,6 +29,16 @@ export type DrawingInteractionOptions = {
   labelId: string;
   makeId: (prefix: string) => string;
   addAnnotation: (annotation: EditorAnnotation, select?: boolean) => void;
+};
+
+type StartState = {
+  x: number;
+  y: number;
+  clientX: number;
+  clientY: number;
+  pointerId: number;
+  pointerType: string;
+  moved: boolean;
 };
 
 function editorPoint(svg: SVGSVGElement, clientX: number, clientY: number) {
@@ -52,7 +62,7 @@ export function useDrawingInteractions({
   addAnnotation,
 }: DrawingInteractionOptions) {
   const [draft, setDraft] = useState<DrawingDraft>(null);
-  const startRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const startRef = useRef<StartState | null>(null);
 
   const canFinish = useMemo(() => {
     if (draft?.type === "polygon") return draft.points.length >= 6;
@@ -84,37 +94,67 @@ export function useDrawingInteractions({
     return committed;
   }, [assetId, commit, draft, labelId, makeId]);
 
-  const onPointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
-    if (tool === "select" || !assetId || event.button !== 0) return;
-    const svg = svgRef.current;
-    if (!svg) return;
-    const point = editorPoint(svg, event.clientX, event.clientY);
-
+  const appendDiscretePoint = useCallback((point: { x: number; y: number }) => {
+    if (!assetId) return;
     if (tool === "point") {
       commit(pointFromDraft(annotationBase(makeId("point"), assetId, labelId), point));
       return;
     }
-
     if (tool === "polygon" || tool === "line") {
       setDraft((current) => {
         const points = current?.type === tool ? current.points : [];
         return { type: tool, points: [...points, ...flatPoint(point)] };
       });
+    }
+  }, [assetId, commit, labelId, makeId, tool]);
+
+  const onPointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    if (tool === "select" || tool === "pan" || !assetId || event.button !== 0) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const point = editorPoint(svg, event.clientX, event.clientY);
+
+    if (event.pointerType === "touch" && (tool === "point" || tool === "polygon" || tool === "line")) {
+      startRef.current = {
+        ...point,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        moved: false,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      return;
+    }
+
+    if (tool === "point" || tool === "polygon" || tool === "line") {
+      appendDiscretePoint(point);
       return;
     }
 
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    startRef.current = { ...point, pointerId: event.pointerId };
+    startRef.current = {
+      ...point,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      moved: false,
+    };
     if (tool === "box") {
       setDraft({ type: "box", box: { x: point.x, y: point.y, w: 0, h: 0 } });
     } else if (tool === "freehand") {
       setDraft({ type: "freehand", points: flatPoint(point) });
     }
-  }, [assetId, commit, labelId, makeId, svgRef, tool]);
+  }, [appendDiscretePoint, assetId, svgRef, tool]);
 
   const onPointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     const start = startRef.current;
     if (!start || start.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 8) start.moved = true;
+
+    if (start.pointerType === "touch" && (tool === "point" || tool === "polygon" || tool === "line")) return;
+
     const svg = svgRef.current;
     if (!svg) return;
     const point = editorPoint(svg, event.clientX, event.clientY);
@@ -145,18 +185,21 @@ export function useDrawingInteractions({
     if (!start || start.pointerId !== event.pointerId || !assetId) return;
     startRef.current = null;
 
+    if (start.pointerType === "touch" && (tool === "point" || tool === "polygon" || tool === "line")) {
+      if (!start.moved) appendDiscretePoint({ x: start.x, y: start.y });
+      return;
+    }
+
     if (draft?.type === "box") {
-      const annotation = boxFromDraft(annotationBase(makeId("box"), assetId, labelId), draft.box);
-      if (commit(annotation)) setDraft(null);
-      else setDraft(null);
+      commit(boxFromDraft(annotationBase(makeId("box"), assetId, labelId), draft.box));
+      setDraft(null);
       return;
     }
     if (draft?.type === "freehand") {
-      const annotation = freehandFromDraft(annotationBase(makeId("freehand"), assetId, labelId), draft.points);
-      if (commit(annotation)) setDraft(null);
-      else setDraft(null);
+      commit(freehandFromDraft(annotationBase(makeId("freehand"), assetId, labelId), draft.points));
+      setDraft(null);
     }
-  }, [assetId, commit, draft, labelId, makeId]);
+  }, [appendDiscretePoint, assetId, commit, draft, labelId, makeId, tool]);
 
   return {
     draft,

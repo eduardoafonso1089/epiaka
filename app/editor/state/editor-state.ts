@@ -10,12 +10,19 @@ import {
 
 export type SelectedVertex = { annotationId: string; vertexId: string } | null;
 
+export type EditorGesture = {
+  annotations: EditorAnnotation[];
+  selection: SelectionState;
+  selectedVertex: SelectedVertex;
+} | null;
+
 export type EditorState = {
   annotations: EditorAnnotation[];
   history: EditorAnnotation[][];
   redo: EditorAnnotation[][];
   selection: SelectionState;
   selectedVertex: SelectedVertex;
+  gesture: EditorGesture;
   saved: boolean;
 };
 
@@ -28,10 +35,14 @@ export type EditorAction =
   | { type: "set-selection"; selection: SelectionState }
   | { type: "clear-selection" }
   | { type: "select-vertex"; vertex: SelectedVertex }
+  | { type: "begin-gesture" }
+  | { type: "commit-gesture" }
+  | { type: "cancel-gesture" }
   | { type: "update-vertex"; annotationId: string; vertexId: string; point: { x: number; y: number } }
   | { type: "insert-vertex"; annotationId: string; afterVertexId: string; vertexId: string; point: { x: number; y: number } }
   | { type: "delete-vertex"; annotationId: string; vertexId: string }
   | { type: "translate-annotations"; ids: string[]; dx: number; dy: number }
+  | { type: "replace-annotation"; annotation: EditorAnnotation }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "mark-saved" };
@@ -43,6 +54,7 @@ export function createEditorState(annotations: EditorAnnotation[] = []): EditorS
     redo: [],
     selection: { selected: null, multiSelected: [], anchorId: null },
     selectedVertex: null,
+    gesture: null,
     saved: true,
   };
 }
@@ -52,8 +64,16 @@ function snapshot(state: EditorState): EditorState {
     ...state,
     history: [...state.history.slice(-24), state.annotations],
     redo: [],
+    gesture: null,
     saved: false,
   };
+}
+
+function mutate(state: EditorState, annotations: EditorAnnotation[]): EditorState {
+  if (annotations === state.annotations) return state;
+  if (state.gesture) return { ...state, annotations, saved: false };
+  const next = snapshot(state);
+  return { ...next, annotations };
 }
 
 function keepExistingSelection(state: EditorState, annotations: EditorAnnotation[]) {
@@ -81,6 +101,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         redo: [],
         selection: { selected: null, multiSelected: [], anchorId: null },
         selectedVertex: null,
+        gesture: null,
         saved: action.markSaved ?? true,
       };
 
@@ -126,15 +147,48 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         selection: action.vertex ? selectSingle(action.vertex.annotationId) : state.selection,
       };
 
+    case "begin-gesture":
+      if (state.gesture) return state;
+      return {
+        ...state,
+        gesture: {
+          annotations: state.annotations,
+          selection: state.selection,
+          selectedVertex: state.selectedVertex,
+        },
+      };
+
+    case "commit-gesture": {
+      if (!state.gesture) return state;
+      const changed = state.annotations !== state.gesture.annotations;
+      if (!changed) return { ...state, gesture: null };
+      return {
+        ...state,
+        history: [...state.history.slice(-24), state.gesture.annotations],
+        redo: [],
+        gesture: null,
+        saved: false,
+      };
+    }
+
+    case "cancel-gesture":
+      if (!state.gesture) return state;
+      return {
+        ...state,
+        annotations: state.gesture.annotations,
+        selection: state.gesture.selection,
+        selectedVertex: state.gesture.selectedVertex,
+        gesture: null,
+      };
+
     case "update-vertex": {
       const target = state.annotations.find((annotation) => annotation.id === action.annotationId);
       if (!target) return state;
       const updated = updateAnnotationVertex(target, action.vertexId, action.point);
       if (updated === target) return state;
-      const next = snapshot(state);
+      const annotations = state.annotations.map((annotation) => annotation.id === target.id ? updated : annotation);
       return {
-        ...next,
-        annotations: state.annotations.map((annotation) => annotation.id === target.id ? updated : annotation),
+        ...mutate(state, annotations),
         selectedVertex: { annotationId: action.annotationId, vertexId: action.vertexId },
       };
     }
@@ -172,18 +226,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "translate-annotations": {
       const ids = new Set(action.ids);
       if (!state.annotations.some((annotation) => ids.has(annotation.id))) return state;
-      const next = snapshot(state);
-      return {
-        ...next,
-        annotations: state.annotations.map((annotation) =>
-          ids.has(annotation.id) ? translateAnnotation(annotation, action.dx, action.dy) : annotation,
-        ),
-      };
+      const annotations = state.annotations.map((annotation) =>
+        ids.has(annotation.id) ? translateAnnotation(annotation, action.dx, action.dy) : annotation,
+      );
+      return mutate(state, annotations);
+    }
+
+    case "replace-annotation": {
+      const index = state.annotations.findIndex((annotation) => annotation.id === action.annotation.id);
+      if (index < 0) return state;
+      const annotations = state.annotations.map((annotation) => annotation.id === action.annotation.id ? action.annotation : annotation);
+      return mutate(state, annotations);
     }
 
     case "undo": {
       const previous = state.history.at(-1);
-      if (!previous) return state;
+      if (!previous || state.gesture) return state;
       return {
         ...state,
         annotations: previous,
@@ -197,7 +255,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case "redo": {
       const restored = state.redo.at(-1);
-      if (!restored) return state;
+      if (!restored || state.gesture) return state;
       return {
         ...state,
         annotations: restored,

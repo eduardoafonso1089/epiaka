@@ -27,7 +27,7 @@ test('COCO bbox uses canonical width and height',()=>{
 test('COCO keypoints can select dedicated labels',()=>{
   const result=cocoAnnotationToEditor(
     {keypoints:[50,50,2],keypoint_names:['Nasion']},
-    {assetId:'img',sourceWidth:100,height:100,labelId:'ceph',geometryTypes:new Set(['point']),annotationId:()=> 'p',pointLabelId:name=>name.toLowerCase()},
+    {assetId:'img',sourceWidth:100,sourceHeight:100,labelId:'ceph',geometryTypes:new Set(['point']),annotationId:()=> 'p',pointLabelId:name=>name.toLowerCase()},
   );
   assert.equal(result[0].type,'point');
   assert.equal(result[0].label,'nasion');

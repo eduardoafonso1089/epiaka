@@ -45,14 +45,6 @@ export class ViewportTransform {
   }
 }
 
-export function screenPointToImage(point: Point2D, frame: ScreenFrame, image: Size2D, clamp = true) {
-  return new ViewportTransform(frame, image).screenToImage(point, clamp);
-}
-
-export function imagePointToScreen(point: Point2D, frame: ScreenFrame, image: Size2D) {
-  return new ViewportTransform(frame, image).imageToScreen(point);
-}
-
 /** Scroll offset that keeps the same image coordinate under a screen position after zoom. */
 export function anchoredScrollOffset(currentScroll: number, canvasClientStart: number, canvasSize: number, anchor: number, pointerClient: number) {
   return currentScroll + canvasClientStart + clamp01(anchor) * canvasSize - pointerClient;

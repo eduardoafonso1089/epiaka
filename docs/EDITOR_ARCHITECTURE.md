@@ -13,13 +13,13 @@ This document describes the incremental editor refactor introduced on `refactor/
 
 ## Coordinate spaces
 
-The editor now defines three explicit coordinate spaces:
+The editor defines three explicit coordinate spaces:
 
 1. **Screen** — browser client pixels.
 2. **Annotation** — the historical Poligome `1000 x 650` coordinate system.
 3. **Image** — native source-image pixels.
 
-`ViewportTransform` is the only new primitive that should convert between these spaces.
+`ViewportTransform` is the primitive that converts between these spaces.
 
 ```text
 screen pixels
@@ -36,18 +36,17 @@ The persisted annotation model remains unchanged. This deliberately avoids a pro
 
 ## Viewport
 
-`app/editor/viewport/viewport-controller.ts` contains the pure viewport state model. DOM components should act as adapters:
+`app/editor/viewport/viewport-controller.ts` contains the pure viewport state model. DOM components act as adapters:
 
 - read container/image bounds;
 - pass them to the controller;
 - render the returned layout/scroll state.
 
-Zoom, pan and fit math should not be reimplemented inside individual tools.
+The live `/annotate` route is wrapped by `EditorArchitectureBridge`, which mirrors viewport size, source-image size, scroll and zoom into this controller while the legacy editor is progressively extracted.
 
 ## Interactions
 
-`app/editor/interactions/interaction-controller.ts` provides explicit ownership for editor gestures.
-Only one interaction may own a pointer at a time.
+`app/editor/interactions/interaction-controller.ts` provides explicit ownership for editor gestures. Only one interaction may own a pointer at a time.
 
 Supported modes are currently:
 
@@ -60,7 +59,7 @@ Supported modes are currently:
 - rotate
 - model
 
-New tools should acquire the controller before starting a gesture and release/cancel it on pointer up, pointer cancel, Escape or tool change.
+`EditorArchitectureBridge` maps the current stage tool/handle target to these modes without changing the existing gesture handlers yet. New extracted tools should acquire the controller before starting a gesture and release/cancel it on pointer up, pointer cancel, Escape or tool change.
 
 ## Editable vertices
 
@@ -84,22 +83,50 @@ using `verticesFromFlatPoints()` and returned with `flatPointsFromVertices()`.
 
 Stable IDs are intended to make selection, linked vertices, snapping, insert/delete, holes and future topological editing independent of array offsets.
 
+## Extracted rendering layers
+
+Rendering extraction has started under `app/editor/layers`:
+
+- `vertex-handles.tsx` — shared vertex and edge-insertion controls for polygons and polylines;
+- `polygon-layer.tsx` — presentational polygon path + vertex controls;
+- `polyline-layer.tsx` — presentational polyline + shared vertex controls.
+
+These components are intentionally stateless. They receive editor state and callbacks rather than importing global project state. `VertexHandles` adapts persisted flat coordinates into `Vertex[]` with stable IDs at the rendering boundary.
+
+The equivalent JSX still exists in `app/annotate/legacy-page.tsx`; replacing that block is the next wiring step. Keeping both temporarily allows the new components to be tested before changing the live drawing path.
+
+## Route split
+
+The route entrypoint is now small:
+
+```text
+/annotate
+  layout.tsx -> EditorArchitectureBridge
+  page.tsx   -> legacy-page.tsx
+```
+
+The previous monolithic route implementation lives in `legacy-page.tsx` while functionality is extracted in focused modules. New editor code should be added under `app/editor` rather than growing `legacy-page.tsx` further.
+
 ## Migration rule
 
 The refactor is intentionally incremental. Existing behavior should be moved behind these primitives without changing output formats.
 
-Recommended order for subsequent editor extraction:
+Current sequence:
 
-1. Replace ad-hoc screen-to-annotation conversion with `ViewportTransform`.
-2. Route zoom/pan/fit through `ViewportController`.
-3. Route pointer gesture ownership through `InteractionController`.
-4. Use `Vertex[]` as the transient polygon editing representation.
-5. Extract select/draw/edit handlers from `app/annotate/page.tsx` into focused modules.
-6. Split rendering into annotation/handle components after behavior is covered by tests.
+1. Centralize screen/annotation/image conversion with `ViewportTransform`. **Done.**
+2. Introduce `ViewportController` and mirror the live editor into it. **Done.**
+3. Introduce `InteractionController` and mirror live pointer ownership. **Done.**
+4. Introduce the transient `Vertex[]` model. **Done.**
+5. Split the route from the legacy monolith. **Done.**
+6. Extract polygon/polyline/vertex rendering into stateless components. **Done, awaiting live wiring.**
+7. Replace polygon/polyline JSX in `legacy-page.tsx` with the extracted layers. **Next.**
+8. Extract selection and vertex gesture handlers into focused interaction modules.
+9. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
+10. Remove the legacy page once all rendering and interactions have moved.
 
 ## Tests
 
-The branch adds regression coverage for:
+The branch adds regression/contract coverage for:
 
 - screen/annotation round trips;
 - annotation/image round trips;
@@ -107,6 +134,9 @@ The branch adds regression coverage for:
 - resolution-independent pointer deltas;
 - vertex serialization compatibility;
 - stable vertex updates and insertion/deletion;
-- exclusive interaction ownership.
+- exclusive interaction ownership;
+- live-tool to interaction-mode mapping;
+- shared polygon/polyline vertex controls;
+- stable `data-vertex-id` rendering contract.
 
 Existing viewport tests continue to protect zoom anchoring, mobile overflow and selection framing.

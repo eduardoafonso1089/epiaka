@@ -23,3 +23,19 @@ test('canvas interactions operate on canonical box width and height',()=>{
   assert.doesNotMatch(source,/annotation\.w\b/);
   assert.doesNotMatch(source,/annotation\.h\b/);
 });
+
+test('marquee selection is scoped to the active asset and rendered from canonical selection state',()=>{
+  assert.match(source,/activeAssetId/);
+  assert.match(source,/annotation\.asset === activeAssetId/);
+  assert.match(source,/selectionFromMarquee\(selectionScope/);
+  assert.match(source,/selectionMarquee/);
+});
+
+test('modifier clicks update selection without starting a drag transaction',()=>{
+  const shiftBranch=source.indexOf('if (event.shiftKey)');
+  const additiveBranch=source.indexOf('if (additive)');
+  const beginGesture=source.indexOf('dispatch({ type: "begin-gesture" })',additiveBranch);
+  assert.ok(shiftBranch >= 0 && additiveBranch > shiftBranch && beginGesture > additiveBranch);
+  assert.match(source,/toggle-selection/);
+  assert.match(source,/selectRange/);
+});

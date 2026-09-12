@@ -1,6 +1,6 @@
 "use client";
 
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, Ref } from "react";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { Label } from "../../lib/types";
 import type { SelectedVertex } from "../state/editor-state";
@@ -24,6 +24,10 @@ export type EditorCanvasProps = {
   markerAspect: number;
   boxTouchRadius: number;
   boxRotationTouchRadius: number;
+  svgRef?: Ref<SVGSVGElement>;
+  className?: string;
+  style?: CSSProperties;
+  ariaLabel?: string;
   onPointerDown: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerMove: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerUp: (event: ReactPointerEvent<SVGSVGElement>) => void;
@@ -48,6 +52,10 @@ export function EditorCanvas(props: EditorCanvasProps) {
   const selected = new Set(props.selectedIds);
 
   return <svg
+    ref={props.svgRef}
+    className={props.className}
+    style={props.style}
+    aria-label={props.ariaLabel}
     viewBox="0 0 1000 650"
     preserveAspectRatio="none"
     onPointerDown={props.onPointerDown}

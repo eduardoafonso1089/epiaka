@@ -5,7 +5,7 @@ import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import type { EditorAction, EditorState } from "../state/editor-state";
-import { annotationBounds } from "../geometry/annotation-geometry";
+import { annotationBounds, resizeBoxFromCorner } from "../geometry/annotation-geometry";
 import { selectSingle } from "../selection/selection-model";
 
 export type CanvasInteractionOptions = {
@@ -144,21 +144,10 @@ export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: Canva
     if (!transform || transform.kind !== "resize" || transform.pointerId !== event.pointerId || !transform.corner) return;
     const point = eventPoint(svgRef, event);
     if (!point) return;
-    const original = transform.annotation;
-    const right = original.x + original.width;
-    const bottom = original.y + original.height;
-    const x = transform.corner.includes("w") ? point.x : original.x;
-    const y = transform.corner.includes("n") ? point.y : original.y;
-    const nextRight = transform.corner.includes("e") ? point.x : right;
-    const nextBottom = transform.corner.includes("s") ? point.y : bottom;
-    const next = {
-      ...original,
-      x: Math.min(x, nextRight),
-      y: Math.min(y, nextBottom),
-      width: Math.max(1, Math.abs(nextRight - x)),
-      height: Math.max(1, Math.abs(nextBottom - y)),
-    };
-    dispatch({ type: "replace-annotation", annotation: next });
+    dispatch({
+      type: "replace-annotation",
+      annotation: resizeBoxFromCorner(transform.annotation, transform.corner, point),
+    });
   }, [dispatch, svgRef]);
 
   const rotateStart = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation) => {

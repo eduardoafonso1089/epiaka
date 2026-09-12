@@ -19,6 +19,7 @@ import { useDrawingInteractions, type DrawingTool } from "../drawing/use-drawing
 import { useEditorViewport } from "../viewport/use-editor-viewport";
 import { useTouchNavigation } from "../viewport/use-touch-navigation";
 import { screenPixelsToImageUnits } from "../viewport/svg-image-space";
+import { CogTiledLayer } from "../raster/cog-tiled-layer";
 
 const EMPTY_LABELS: Label[] = [{ id: "unlabeled", name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
@@ -145,7 +146,7 @@ export function CanonicalEditorWorkbench() {
   }
 
   function applyRasterImport(result: RasterImportResult) {
-    objectUrls.current.push(result.objectUrl);
+    if (result.objectUrl) objectUrls.current.push(result.objectUrl);
     setAssets((items) => [...items, result.asset]);
     setCurrent(result.asset.id);
     setSessionDirty(true);
@@ -247,7 +248,9 @@ export function CanonicalEditorWorkbench() {
       <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "#080909", overflow: "auto", border: "1px solid #34383b", borderRadius: 8, overscrollBehavior: "contain" }}>
         <div style={{ position: "relative", width: viewport.layout.surfaceWidth, height: viewport.layout.surfaceHeight }}>
           <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
-            {asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} /> : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? "Imagem ausente" : "Nenhuma imagem carregada"}</div>}
+            {asset?.raster?.mode === "tiled" ? <CogTiledLayer asset={asset} viewport={viewport.state} layout={viewport.layout} onError={setMessage} />
+              : asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} />
+              : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? "Imagem ausente" : "Nenhuma imagem carregada"}</div>}
             {asset && !asset.missing && <EditorCanvas
               imageSize={imageSize}
               svgRef={viewport.canvasRef}
@@ -300,6 +303,7 @@ export function CanonicalEditorWorkbench() {
         <span>Formato interno: EditorAnnotation[]</span>
         <span>Projeto: .plgm V4</span>
         <span>Vértices: IDs estáveis</span>
+        {asset?.raster?.mode === "tiled" && <span>Raster: COG tiled</span>}
         <span>{projectDirty ? "alterado" : "salvo"}</span>
       </footer>
     </div>

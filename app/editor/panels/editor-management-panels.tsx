@@ -56,6 +56,8 @@ export function EditorManagementPanels(props: Props) {
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#6c8cff");
   const [batchLabel, setBatchLabel] = useState(activeLabelId);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
 
   useEffect(() => {
     if (!labels.some((label) => label.id === batchLabel)) {
@@ -98,7 +100,12 @@ export function EditorManagementPanels(props: Props) {
   }
 
   return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations} · ${copy.manageClasses}`} className={ui.managementGrid}>
-    <div className={ui.panelCard}>
+    <button className={classes(ui.mobilePanelToggle, ui.mobilePanelToggleLeft)} aria-label={copy.openImages} onClick={() => { setLeftOpen(true); setRightOpen(false); }}>☰</button>
+    <button className={classes(ui.mobilePanelToggle, ui.mobilePanelToggleRight)} aria-label={copy.classes} onClick={() => { setRightOpen(true); setLeftOpen(false); }}>•••</button>
+    {(leftOpen || rightOpen) && <button className={ui.mobileBackdrop} aria-label={copy.closePanel} onClick={() => { setLeftOpen(false); setRightOpen(false); }} />}
+
+    <div className={classes(ui.panelCard, ui.imagePanel, leftOpen && ui.mobilePanelOpen)}>
+      <div className={ui.mobileDrawerHeader}><strong>{copy.images}</strong><button aria-label={copy.closePanel} onClick={() => setLeftOpen(false)}>×</button></div>
       <div className={ui.panelHeader}>
         <strong>{copy.images}</strong><small className={ui.counter}>{assets.length}</small>
       </div>
@@ -108,7 +115,7 @@ export function EditorManagementPanels(props: Props) {
           const index = assets.findIndex((asset) => asset.id === item.id);
           const count = annotations.filter((annotation) => annotation.asset === item.id).length;
           return <div key={item.id} className={classes(ui.row, item.id === currentAssetId && ui.rowSelected)}>
-            <button className={ui.rowMain} onClick={() => props.onSelectAsset(item.id)} title={item.name}>
+            <button className={ui.rowMain} onClick={() => { props.onSelectAsset(item.id); setLeftOpen(false); }} title={item.name}>
               {item.name} <small>· {count}</small>
             </button>
             <button className={ui.rowAction} title={copy.reorderImage} disabled={index <= 0} onClick={() => props.onMoveAsset(item.id, -1)}>↑</button>
@@ -119,70 +126,73 @@ export function EditorManagementPanels(props: Props) {
       </div>
     </div>
 
-    <div className={ui.panelCard}>
-      <div className={ui.panelHeader}>
-        <strong>{copy.annotations}</strong><small className={ui.counter}>{activeAssetAnnotations.length}</small>
+    <div className={classes(ui.rightPanel, rightOpen && ui.mobilePanelOpen)}>
+      <div className={ui.mobileDrawerHeader}><strong>{copy.annotations}</strong><button aria-label={copy.closePanel} onClick={() => setRightOpen(false)}>×</button></div>
+      <div className={ui.panelCard}>
+        <div className={ui.panelHeader}>
+          <strong>{copy.annotations}</strong><small className={ui.counter}>{activeAssetAnnotations.length}</small>
+        </div>
+        <small className={ui.helperText}>{copy.annotationPanelHint}</small>
+        <div className={ui.controlRow}>
+          <button onClick={props.onSelectAllAnnotations} disabled={!activeAssetAnnotations.length}>{copy.selectAllAnnotations}</button>
+          <button onClick={props.onClearAnnotationSelection} disabled={!activeSelectedIds.length}>{copy.clearAnnotationSelection}</button>
+          <button className={ui.dangerAction} onClick={() => confirmAnnotationDelete(activeSelectedIds)} disabled={!activeSelectedIds.length}>{copy.deleteSelectedAnnotations}</button>
+        </div>
+        {activeSelectedIds.length > 0 && <div className={ui.batchRow}>
+          <small>{activeSelectedIds.length} {copy.batchSelection}</small>
+          <select value={batchLabel} onChange={(event) => setBatchLabel(event.target.value)} aria-label={copy.changeClass}>
+            {labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}
+          </select>
+          <button onClick={() => props.onBatchReclassify(activeSelectedIds, batchLabel)}>{copy.applyClass}</button>
+        </div>}
+        <div className={ui.list}>
+          {activeAssetAnnotations.map((annotation, index) => {
+            const label = labels.find((item) => item.id === annotation.label);
+            const selected = selectedIds.includes(annotation.id);
+            const hidden = hiddenAnnotationIds.has(annotation.id) || hiddenLabelIds.has(annotation.label);
+            const dotStyle = { "--label-color": label?.color ?? "#929a95" } as CSSProperties;
+            return <div key={annotation.id} className={classes(ui.annotationRow, selected && ui.rowSelected, hidden && ui.rowHidden)}>
+              <button className={ui.rowMain} onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}>
+                <span className={ui.labelDot} style={dotStyle} />
+                {label ? labelName(label) : annotation.label} · {annotation.type} #{index + 1}
+              </button>
+              <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index <= 0} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, -1); }}>↑</button>
+              <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index >= activeAssetAnnotations.length - 1} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, 1); }}>↓</button>
+              <button className={ui.rowAction} title={hidden ? copy.showAnnotation : copy.hideAnnotation} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? "○" : "●"}</button>
+              <button className={classes(ui.rowAction, ui.dangerAction)} title={copy.deleteShape} onClick={(event) => { stop(event); confirmAnnotationDelete([annotation.id]); }}>×</button>
+            </div>;
+          })}
+        </div>
       </div>
-      <small className={ui.helperText}>{copy.annotationPanelHint}</small>
-      <div className={ui.controlRow}>
-        <button onClick={props.onSelectAllAnnotations} disabled={!activeAssetAnnotations.length}>{copy.selectAllAnnotations}</button>
-        <button onClick={props.onClearAnnotationSelection} disabled={!activeSelectedIds.length}>{copy.clearAnnotationSelection}</button>
-        <button className={ui.dangerAction} onClick={() => confirmAnnotationDelete(activeSelectedIds)} disabled={!activeSelectedIds.length}>{copy.deleteSelectedAnnotations}</button>
-      </div>
-      {activeSelectedIds.length > 0 && <div className={ui.batchRow}>
-        <small>{activeSelectedIds.length} {copy.batchSelection}</small>
-        <select value={batchLabel} onChange={(event) => setBatchLabel(event.target.value)} aria-label={copy.changeClass}>
-          {labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}
-        </select>
-        <button onClick={() => props.onBatchReclassify(activeSelectedIds, batchLabel)}>{copy.applyClass}</button>
-      </div>}
-      <div className={ui.list}>
-        {activeAssetAnnotations.map((annotation, index) => {
-          const label = labels.find((item) => item.id === annotation.label);
-          const selected = selectedIds.includes(annotation.id);
-          const hidden = hiddenAnnotationIds.has(annotation.id) || hiddenLabelIds.has(annotation.label);
-          const dotStyle = { "--label-color": label?.color ?? "#929a95" } as CSSProperties;
-          return <div key={annotation.id} className={classes(ui.annotationRow, selected && ui.rowSelected, hidden && ui.rowHidden)}>
-            <button className={ui.rowMain} onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}>
-              <span className={ui.labelDot} style={dotStyle} />
-              {label ? labelName(label) : annotation.label} · {annotation.type} #{index + 1}
-            </button>
-            <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index <= 0} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, -1); }}>↑</button>
-            <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index >= activeAssetAnnotations.length - 1} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, 1); }}>↓</button>
-            <button className={ui.rowAction} title={hidden ? copy.showAnnotation : copy.hideAnnotation} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? "○" : "●"}</button>
-            <button className={classes(ui.rowAction, ui.dangerAction)} title={copy.deleteShape} onClick={(event) => { stop(event); confirmAnnotationDelete([annotation.id]); }}>×</button>
-          </div>;
-        })}
-      </div>
-    </div>
 
-    <div className={ui.panelCard}>
-      <div className={ui.panelHeader}>
-        <strong>{copy.manageClasses}</strong><small className={ui.counter}>{labels.length}</small>
-      </div>
-      <small className={ui.helperText}>{copy.classManagerHint}</small>
-      <div className={ui.helperText}><b>{copy.labelStudio}</b><br />{copy.labelStudioHint}</div>
-      <div className={ui.classCreator}>
-        <input aria-label={copy.className} value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createClass(); }} placeholder={copy.className} />
-        <input className={ui.colorInput} aria-label={copy.labelColor} type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} />
-        <button onClick={createClass} disabled={!newLabelName.trim()}>{copy.createLabel}</button>
-      </div>
-      <div className={ui.list}>
-        {labels.map((label) => {
-          const protectedLabel = label.id === UNLABELED_ID;
-          const hidden = hiddenLabelIds.has(label.id);
-          const count = annotations.filter((annotation) => annotation.label === label.id).length;
-          return <div key={label.id} className={classes(ui.labelRow, hidden && ui.rowHidden)}>
-            <input className={ui.colorInput} aria-label={`${copy.labelColor}: ${labelName(label)}`} type="color" value={label.color} disabled={protectedLabel} onChange={(event) => props.onRecolorLabel(label.id, event.target.value)} />
-            <input aria-label={`${copy.renameClass}: ${labelName(label)}`} key={`${label.id}-${label.name}-${copy.unlabeled}`} defaultValue={labelName(label)} disabled={protectedLabel} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
-            <small>{count}</small>
-            <button className={ui.rowAction} title={hidden ? copy.showClass : copy.hideClass} onClick={() => props.onToggleLabelVisibility(label.id)}>{hidden ? "○" : "●"}</button>
-            <button className={classes(ui.rowAction, ui.dangerAction)} title={protectedLabel ? copy.unlabeledProtected : copy.deleteClass} disabled={protectedLabel} onClick={() => confirmLabelDelete(label)}>×</button>
-          </div>;
-        })}
-      </div>
-      <div className={ui.activeClass}>
-        <label>{copy.newAnnotationClass}: <select value={activeLabelId} onChange={(event) => props.onActiveLabelChange(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select></label>
+      <div className={ui.panelCard}>
+        <div className={ui.panelHeader}>
+          <strong>{copy.manageClasses}</strong><small className={ui.counter}>{labels.length}</small>
+        </div>
+        <small className={ui.helperText}>{copy.classManagerHint}</small>
+        <div className={ui.helperText}><b>{copy.labelStudio}</b><br />{copy.labelStudioHint}</div>
+        <div className={ui.classCreator}>
+          <input aria-label={copy.className} value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createClass(); }} placeholder={copy.className} />
+          <input className={ui.colorInput} aria-label={copy.labelColor} type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} />
+          <button onClick={createClass} disabled={!newLabelName.trim()}>{copy.createLabel}</button>
+        </div>
+        <div className={ui.list}>
+          {labels.map((label) => {
+            const protectedLabel = label.id === UNLABELED_ID;
+            const hidden = hiddenLabelIds.has(label.id);
+            const count = annotations.filter((annotation) => annotation.label === label.id).length;
+            return <div key={label.id} className={classes(ui.labelRow, hidden && ui.rowHidden)}>
+              <input className={ui.colorInput} aria-label={`${copy.labelColor}: ${labelName(label)}`} type="color" value={label.color} disabled={protectedLabel} onChange={(event) => props.onRecolorLabel(label.id, event.target.value)} />
+              <input aria-label={`${copy.renameClass}: ${labelName(label)}`} key={`${label.id}-${label.name}-${copy.unlabeled}`} defaultValue={labelName(label)} disabled={protectedLabel} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+              <small>{count}</small>
+              <button className={ui.rowAction} title={hidden ? copy.showClass : copy.hideClass} onClick={() => props.onToggleLabelVisibility(label.id)}>{hidden ? "○" : "●"}</button>
+              <button className={classes(ui.rowAction, ui.dangerAction)} title={protectedLabel ? copy.unlabeledProtected : copy.deleteClass} disabled={protectedLabel} onClick={() => confirmLabelDelete(label)}>×</button>
+            </div>;
+          })}
+        </div>
+        <div className={ui.activeClass}>
+          <label>{copy.newAnnotationClass}: <select value={activeLabelId} onChange={(event) => props.onActiveLabelChange(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select></label>
+        </div>
       </div>
     </div>
   </section>;

@@ -12,7 +12,9 @@ test('source pixel mapping preserves rotated transforms and crop scaling indepen
   const image = asset('a','EPSG:4326',[0.01,0.002,-47,0.003,-0.01,-21]);
   image.geo.window={x:100,y:50,w:800,h:600}; image.geo.cropWidth=400; image.geo.cropHeight=300;
   const result=buildGeoJson([image],[],[point('a',500,325)]);
-  assert.deepEqual(result.features[0].geometry.coordinates,[-41.3,-23]);
+  const [longitude,latitude]=result.features[0].geometry.coordinates;
+  assert.ok(Math.abs(longitude+41.3)<1e-10);
+  assert.ok(Math.abs(latitude+23)<1e-10);
 });
 
 test('north-up georeferences retain their coordinate mapping through canonical export', () => {

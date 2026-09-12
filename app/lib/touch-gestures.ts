@@ -6,8 +6,6 @@ export class TouchGesture {
   navigating = false;
 
   down(id: number, x: number, y: number, isPrimary = false) {
-    // A primary pointer starts a new physical touch sequence. Discard orphaned IDs
-    // from a release outside the editor or a removed capture target.
     if (isPrimary) this.points.clear();
     if (!this.points.size) {
       this.origin = { x, y };
@@ -29,7 +27,6 @@ export class TouchGesture {
     const tracked = this.points.delete(id);
     const blocked = this.navigating || cancelled;
     const tap = tracked && !blocked && !this.moved;
-    // Keep navigation locked until EVERY finger lifts, including after cancellation.
     if (cancelled) this.navigating = true;
     if (!this.points.size) this.navigating = false;
     return { tracked, blocked, tap };
@@ -42,15 +39,15 @@ export class TouchGesture {
   }
 }
 
-export function pinchZoom(initialZoom: number, initialDistance: number, distance: number) {
-  return Math.max(10, Math.min(400, Math.round(initialZoom * distance / Math.max(1, initialDistance))));
+export function pinchZoom(initialZoom: number, initialDistance: number, distance: number, maxZoom = 400) {
+  return Math.max(10, Math.min(maxZoom, Math.round(initialZoom * distance / Math.max(1, initialDistance))));
 }
 
 export function touchToolUsesTap(tool: string) {
   return ["polygon", "ring", "line", "point", "sam", "split"].includes(tool);
 }
 
-/** Choose the closest vertex in screen pixels when expanded touch targets overlap. */
+/** Legacy helper retained for non-canonical callers. Canonical vertex targeting uses source-image geometry. */
 export function nearestTouchVertex(points: number[], x: number, y: number, width: number, height: number, radius = 22) {
   let closest = -1;
   let distance = radius;

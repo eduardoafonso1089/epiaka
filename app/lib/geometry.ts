@@ -1,9 +1,20 @@
 import type { Annotation } from "./types";
 import polygonClipping from "polygon-clipping";
+import {
+  deleteVertex as deleteEditableVertex,
+  flatPointsFromVertices,
+  insertVertex as insertEditableVertex,
+  updateVertex as updateEditableVertex,
+  verticesFromFlatPoints,
+} from "../editor/models/vertex-model";
 
 export const EDITOR_WIDTH = 1000;
 export const EDITOR_HEIGHT = 650;
 export const MIN_VERTEX_DISTANCE = 10;
+
+function editableVertices(points: number[] = []) {
+  return verticesFromFlatPoints(points, (index) => `v-${index}`);
+}
 
 export function pointsToSvg(points: number[] = []) {
   return points.reduce(
@@ -14,43 +25,45 @@ export function pointsToSvg(points: number[] = []) {
 }
 
 export function deletePolygonVertex(points: number[], vertexIndex: number) {
-  if (vertexIndex < 0 || vertexIndex >= points.length / 2) {
-    return points;
-  }
-  if (points.length <= 2) return [];
-  return points.filter((_, index) => {
-    const pointIndex = Math.floor(index / 2);
-    return pointIndex !== vertexIndex;
-  });
+  const vertices = editableVertices(points);
+  if (vertexIndex < 0 || vertexIndex >= vertices.length) return points;
+  if (vertices.length <= 1) return [];
+  return flatPointsFromVertices(deleteEditableVertex(vertices, `v-${vertexIndex}`, 0));
 }
 
 export function insertPolygonVertex(points: number[], edgeIndex: number, x: number, y: number) {
-  const tooClose = points.some((coordinate, index) =>
-    index % 2 === 0 && Math.hypot(coordinate - x, points[index + 1] - y) < MIN_VERTEX_DISTANCE,
+  const clamped = {
+    x: Math.max(0, Math.min(EDITOR_WIDTH, x)),
+    y: Math.max(0, Math.min(EDITOR_HEIGHT, y)),
+  };
+  const vertices = editableVertices(points);
+  const tooClose = vertices.some((vertex) =>
+    Math.hypot(vertex.x - clamped.x, vertex.y - clamped.y) < MIN_VERTEX_DISTANCE,
   );
-  if (tooClose) return points;
-  const insertionIndex = (edgeIndex + 1) * 2;
-  return [
-    ...points.slice(0, insertionIndex),
-    Math.max(0, Math.min(EDITOR_WIDTH, x)),
-    Math.max(0, Math.min(EDITOR_HEIGHT, y)),
-    ...points.slice(insertionIndex),
-  ];
+  if (tooClose || edgeIndex < 0 || edgeIndex >= vertices.length) return points;
+  return flatPointsFromVertices(insertEditableVertex(
+    vertices,
+    `v-${edgeIndex}`,
+    clamped,
+    (index) => `v-inserted-${index}`,
+  ));
 }
 
 // `open` discards the closing edge, so polylines do not gain an insertion point between the
 // last and the first vertex.
 export function edgeMidpoints(points: number[], open = false) {
+  const vertices = editableVertices(points);
   const result: Array<{ x: number; y: number; edgeIndex: number }> = [];
-  if (points.length < 4) return result;
-  const limit = open ? points.length - 2 : points.length === 4 ? 2 : points.length;
-  for (let index = 0; index < limit; index += 2) {
-    const next = (index + 2) % points.length;
-    if (Math.hypot(points[index] - points[next], points[index + 1] - points[next + 1]) < MIN_VERTEX_DISTANCE * 3) continue;
+  if (vertices.length < 2) return result;
+  const limit = open ? vertices.length - 1 : vertices.length === 2 ? 1 : vertices.length;
+  for (let index = 0; index < limit; index += 1) {
+    const current = vertices[index];
+    const next = vertices[(index + 1) % vertices.length];
+    if (Math.hypot(current.x - next.x, current.y - next.y) < MIN_VERTEX_DISTANCE * 3) continue;
     result.push({
-      x: (points[index] + points[next]) / 2,
-      y: (points[index + 1] + points[next + 1]) / 2,
-      edgeIndex: index / 2,
+      x: (current.x + next.x) / 2,
+      y: (current.y + next.y) / 2,
+      edgeIndex: index,
     });
   }
   return result;
@@ -451,18 +464,17 @@ export function scalePoints(points: number[], width: number, height: number) {
 }
 
 export function updatePolygonVertex(points: number[], vertexIndex: number, x: number, y: number) {
-  const clampedX = Math.max(0, Math.min(EDITOR_WIDTH, x));
-  const clampedY = Math.max(0, Math.min(EDITOR_HEIGHT, y));
-  const overlapsAnotherVertex = points.some((coordinate, index) =>
-    index % 2 === 0 && index / 2 !== vertexIndex &&
-    Math.hypot(coordinate - clampedX, points[index + 1] - clampedY) < MIN_VERTEX_DISTANCE,
+  const vertices = editableVertices(points);
+  if (vertexIndex < 0 || vertexIndex >= vertices.length) return points;
+  const clamped = {
+    x: Math.max(0, Math.min(EDITOR_WIDTH, x)),
+    y: Math.max(0, Math.min(EDITOR_HEIGHT, y)),
+  };
+  const overlapsAnotherVertex = vertices.some((vertex, index) =>
+    index !== vertexIndex && Math.hypot(vertex.x - clamped.x, vertex.y - clamped.y) < MIN_VERTEX_DISTANCE,
   );
   if (overlapsAnotherVertex) return points;
-  return points.map((coordinate, index) => {
-    if (index === vertexIndex * 2) return clampedX;
-    if (index === vertexIndex * 2 + 1) return clampedY;
-    return coordinate;
-  });
+  return flatPointsFromVertices(updateEditableVertex(vertices, `v-${vertexIndex}`, clamped));
 }
 
 function perpendicularDistance(point: [number, number], start: [number, number], end: [number, number]) {

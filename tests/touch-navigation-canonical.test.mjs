@@ -61,7 +61,7 @@ test('discrete touch drawing commits on pointerup, not pointerdown',()=>{
 });
 
 test('canonical workbench exposes hand tool and capture-phase touch navigation',()=>{
-  assert.match(workbenchSource,/id: "pan", label: "Mão"/);
+  assert.match(workbenchSource,/id: "pan", label: "Mão(?: \(H\))?"/);
   assert.match(workbenchSource,/onPointerDownCapture=\{touch\.onPointerDownCapture\}/);
   assert.match(workbenchSource,/onPointerMoveCapture=\{touch\.onPointerMoveCapture\}/);
   assert.match(workbenchSource,/touchMode=\{touch\.touchMode\}/);

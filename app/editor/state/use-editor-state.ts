@@ -38,13 +38,23 @@ export function useEditorState(initialAnnotations: EditorAnnotation[] = []) {
     dispatch({ type: "select-vertex", vertex });
   }, []);
 
+  const beginGesture = useCallback(() => dispatch({ type: "begin-gesture" }), []);
+  const commitGesture = useCallback(() => dispatch({ type: "commit-gesture" }), []);
+  const cancelGesture = useCallback(() => dispatch({ type: "cancel-gesture" }), []);
+  const undo = useCallback(() => dispatch({ type: "undo" }), []);
+  const redo = useCallback(() => dispatch({ type: "redo" }), []);
+  const markSaved = useCallback(() => dispatch({ type: "mark-saved" }), []);
+
   return {
     state,
     dispatch,
     annotations: state.annotations,
     history: state.history,
-    redo: state.redo,
+    redoHistory: state.redo,
+    gesture: state.gesture,
     selection: state.selection,
+    selected: state.selection.selected,
+    multiSelected: state.selection.multiSelected,
     selectedVertex: state.selectedVertex,
     selectedAnnotation,
     selectedAnnotations,
@@ -54,5 +64,11 @@ export function useEditorState(initialAnnotations: EditorAnnotation[] = []) {
     deleteAnnotations,
     setSelection,
     selectVertex,
+    beginGesture,
+    commitGesture,
+    cancelGesture,
+    undo,
+    redo,
+    markSaved,
   };
 }

@@ -1,6 +1,12 @@
 import type { Asset, Label } from "../../lib/types";
 import type { EditorAnnotation } from "../models/annotation-model";
-import { cocoAnnotationToEditor, cocoGeometryTypes, type CocoAnnotationInput, type CocoCategoryInput } from "./coco-import";
+import {
+  cocoAnnotationToEditor,
+  cocoGeometryTypes,
+  type CocoAnnotationInput,
+  type CocoCategoryInput,
+  type CocoGeometry,
+} from "./coco-import";
 
 export type CocoImageInput = { id?: number; file_name?: string; width?: number; height?: number };
 export type CocoDocumentInput = {
@@ -8,9 +14,27 @@ export type CocoDocumentInput = {
   categories?: CocoCategoryInput[];
   annotations?: Array<CocoAnnotationInput & { image_id?: number; category_id?: number }>;
 };
+export type CocoImportCandidate = {
+  index: number;
+  imageName: string;
+  labelName: string;
+  geometries: CocoGeometry[];
+  imageId: number;
+  categoryId?: number;
+};
+export type CocoDocumentPlan = {
+  candidates: CocoImportCandidate[];
+  unmatched: number;
+  geometryTypes: CocoGeometry[];
+};
+export type CocoDocumentImportOptions = {
+  selectedAnnotationIndexes?: Iterable<number>;
+  geometryTypes?: Iterable<CocoGeometry>;
+};
 export type CocoDocumentImportResult = { labels: Label[]; annotations: EditorAnnotation[]; imported: number; unmatched: number };
 
 const IMPORT_COLORS = ["#6c8cff", "#d987ff", "#26c6b6", "#ff8a65", "#ffd166", "#7ee081", "#59b0f6", "#f26d9d"];
+const ALL_GEOMETRIES: CocoGeometry[] = ["box", "point", "polygon"];
 
 function baseName(name: string) {
   return name.split(/[\\/]/).pop()?.trim().toLocaleLowerCase() ?? "";
@@ -20,22 +44,73 @@ function names(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && !!item.trim()).map((item) => item.trim()) : [];
 }
 
-export function importCocoDocument(document: CocoDocumentInput, assets: Asset[], currentLabels: Label[], makeId: (prefix: string) => string): CocoDocumentImportResult {
-  const images = Array.isArray(document.images) ? document.images : [];
-  const categories = Array.isArray(document.categories) ? document.categories : [];
-  const sourceAnnotations = Array.isArray(document.annotations) ? document.annotations : [];
-  const labels = [...currentLabels];
-  const annotations: EditorAnnotation[] = [];
-  let unmatched = 0;
+function documentParts(document: CocoDocumentInput) {
+  return {
+    images: Array.isArray(document.images) ? document.images : [],
+    categories: Array.isArray(document.categories) ? document.categories : [],
+    annotations: Array.isArray(document.annotations) ? document.annotations : [],
+  };
+}
 
+function matchedImages(images: CocoImageInput[], assets: Asset[]) {
   const assetsByName = new Map(assets.map((asset) => [baseName(asset.name), asset]));
-  const imageById = new Map(images.flatMap((image) => {
+  return new Map(images.flatMap((image) => {
     if (typeof image.id !== "number" || typeof image.file_name !== "string") return [];
     const asset = assetsByName.get(baseName(image.file_name));
     return asset ? [[image.id, { image, asset }] as const] : [];
   }));
+}
+
+export function planCocoDocument(document: CocoDocumentInput, assets: Asset[]): CocoDocumentPlan {
+  const { images, categories, annotations } = documentParts(document);
+  const imageById = matchedImages(images, assets);
+  const categoryById = new Map(categories.flatMap((category) => typeof category.id === "number" ? [[category.id, category] as const] : []));
+  const candidates: CocoImportCandidate[] = [];
+  const geometryTypes = new Set<CocoGeometry>();
+  let unmatched = 0;
+
+  annotations.forEach((annotation, index) => {
+    if (typeof annotation.image_id !== "number") { unmatched += 1; return; }
+    const imageEntry = imageById.get(annotation.image_id);
+    if (!imageEntry) { unmatched += 1; return; }
+    const geometries = cocoGeometryTypes(annotation);
+    if (!geometries.length) { unmatched += 1; return; }
+    geometries.forEach((geometry) => geometryTypes.add(geometry));
+    const category = typeof annotation.category_id === "number" ? categoryById.get(annotation.category_id) : undefined;
+    candidates.push({
+      index,
+      imageId: annotation.image_id,
+      categoryId: typeof annotation.category_id === "number" ? annotation.category_id : undefined,
+      imageName: imageEntry.image.file_name ?? imageEntry.asset.name,
+      labelName: category?.name?.trim() || (typeof annotation.category_id === "number" ? `Classe ${annotation.category_id}` : "Sem label"),
+      geometries,
+    });
+  });
+
+  return {
+    candidates,
+    unmatched,
+    geometryTypes: ALL_GEOMETRIES.filter((geometry) => geometryTypes.has(geometry)),
+  };
+}
+
+export function importCocoDocument(
+  document: CocoDocumentInput,
+  assets: Asset[],
+  currentLabels: Label[],
+  makeId: (prefix: string) => string,
+  options: CocoDocumentImportOptions = {},
+): CocoDocumentImportResult {
+  const { images, categories, annotations: sourceAnnotations } = documentParts(document);
+  const labels = [...currentLabels];
+  const annotations: EditorAnnotation[] = [];
+  let unmatched = 0;
+
+  const imageById = matchedImages(images, assets);
   const categoryById = new Map(categories.flatMap((category) => typeof category.id === "number" ? [[category.id, category] as const] : []));
   const labelByCategory = new Map<number, Label>();
+  const selectedIndexes = options.selectedAnnotationIndexes ? new Set(options.selectedAnnotationIndexes) : null;
+  const allowedGeometryTypes = new Set(options.geometryTypes ?? ALL_GEOMETRIES);
 
   const ensureLabel = (name: string, preferredPrefix = "label") => {
     const normalized = name.trim() || "Sem label";
@@ -46,22 +121,24 @@ export function importCocoDocument(document: CocoDocumentInput, assets: Asset[],
     return created;
   };
 
-  for (const category of categories) {
-    if (typeof category.id !== "number") continue;
-    labelByCategory.set(category.id, ensureLabel(category.name?.trim() || `Classe ${category.id}`));
-  }
-
-  for (const input of sourceAnnotations) {
-    if (typeof input.image_id !== "number") { unmatched += 1; continue; }
+  sourceAnnotations.forEach((input, index) => {
+    if (selectedIndexes && !selectedIndexes.has(index)) return;
+    if (typeof input.image_id !== "number") { unmatched += 1; return; }
     const imageEntry = imageById.get(input.image_id);
-    if (!imageEntry) { unmatched += 1; continue; }
+    if (!imageEntry) { unmatched += 1; return; }
+
+    const availableGeometryTypes = cocoGeometryTypes(input);
+    const geometryTypes = new Set(availableGeometryTypes.filter((geometry) => allowedGeometryTypes.has(geometry)));
+    if (!geometryTypes.size) return;
 
     const category = typeof input.category_id === "number" ? categoryById.get(input.category_id) : undefined;
-    const label = typeof input.category_id === "number"
-      ? labelByCategory.get(input.category_id) ?? ensureLabel(`Classe ${input.category_id}`)
-      : ensureLabel("Sem label");
-    const geometryTypes = new Set(cocoGeometryTypes(input));
-    if (!geometryTypes.size) { unmatched += 1; continue; }
+    let label: Label;
+    if (typeof input.category_id === "number") {
+      label = labelByCategory.get(input.category_id) ?? ensureLabel(category?.name?.trim() || `Classe ${input.category_id}`);
+      labelByCategory.set(input.category_id, label);
+    } else {
+      label = ensureLabel("Sem label");
+    }
 
     const sourceWidth = Number(imageEntry.image.width ?? imageEntry.asset.width);
     const sourceHeight = Number(imageEntry.image.height ?? imageEntry.asset.height);
@@ -69,7 +146,7 @@ export function importCocoDocument(document: CocoDocumentInput, assets: Asset[],
     const targetHeight = Number(imageEntry.asset.height);
     if (![sourceWidth, sourceHeight, targetWidth, targetHeight].every((value) => Number.isFinite(value) && value > 0)) {
       unmatched += 1;
-      continue;
+      return;
     }
 
     const keypointNames = names(category?.keypoints);
@@ -87,7 +164,7 @@ export function importCocoDocument(document: CocoDocumentInput, assets: Asset[],
     });
     annotations.push(...converted);
     if (!converted.length) unmatched += 1;
-  }
+  });
 
   return { labels, annotations, imported: annotations.length, unmatched };
 }

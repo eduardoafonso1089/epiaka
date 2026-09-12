@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 
 const source=readFileSync(new URL('../app/editor/session/editor-session-io.ts',import.meta.url),'utf8');
 
-test('session IO uses V3 project APIs and canonical annotations',()=>{
-  assert.match(source,/openPoligomeProjectV3/);
-  assert.match(source,/savePoligomeProjectV3/);
+test('session IO uses V4 image-pixel project APIs and canonical annotations',()=>{
+  assert.match(source,/openPoligomeProjectV4/);
+  assert.match(source,/savePoligomeProjectV4/);
   assert.match(source,/EditorAnnotation\[\]/);
-  assert.doesNotMatch(source,/fromLegacyAnnotations|toLegacyAnnotations/);
+  assert.doesNotMatch(source,/fromLegacyAnnotations|toLegacyAnnotations|ProjectV3/);
 });
 
 test('session IO composes real canonical codecs',()=>{

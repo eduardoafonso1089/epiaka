@@ -26,12 +26,12 @@ function safeBaseName(name: string, fallback: string) {
 
 export function buildCocoDocument(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
   return {
-    info: { description: "Poligome dataset", version: "3.0" },
+    info: { description: "Poligome dataset", version: "4.0" },
     images: assets.map((asset, index) => ({
       id: index + 1,
       file_name: asset.name,
-      width: asset.width ?? 1000,
-      height: asset.height ?? 650,
+      width: asset.width ?? 0,
+      height: asset.height ?? 0,
       ...(asset.geo ? { georeference: asset.geo } : {}),
     })),
     categories: labels.map((label, index) => ({ id: index + 1, name: label.name, supercategory: "object" })),
@@ -56,7 +56,7 @@ export async function exportEditorYoloZip(assets: Asset[], labels: Label[], anno
     const extension = asset.name.match(/\.[a-zA-Z0-9]+$/)?.[0].toLowerCase() ?? ".png";
     const rows = annotations
       .filter((annotation) => annotation.asset === asset.id)
-      .map((annotation) => annotationToYolo(annotation, labels))
+      .map((annotation) => annotationToYolo(annotation, labels, asset))
       .filter((row): row is string => !!row);
     const response = await fetch(asset.src);
     if (!response.ok) throw new Error(`Could not read image for YOLO export: ${asset.name}`);
@@ -97,11 +97,18 @@ export function buildGeoJson(assets: Asset[], labels: Label[], annotations: Edit
   const features = annotations.map((annotation) => {
     const asset = assetMap.get(annotation.asset);
     if (!asset?.geo) throw new Error("rasterMissingReference");
+    const width = Number(asset.width);
+    const height = Number(asset.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) throw new Error("rasterInvalidReference");
     const geo = asset.geo;
     if (!projections.has(geo.crs)) projections.set(geo.crs, toWgs84(geo.crs));
     const transform = rasterTransform(geo);
     const project = (x: number, y: number): [number, number] => {
-      const native = transformPoint(transform, geo.window.x + x / 1000 * geo.window.w, geo.window.y + y / 650 * geo.window.h);
+      const native = transformPoint(
+        transform,
+        geo.window.x + x / width * geo.window.w,
+        geo.window.y + y / height * geo.window.h,
+      );
       return projections.get(geo.crs)!(native);
     };
     const geometry = annotationToGeoJsonGeometry(annotation, project) as { type: string; coordinates: unknown };

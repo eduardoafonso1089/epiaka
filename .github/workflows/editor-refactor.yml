@@ -31,3 +31,6 @@ jobs:
 
       - name: Run tests
         run: node --import tsx --test tests/*.test.mjs
+
+      - name: Report COG tile benchmark
+        run: COG_BENCH_ITERATIONS=5000 npm run benchmark:cog

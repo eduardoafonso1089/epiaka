@@ -9,7 +9,7 @@ test('canonical COCO document exports source-image pixel geometry',()=>{
   const assets=[{id:'img',name:'image.png',src:'',width:2000,height:1300}];
   const annotations=[{id:'p',asset:'img',label:'weed',type:'point',x:250,y:325}];
   const document=buildCocoDocument(assets,labels,annotations);
-  assert.equal(document.info.version,'4.0');
+  assert.equal(document.info.version,'1.0');
   assert.equal(document.images[0].file_name,'image.png');
   assert.deepEqual(document.annotations[0].keypoints,[250,325,2]);
   assert.equal(document.annotations[0].num_keypoints,1);

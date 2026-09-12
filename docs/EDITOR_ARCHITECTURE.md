@@ -42,6 +42,8 @@ The `.plgm` manifest is strictly V4:
 
 The canonical APIs are `savePoligomeProjectV4()` and `openPoligomeProjectV4()`. V3 and older manifests are rejected instead of migrated.
 
+Projects can be saved in complete or annotations-only mode. In annotations-only mode the persisted asset IDs remain authoritative and assets reopen as missing. `app/editor/session/image-assets.ts` provides canonical re-linking by basename while preserving those IDs, validating dimensions for ordinary images, refusing ambiguous duplicate-name matches and restoring tiled raster runtime sources without moving annotations to new assets.
+
 ## Viewport and touch
 
 `app/editor/viewport/viewport-controller.ts` owns viewport size, image size, zoom and scroll. `app/editor/viewport/use-touch-navigation.ts` arbitrates mobile gestures:
@@ -57,7 +59,7 @@ Pan and pinch mutate viewport state only.
 
 `app/editor/state/editor-state.ts` owns annotations, undo/redo, selection, selected vertex, dirty/saved state and gesture transactions. It also owns canonical annotation ordering, batch reclassification and atomic batch replacement.
 
-Reordering is constrained to annotations belonging to the same asset. Batch reclassification is a single undoable editor operation. Merge/split can replace multiple annotations in one history snapshot. A continuous drag/resize/rotation creates one undo step.
+Reordering is constrained to annotations belonging to the same asset. Batch reclassification is a single undoable editor operation. Merge/split can replace multiple annotations in one history snapshot. Continuous drag, resize, rotation and polygon transform use gesture transactions so one pointer interaction creates one undo step.
 
 ## Rendering
 
@@ -67,7 +69,7 @@ Rendering is composed under `app/editor/layers` and `app/editor/canvas`. The ren
 
 Internal geometry remains in image pixels.
 
-- COCO uses image pixels directly.
+- COCO uses image pixels directly and exports `info.version: "1.0"` independently from the internal `.plgm` schema version.
 - COCO import scales only when the document dimensions differ from the loaded image dimensions.
 - Selective COCO import plans records against loaded image basenames, then lets the user filter geometry types and individual annotation records before labels or geometry are materialized.
 - YOLO normalization happens only at export using the actual asset width/height.
@@ -96,33 +98,26 @@ Native tiled COG assets use the full source-raster dimensions as the logical ima
 
 ## Application parity
 
-Most of the agreed product surface has been restored on the canonical architecture:
+The agreed merge-target product surface has been restored on the canonical architecture:
 
-- image panel: search, select, reorder and delete;
+- image panel: search, select, reorder, delete and confirmation-protected destructive actions;
 - annotation panel: hide/show, delete, asset-local reorder, select-all and Shift/Ctrl/Cmd list selection;
-- class management: quick label creation, rename, color, hide/show, protected unlabeled class, delete with reclassification, active class selection and batch reclassification;
+- class management: quick label creation, rename, color, hide/show, protected localized unlabeled class, delete with reclassification, active class selection and batch reclassification;
+- project lifecycle: new project, unsaved-work protection, rename, complete/annotations-only save, open and missing-image re-link;
 - Quality/Review, including image/annotation/class scores and source-pixel dataset summaries;
-- advanced vector operations: snapping, simplify, union/merge, split, polygon-hole creation and reshape;
-- keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys;
+- advanced vector operations: snapping, simplify, duplicate, union/merge, split, polygon-hole creation, reshape and source-pixel polygon scale/rotation transform;
+- keyboard shortcuts for tools, advanced vector editing, history, delete, draft finish/cancel and label keys;
 - selective COCO import by geometry type and individual annotation record;
 - PT/EN/FR/ES internationalization for the active canonical editor surface;
 - canonical visual/interface structure using the shared Poligome visual tokens.
 
-The branch is **not yet merge-ready**. The detailed pre-merge audit is `docs/PRE_MERGE_AUDIT.md`. Confirmed remaining blockers are:
-
-- re-linking the original asset IDs when an annotations-only project is reopened and its images are supplied again;
-- New Project/reset lifecycle with unsaved-work protection and project rename;
-- polygon duplication;
-- polygon scale/rotation transform;
-- recoverable or explicitly confirmed destructive image/class management actions.
-
-These are product-surface gaps, not reasons to reintroduce legacy normalized geometry.
+The pre-merge decision is **GO**. Detailed evidence and remaining non-blocking UX differences are recorded in `docs/PRE_MERGE_AUDIT.md`.
 
 Cephalometric-landmark import is not part of Poligome and must not be ported into the canonical editor.
 
 ### Product decisions recorded on 2026-09-12
 
-- **D1 — merge strategy: option B.** Implement application parity on `refactor/editor-architecture`; merge into `main` only when the canonical editor has recovered the agreed product surface. Do not restore the legacy annotator as the production `/annotate` route.
+- **D1 — merge strategy: option B.** Application parity was completed on `refactor/editor-architecture`; the legacy annotator was not restored as the production `/annotate` route.
 - **D2 — parity scope.** Quality/Review is retained as an important platform capability. Cephalometric landmarks are explicitly out of scope.
 - **SAM integration.** SAM is not a merge blocker for this refactor branch. Its canonical implementation will be integrated from a separate branch. `app/lib/sam.ts` and its local connector assets must therefore not be deleted as orphaned legacy during this refactor.
 
@@ -144,16 +139,15 @@ The canonical management surface lives under `app/editor/panels`.
 - `panel-model.ts` contains pure operations for image ordering and class lifecycle;
 - `editor-management-panels.tsx` renders the responsive image, annotation and class panels;
 - hiding an annotation or class is transient UI state and never rewrites geometry;
-- deleting an image deletes only annotations owned by that asset;
-- deleting a class preserves its annotations by moving them to the protected `unlabeled` class;
+- deleting an image deletes only annotations owned by that asset and requires confirmation from the management UI;
+- deleting a class preserves its annotations by moving them to the protected `unlabeled` class and requires confirmation;
+- annotation deletion from panel controls is confirmation-protected, while keyboard Delete remains undoable through editor history;
 - annotation reorder never crosses asset boundaries;
 - batch class changes are recorded through `EditorState`, so one batch operation corresponds to one undo step.
 
-The pre-merge audit additionally requires confirmation or equivalent recovery for management operations that cannot be completely reconstructed by annotation undo.
-
 ## Advanced vector editing
 
-Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` and never uses a normalized editor extent.
+Canonical advanced geometry lives under `app/editor/geometry` and never uses a normalized editor extent.
 
 - snapping prefers vertices inside the screen-derived tolerance and falls back to edge projection only when no vertex qualifies;
 - simplification uses Ramer-Douglas-Peucker in source-image pixels and rejects invalid output rings;
@@ -161,15 +155,16 @@ Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` 
 - split derives its cutter scale from the real image dimensions, including very large rasters;
 - polygon holes are validated as fully contained, non-crossing rings;
 - reshape consumes a source-pixel trace and preserves a valid canonical polygon;
+- duplication creates a fresh annotation plus fresh outer/hole vertex IDs and adds one undoable editor operation;
+- `polygon-transform.ts` scales and rotates outer and hole vertices around source-pixel bounds while preserving stable vertex IDs;
+- transform pointer interaction uses `begin-gesture`/`commit-gesture`, so an entire scale/rotation gesture produces one undo entry;
 - merge/split use `replace-annotations-batch`, so each operation creates one undo step.
 
-`app/editor/interactions/use-advanced-vector-interactions.ts` owns hole/split/reshape gestures, while `app/editor/vector/vector-toolbar.tsx` only emits commands.
-
-Polygon duplication and scale/rotation transform remain pre-merge parity work. Box scale/rotation is already covered by canonical box resize/rotation interactions and should not be reimplemented as a second geometry path.
+`app/editor/interactions/use-advanced-vector-interactions.ts` owns hole/split/reshape/transform gestures, while `app/editor/vector/vector-toolbar.tsx` emits the corresponding commands. Box scale/rotation remains on its separate canonical box-resize/rotation path.
 
 ## Keyboard commands
 
-`app/editor/commands/editor-shortcuts.ts` translates keyboard input into editor commands. Current canonical shortcuts include `V`, `H`, `B`, `P`, `F`, `L`, `K`, `O`, `X`, `R`, `Enter`, `Esc`, `Delete`/`Backspace`, `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y`. Unmodified class shortcut keys select their corresponding label.
+`app/editor/commands/editor-shortcuts.ts` translates keyboard input into editor commands. Current canonical shortcuts include `V`, `H`, `B`, `P`, `F`, `L`, `K`, `O`, `X`, `R`, `T`, `Enter`, `Esc`, `Delete`/`Backspace`, `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y`. Unmodified class shortcut keys select their corresponding label.
 
 Keyboard commands are ignored while an input, textarea, select or content-editable element owns focus.
 
@@ -189,7 +184,9 @@ Quality metrics must never reintroduce the removed `1000×650` normalization.
 
 `.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build, the complete test suite, the i18n parity-debt gate, cross-branch export goldens, the demo-route smoke test and the COG benchmark.
 
-The i18n debt allowlist must shrink whenever a canonical UI surface starts consuming keys previously used only by `main`. It is a regression/debt gate, not a merge-readiness signal. Remaining entries include both intentionally deferred surfaces such as SAM and non-SAM parity work listed in `docs/PRE_MERGE_AUDIT.md`.
+The i18n debt allowlist must shrink whenever a canonical UI surface starts consuming keys previously used only by `main`. It is a regression/debt gate, not a merge-readiness signal. Remaining entries represent intentionally deferred legacy-interface affordances, additional status/help copy and SAM integration copy rather than a second editor runtime.
+
+The pre-merge implementation head identified in `docs/PRE_MERGE_AUDIT.md` passed the complete workflow and the second audit found the branch `0` commits behind `main`.
 
 ## Core migration status
 
@@ -199,9 +196,9 @@ The i18n debt allowlist must shrink whenever a canonical UI surface starts consu
 4. Canonical COCO/YOLO/GeoJSON I/O. **Done.**
 5. Mobile pan and pinch navigation. **Done.**
 6. Native source-image pixel geometry. **Done.**
-7. Strict V4 project persistence. **Done.**
+7. Strict V4 project persistence and annotations-only image re-link. **Done.**
 8. Replace `/annotate` with the canonical editor. **Done.**
 9. Delete duplicate/legacy routes, bridge and annotation adapters. **Done.**
 10. Remove only utilities proven to be legacy and behaviorally superseded. A module must not be deleted solely because its UI is being integrated from another branch. **Guarded cleanup, not blanket orphan deletion.**
 
-Core migration is complete; product parity is still on HOLD according to `docs/PRE_MERGE_AUDIT.md`.
+Core migration and the agreed merge-target application parity are complete. The editor-architecture pre-merge audit is **GO**.

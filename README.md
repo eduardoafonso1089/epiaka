@@ -8,6 +8,8 @@ your own machine, and the dataset you export never passes through a backend. AI
 assistance is optional and also local: the SAM connector and the GeoTIFF
 converter run on your computer, not in the cloud.
 
+Current refactor limitation: this branch does **not currently** expose the local SAM UI.
+
 ## Image annotator
 
 | | Route | What it does | Exports |

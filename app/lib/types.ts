@@ -21,34 +21,35 @@ export type Label = {
   reviewScore?: number;
 };
 
-/**
- * Reference from a COG crop to the file it came from. Kept in the asset because it is what
- * maps the annotation — drawn in the editor's 1000 × 650 space — back to a pixel of the
- * original file and to a ground coordinate.
- */
 /** X = a*x + b*y + c; Y = d*x + e*y + f, measured at pixel edges. */
 export type RasterTransform = [number, number, number, number, number, number];
 
 export type GeoRef = {
-  /** Full affine transform; optional for backwards compatibility with v2 projects. */
   transform?: RasterTransform;
-  /** Nome ou URL do COG de origem. */
+  /** Nome ou URL do raster de origem. */
   source: string;
   /** EPSG code of the file, or "sem CRS". */
   crs: string;
-  /** Canto superior esquerdo do arquivo, na unidade do CRS. */
   originX: number;
   originY: number;
-  /** CRS units per pixel of the file. */
+  /** CRS units per source pixel. */
   scaleX: number;
   scaleY: number;
   sourceWidth: number;
   sourceHeight: number;
-  /** The cropped window, in pixels of the source file, with y growing downwards. */
+  /** Window in source-raster pixels. Full tiled rasters use the whole source extent. */
   window: { x: number; y: number; w: number; h: number };
-  /** Size of the generated PNG. It can be smaller than the window: the crop is capped. */
+  /** Display asset dimensions. For native tiled rasters these equal source dimensions. */
   cropWidth: number;
   cropHeight: number;
+};
+
+export type RasterAsset = {
+  kind: "cog";
+  mode: "tiled";
+  sourceType: "local" | "remote" | "bundled";
+  profile?: "complete" | "tiled-no-overviews" | "striped";
+  reference?: { transform?: RasterTransform; crs?: string };
 };
 
 export type Asset = {
@@ -61,6 +62,9 @@ export type Asset = {
   width?: number;
   height?: number;
   geo?: GeoRef;
+  raster?: RasterAsset;
+  /** Runtime-only File/Blob backing a local or bundled tiled raster. Never serialized. */
+  runtimeRasterSource?: Blob;
   reviewScore?: number;
 };
 
@@ -68,7 +72,6 @@ export type Annotation = {
   id: string;
   asset: string;
   label: string;
-  // "line" is an open polyline: it uses `pts` like the polygon, but without closing the outline.
   type: "box" | "polygon" | "line" | "point";
   x?: number;
   y?: number;
@@ -77,7 +80,6 @@ export type Annotation = {
   /** Clockwise rotation in radians around the centre of a bounding box. */
   rotation?: number;
   pts?: number[];
-  /** Interior rings (holes) of a polygon. Legacy annotations simply omit this field. */
   holes?: number[][];
   reviewScore?: number;
 };

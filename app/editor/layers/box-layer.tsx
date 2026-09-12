@@ -1,12 +1,12 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { Annotation } from "../../lib/types";
+import type { BoxAnnotation } from "../models/annotation-model";
 
 export type BoxCorner = "nw" | "ne" | "se" | "sw";
 
 type Props = {
-  annotation: Annotation;
+  annotation: BoxAnnotation;
   color: string;
   selected: boolean;
   active: boolean;
@@ -17,14 +17,14 @@ type Props = {
   touchRadius: number;
   rotationTouchRadius: number;
   lineThickness: number;
-  onPointerDown: (event: ReactPointerEvent<SVGElement>, annotation: Annotation) => void;
+  onPointerDown: (event: ReactPointerEvent<SVGElement>, annotation: BoxAnnotation) => void;
   onPointerMove: (event: ReactPointerEvent<SVGElement>) => void;
   onPointerUp: (event: ReactPointerEvent<SVGElement>) => void;
   onPointerCancel: () => void;
-  onResizeStart: (event: ReactPointerEvent<SVGElement>, annotation: Annotation, corner: BoxCorner) => void;
+  onResizeStart: (event: ReactPointerEvent<SVGElement>, annotation: BoxAnnotation, corner: BoxCorner) => void;
   onResizeMove: (event: ReactPointerEvent<SVGElement>) => void;
   onResizeEnd: (event: ReactPointerEvent<SVGElement>) => void;
-  onRotateStart: (event: ReactPointerEvent<SVGElement>, annotation: Annotation) => void;
+  onRotateStart: (event: ReactPointerEvent<SVGElement>, annotation: BoxAnnotation) => void;
   onTransformMove: (event: ReactPointerEvent<SVGElement>) => void;
   onTransformEnd: (event: ReactPointerEvent<SVGElement>) => void;
 };
@@ -34,10 +34,7 @@ export function BoxLayer({
   touchRadius, rotationTouchRadius, lineThickness, onPointerDown, onPointerMove, onPointerUp,
   onPointerCancel, onResizeStart, onResizeMove, onResizeEnd, onRotateStart, onTransformMove, onTransformEnd,
 }: Props) {
-  const x = annotation.x ?? 0;
-  const y = annotation.y ?? 0;
-  const width = annotation.w ?? 0;
-  const height = annotation.h ?? 0;
+  const { x, y, width, height } = annotation;
   const centerX = x + width / 2;
   const centerY = y + height / 2;
   const degrees = (annotation.rotation ?? 0) * 180 / Math.PI;
@@ -51,7 +48,7 @@ export function BoxLayer({
   const showHandles = selecting && selected && active;
 
   return (
-    <g className={selecting ? "movable-annotation" : ""} onPointerDown={(event) => onPointerDown(event, annotation)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
+    <g data-annotation-id={annotation.id} className={selecting ? "movable-annotation" : ""} onPointerDown={(event) => onPointerDown(event, annotation)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <g transform={`rotate(${degrees} ${centerX} ${centerY})`}>
         <rect x={x} y={y} width={width} height={height} fill={`${color}28`} stroke={color} strokeWidth={selected ? lineThickness + 2 : lineThickness} vectorEffect="non-scaling-stroke" />
         {showHandles && <>

@@ -10,9 +10,8 @@ import type { Vertex } from "./vertex-model";
 export type Coordinate = { x: number; y: number } | readonly [number, number];
 
 function coordinatePoint(coordinate: Coordinate) {
-  return Array.isArray(coordinate)
-    ? { x: coordinate[0], y: coordinate[1] }
-    : { x: coordinate.x, y: coordinate.y };
+  if ("x" in coordinate) return { x: coordinate.x, y: coordinate.y };
+  return { x: coordinate[0], y: coordinate[1] };
 }
 
 export function createVertices(annotationId: string, coordinates: Coordinate[], ring = "outer"): Vertex[] {

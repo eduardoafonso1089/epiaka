@@ -1,0 +1,72 @@
+.routeRoot {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.routeRoot > :global(main) {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  padding: 14px !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+}
+
+.routeRoot > :global(main) > :global(div) {
+  width: min(100%, 1480px) !important;
+  max-width: 1480px !important;
+}
+
+.routeRoot > :global(main) :global(header) {
+  position: sticky;
+  top: -14px;
+  z-index: 45;
+  min-height: 54px;
+  margin: -14px -14px 10px !important;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.routeRoot > :global(main) :global(header) > :global(strong) {
+  font-size: 17px;
+  letter-spacing: -.02em;
+}
+
+.routeRoot > :global(main) :global(button),
+.routeRoot > :global(main) :global(select),
+.routeRoot > :global(main) :global(input:not([type="color"])) {
+  border-color: var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--ink);
+}
+
+.routeRoot > :global(main) :global(button:hover:not(:disabled)),
+.routeRoot > :global(main) :global(button[aria-pressed="true"]) {
+  border-color: var(--tool-active-border);
+  background: var(--tool-active-bg);
+  color: var(--tool-active-ink);
+}
+
+.routeRoot > :global(main) :global(button:disabled) {
+  opacity: .42;
+}
+
+.routeRoot > :global(main) :global(section) {
+  scrollbar-color: var(--line) transparent;
+}
+
+@media (max-width: 720px) {
+  .routeRoot > :global(main) {
+    padding: 8px !important;
+  }
+
+  .routeRoot > :global(main) :global(header) {
+    position: static;
+    margin: -8px -8px 8px !important;
+    padding: 8px;
+  }
+}

@@ -13,91 +13,54 @@ This document describes the incremental editor refactor introduced on `refactor/
 
 ## Coordinate spaces
 
-The editor defines three explicit coordinate spaces:
-
-1. **Screen** — browser client pixels.
-2. **Annotation** — the historical Poligome `1000 x 650` coordinate system.
-3. **Image** — native source-image pixels.
-
-`ViewportTransform` is the primitive that converts between these spaces.
-
-```text
-screen pixels
-     |
-     v
-ViewportTransform
-     |
-     +----------> annotation (1000 x 650)
-     |
-     +----------> image pixels
-```
-
-The persisted annotation model remains unchanged. This deliberately avoids a project migration.
+The editor defines three explicit coordinate spaces: browser screen pixels, the historical `1000 x 650` annotation space, and native source-image pixels. `ViewportTransform` converts between them. The persisted annotation model remains unchanged, avoiding a project migration.
 
 ## Viewport
 
-`app/editor/viewport/viewport-controller.ts` contains the pure viewport state model. DOM components act as adapters:
-
-- read container/image bounds;
-- pass them to the controller;
-- render the returned layout/scroll state.
-
-The live `/annotate` route is wrapped by `EditorArchitectureBridge`, which mirrors viewport size, source-image size, scroll and zoom into this controller while the legacy editor is progressively extracted.
+`app/editor/viewport/viewport-controller.ts` contains the pure viewport state model. The live `/annotate` route is wrapped by `EditorArchitectureBridge`, which mirrors viewport size, source-image size, scroll and zoom into this controller while the legacy editor is progressively extracted.
 
 ## Interactions
 
-`app/editor/interactions/interaction-controller.ts` provides explicit ownership for editor gestures. Only one interaction may own a pointer at a time.
+`app/editor/interactions/interaction-controller.ts` provides explicit pointer ownership for editor gestures. Supported modes are `idle`, `select`, `draw`, `edit`, `pan`, `resize`, `rotate` and `model`.
 
-Supported modes are currently:
-
-- idle
-- select
-- draw
-- edit
-- pan
-- resize
-- rotate
-- model
-
-`EditorArchitectureBridge` maps the current stage tool/handle target to these modes without changing the existing gesture handlers yet. New extracted tools should acquire the controller before starting a gesture and release/cancel it on pointer up, pointer cancel, Escape or tool change.
+`app/editor/interactions/vertex-interactions.ts` now contains pure hit-testing and topology helpers used to migrate vertex gestures out of the route component.
 
 ## Editable vertices
 
-Persisted polygons continue to use:
+Persisted polygons still use flat coordinates:
 
 ```ts
 pts: [x1, y1, x2, y2, ...]
 ```
 
-During editing they can be converted to:
+During editing they can be represented as:
 
 ```ts
-type Vertex = {
-  id: string;
-  x: number;
-  y: number;
-};
+type Vertex = { id: string; x: number; y: number };
 ```
 
-using `verticesFromFlatPoints()` and returned with `flatPointsFromVertices()`.
-
-Stable IDs are intended to make selection, linked vertices, snapping, insert/delete, holes and future topological editing independent of array offsets.
+`app/lib/geometry.ts` now routes the live editor's vertex insert/update/delete and edge-midpoint operations through this `Vertex[]` model, then converts back to the flat persisted representation. This means the new model is no longer only infrastructure: it participates in the current editor path without changing saved projects or exports.
 
 ## Extracted rendering layers
 
-Rendering extraction has started under `app/editor/layers`:
+Rendering extraction lives under `app/editor/layers`:
 
 - `vertex-handles.tsx` — shared vertex and edge-insertion controls for polygons and polylines;
 - `polygon-layer.tsx` — presentational polygon path + vertex controls;
 - `polyline-layer.tsx` — presentational polyline + shared vertex controls.
 
-These components are intentionally stateless. They receive editor state and callbacks rather than importing global project state. `VertexHandles` adapts persisted flat coordinates into `Vertex[]` with stable IDs at the rendering boundary.
+These components are stateless and receive editor state and callbacks rather than importing global project state.
 
-The equivalent JSX still exists in `app/annotate/legacy-page.tsx`; replacing that block is the next wiring step. Keeping both temporarily allows the new components to be tested before changing the live drawing path.
+## Selection
+
+Selection extraction has started under `app/editor/selection`:
+
+- `selection-model.ts` — marquee normalization, single selection, toggle selection, range selection and additive marquee selection;
+- `selection-layer.tsx` — stateless SVG marquee rendering.
+
+The existing route still owns the React state, but selection semantics can now migrate to these pure functions without duplicating policy inside pointer handlers.
 
 ## Route split
-
-The route entrypoint is now small:
 
 ```text
 /annotate
@@ -105,38 +68,23 @@ The route entrypoint is now small:
   page.tsx   -> legacy-page.tsx
 ```
 
-The previous monolithic route implementation lives in `legacy-page.tsx` while functionality is extracted in focused modules. New editor code should be added under `app/editor` rather than growing `legacy-page.tsx` further.
+The previous monolithic route implementation lives in `legacy-page.tsx` while functionality is extracted into focused modules. New editor code should be added under `app/editor` rather than growing `legacy-page.tsx` further.
 
-## Migration rule
-
-The refactor is intentionally incremental. Existing behavior should be moved behind these primitives without changing output formats.
-
-Current sequence:
+## Migration status
 
 1. Centralize screen/annotation/image conversion with `ViewportTransform`. **Done.**
 2. Introduce `ViewportController` and mirror the live editor into it. **Done.**
 3. Introduce `InteractionController` and mirror live pointer ownership. **Done.**
 4. Introduce the transient `Vertex[]` model. **Done.**
 5. Split the route from the legacy monolith. **Done.**
-6. Extract polygon/polyline/vertex rendering into stateless components. **Done, awaiting live wiring.**
-7. Replace polygon/polyline JSX in `legacy-page.tsx` with the extracted layers. **Next.**
-8. Extract selection and vertex gesture handlers into focused interaction modules.
-9. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
-10. Remove the legacy page once all rendering and interactions have moved.
+6. Extract polygon/polyline/vertex rendering into stateless components. **Done.**
+7. Route live vertex geometry through `Vertex[]`. **Done.**
+8. Extract pure selection semantics and marquee rendering. **Done.**
+9. Wire `PolygonLayer`, `PolylineLayer` and `SelectionLayer` into `legacy-page.tsx`. **Next.**
+10. Replace legacy selection and vertex pointer handlers with the extracted interaction modules.
+11. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
+12. Remove the legacy page once all rendering and interactions have moved.
 
 ## Tests
 
-The branch adds regression/contract coverage for:
-
-- screen/annotation round trips;
-- annotation/image round trips;
-- coordinate clamping;
-- resolution-independent pointer deltas;
-- vertex serialization compatibility;
-- stable vertex updates and insertion/deletion;
-- exclusive interaction ownership;
-- live-tool to interaction-mode mapping;
-- shared polygon/polyline vertex controls;
-- stable `data-vertex-id` rendering contract.
-
-Existing viewport tests continue to protect zoom anchoring, mobile overflow and selection framing.
+The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, vertex serialization and geometry compatibility, interaction ownership, polygon/polyline layer contracts, vertex hit-testing/topology, and selection semantics. Existing viewport tests continue to protect zoom anchoring, mobile overflow and selection framing.

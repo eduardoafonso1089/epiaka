@@ -4,7 +4,7 @@ import type { Copy } from "./i18n";
 import type { Asset, Label } from "./types";
 import type { EditorAnnotation } from "../editor/models/annotation-model";
 
-type PortableAsset = Omit<Asset, "src" | "local"> & { bundled_path?: string; source?: string };
+type PortableAsset = Omit<Asset, "src" | "local" | "runtimeRasterSource"> & { bundled_path?: string; source?: string };
 export type ProjectSaveMode = "annotations" | "complete";
 export type ProjectLayout = { leftPanelWidth: number; rightPanelWidth: number };
 
@@ -124,17 +124,20 @@ function parseManifestV4(value: unknown, copy: Copy): ProjectManifestV4 {
 
 async function portableAssets(zip: JSZip, assets: Asset[], mode: ProjectSaveMode, copy: Copy) {
   return Promise.all(assets.map(async (asset, index): Promise<PortableAsset> => {
-    const { src, local, ...metadata } = asset;
+    const { src, local, runtimeRasterSource, ...metadata } = asset;
+    void runtimeRasterSource;
     if (mode === "annotations" || asset.missing) return { ...metadata, missing: true };
     const shouldBundle = Boolean(asset.local || src.startsWith("blob:") || src.startsWith("data:"));
     void local;
     if (!shouldBundle) return { ...metadata, source: src };
 
-    const response = await fetch(src);
-    if (!response.ok) throw new Error(fill(copy.errProjectReadImage, { name: asset.name }));
-    const imageBlob = await response.blob();
+    const sourceBlob = asset.runtimeRasterSource ?? await (async () => {
+      const response = await fetch(src);
+      if (!response.ok) throw new Error(fill(copy.errProjectReadImage, { name: asset.name }));
+      return response.blob();
+    })();
     const imagePath = `images/${String(index + 1).padStart(4, "0")}-${safeFileName(asset.name, `image-${index + 1}`)}`;
-    zip.file(imagePath, imageBlob);
+    zip.file(imagePath, sourceBlob);
     return { ...metadata, bundled_path: imagePath };
   }));
 }
@@ -150,7 +153,15 @@ async function hydrateAssets(zip: JSZip, manifest: ProjectManifestV4, copy: Copy
         const imageBlob = await imageEntry.async("blob");
         const src = URL.createObjectURL(imageBlob);
         objectUrls.push(src);
-        return { ...metadata, src, local: true, missing: false, byteSize: metadata.byteSize ?? imageBlob.size };
+        return {
+          ...metadata,
+          src,
+          local: true,
+          missing: false,
+          byteSize: metadata.byteSize ?? imageBlob.size,
+          runtimeRasterSource: metadata.raster?.mode === "tiled" ? imageBlob : undefined,
+          raster: metadata.raster?.mode === "tiled" ? { ...metadata.raster, sourceType: "bundled" } : metadata.raster,
+        };
       }
       if (asset.missing) return { ...metadata, src: "", local: true, missing: true };
       if (!source || source === "local") throw new Error(fill(copy.errProjectImageNotBundled, { name: asset.name }));

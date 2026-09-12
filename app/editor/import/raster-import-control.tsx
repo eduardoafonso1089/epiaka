@@ -7,6 +7,7 @@ import { readRasterSidecars } from "../../lib/georeference";
 import type { RasterReference } from "../../lib/georeference";
 import type { Recorte } from "../../lib/cog";
 import CogCropDialog, { ehArquivoTiff } from "../../raster/cog-crop-dialog";
+import { createTiledRasterAsset } from "../raster/tiled-raster-asset";
 
 type PendingRaster = {
   origin: File | string;
@@ -16,7 +17,7 @@ type PendingRaster = {
 
 export type RasterImportResult = {
   asset: Asset;
-  objectUrl: string;
+  objectUrl?: string;
   message: string;
 };
 
@@ -47,13 +48,15 @@ function cropName(sourceName: string) {
 }
 
 export function RasterImportControl({ makeId, disabled = false, onImported, onMessage }: RasterImportControlProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cropInputRef = useRef<HTMLInputElement>(null);
+  const tiledInputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<PendingRaster | null>(null);
   const [urlVisible, setUrlVisible] = useState(false);
   const [url, setUrl] = useState("");
+  const [openingTiled, setOpeningTiled] = useState(false);
   const copy = getCopy("pt");
 
-  async function choose(files: File[]) {
+  async function chooseCrop(files: File[]) {
     if (!files.length) return;
     const rasters = files.filter((file) => ehArquivoTiff(file.name, file.type));
     if (rasters.length !== 1) {
@@ -68,9 +71,34 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
     }
   }
 
-  function openRemote() {
+  async function chooseTiled(files: File[]) {
+    if (!files.length || openingTiled) return;
+    const rasters = files.filter((file) => ehArquivoTiff(file.name, file.type));
+    if (rasters.length !== 1) {
+      onMessage?.(rasters.length ? "Selecione um COG tiled por vez; sidecars podem ser incluídos junto." : "Nenhum TIFF/COG válido foi selecionado.");
+      return;
+    }
+    setOpeningTiled(true);
+    try {
+      const reference = await readRasterSidecars(rasters[0], files);
+      const asset = await createTiledRasterAsset({ origin: rasters[0], name: rasters[0].name, reference, makeId });
+      onImported({
+        asset,
+        objectUrl: asset.src.startsWith("blob:") ? asset.src : undefined,
+        message: `COG tiled aberto: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).`,
+      });
+    } catch (error) {
+      onMessage?.(error instanceof Error && error.message === "rasterTiledRequired"
+        ? "Este TIFF não é tiled. Use o modo de recorte ou converta-o para COG antes de abrir no modo tiled."
+        : error instanceof Error ? error.message : "Falha ao abrir COG tiled.");
+    } finally {
+      setOpeningTiled(false);
+    }
+  }
+
+  async function openRemoteTiled() {
     const value = url.trim();
-    if (!value) return;
+    if (!value || openingTiled) return;
     let parsed: URL;
     try {
       parsed = new URL(value);
@@ -82,8 +110,17 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
       onMessage?.("A URL do COG precisa usar HTTP ou HTTPS.");
       return;
     }
-    setPending({ origin: parsed.toString(), name: sourceBaseName(parsed.toString()), reference: {} });
-    setUrlVisible(false);
+    setOpeningTiled(true);
+    try {
+      const source = parsed.toString();
+      const asset = await createTiledRasterAsset({ origin: source, name: sourceBaseName(source), makeId });
+      onImported({ asset, message: `COG remoto tiled aberto: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).` });
+      setUrlVisible(false);
+    } catch (error) {
+      onMessage?.(error instanceof Error ? error.message : "Falha ao abrir COG remoto tiled.");
+    } finally {
+      setOpeningTiled(false);
+    }
   }
 
   function finish(recorte: Recorte, sourceName: string) {
@@ -110,21 +147,35 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
 
   return <>
     <input
-      ref={inputRef}
+      ref={cropInputRef}
       type="file"
       accept={RASTER_ACCEPT}
       multiple
       hidden
       onChange={(event) => {
-        void choose(Array.from(event.target.files ?? []));
+        void chooseCrop(Array.from(event.target.files ?? []));
         event.currentTarget.value = "";
       }}
     />
-    <button type="button" disabled={disabled} onClick={() => inputRef.current?.click()}>
-      GeoTIFF / COG
+    <input
+      ref={tiledInputRef}
+      type="file"
+      accept={RASTER_ACCEPT}
+      multiple
+      hidden
+      onChange={(event) => {
+        void chooseTiled(Array.from(event.target.files ?? []));
+        event.currentTarget.value = "";
+      }}
+    />
+    <button type="button" disabled={disabled} onClick={() => cropInputRef.current?.click()}>
+      GeoTIFF / COG recorte
     </button>
-    <button type="button" disabled={disabled} onClick={() => setUrlVisible((value) => !value)}>
-      COG por URL
+    <button type="button" disabled={disabled || openingTiled} onClick={() => tiledInputRef.current?.click()}>
+      {openingTiled ? "Abrindo COG…" : "COG tiled"}
+    </button>
+    <button type="button" disabled={disabled || openingTiled} onClick={() => setUrlVisible((value) => !value)}>
+      COG URL
     </button>
     {urlVisible && <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
       <input
@@ -133,10 +184,10 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
         placeholder="https://…/orthomosaic.tif"
         aria-label="URL do COG"
         onChange={(event) => setUrl(event.target.value)}
-        onKeyDown={(event) => { if (event.key === "Enter") openRemote(); }}
+        onKeyDown={(event) => { if (event.key === "Enter") void openRemoteTiled(); }}
         style={{ minWidth: 260 }}
       />
-      <button type="button" disabled={!url.trim()} onClick={openRemote}>Abrir</button>
+      <button type="button" disabled={!url.trim() || openingTiled} onClick={() => void openRemoteTiled()}>Abrir tiled</button>
       <button type="button" onClick={() => setUrlVisible(false)}>Cancelar</button>
     </span>}
     {pending && <CogCropDialog

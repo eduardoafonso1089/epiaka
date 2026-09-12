@@ -1,36 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ImageFraming, anchoredScrollOffset, annotationPointerDelta, canvasLayout } from '../app/lib/editor-viewport.ts';
-
-test('selecting an image object prevents all subsequent automatic fits of that image', () => {
-  const framing = new ImageFraming();
-  assert.equal(framing.fit('a', false), false);
-  assert.equal(framing.fit('a', true), true);
-  framing.keep('a');
-  for (let i = 0; i < 10; i++) assert.equal(framing.fit('a', true), false);
-  assert.equal(framing.fit('b', true), true);
-});
-
-test('selection before a delayed image fit preserves user framing', () => {
-  const framing = new ImageFraming();
-  framing.keep('a');
-  assert.equal(framing.fit('a', true), false);
-});
-
-test('a stationary click and finger jitter never move a polygon at any zoom', () => {
-  for (const width of [320, 1000, 4000]) {
-    const start = { clientX: 150, clientY: 80, width, height: width * 0.65 };
-    assert.deepEqual(annotationPointerDelta(start, 150, 80), { dx: 0, dy: 0, moved: false });
-    assert.equal(annotationPointerDelta(start, 153, 83).moved, false);
-  }
-});
-
-test('drag uses the original screen frame, independently of subsequent selection layout', () => {
-  const start = { clientX: 150, clientY: 80, width: 500, height: 325 };
-  assert.deepEqual(annotationPointerDelta(start, 160, 85), { dx: 20, dy: 10, moved: true });
-});
-
+import { anchoredScrollOffset, canvasLayout } from '../app/lib/editor-viewport.ts';
 
 test('mobile canvas at 92% has an explicit size and centered origin', () => {
   assert.deepEqual(canvasLayout({ width: 350, height: 480 }, { width: 1200, height: 780 }, 92), {
@@ -64,6 +35,15 @@ test('mobile zoom remains centered and can anchor either image edge without clip
   assert.equal(anchoredScrollOffset(0, 0, width, 0.5, 175), 525);
   assert.equal(anchoredScrollOffset(0, 0, width, 0, 0), 0);
   assert.equal(anchoredScrollOffset(0, 0, width, 1, 350), 1050);
+});
+
+test('large source images remain fit-to-viewport until the user deep-zooms', () => {
+  const fit = canvasLayout({ width: 1000, height: 700 }, { width: 50_000, height: 30_000 }, 100);
+  assert.equal(fit.width, 1000);
+  assert.equal(fit.height, 600);
+  const deep = canvasLayout({ width: 1000, height: 700 }, { width: 50_000, height: 30_000 }, 5000);
+  assert.equal(deep.width, 50_000);
+  assert.equal(deep.height, 30_000);
 });
 
 test('the editor scroll container aligns oversized canvases to the reachable origin', () => {

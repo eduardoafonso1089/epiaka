@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TouchGesture, pinchZoom, nearestTouchVertex, touchToolUsesTap } from "../app/lib/touch-gestures.ts";
+import { TouchGesture, pinchZoom, touchToolUsesTap } from "../app/lib/touch-gestures.ts";
 
 test("one finger commits one point only on release, tolerating small finger jitter", () => {
   const gesture = new TouchGesture();
@@ -64,6 +64,7 @@ test("pinch zoom preserves starting zoom and clamps both zoom limits", () => {
   assert.equal(pinchZoom(300, 100, 200), 400);
   assert.equal(pinchZoom(20, 100, 1), 10);
   assert.equal(pinchZoom(92, 0, 100), 400);
+  assert.equal(pinchZoom(1000, 100, 800, 10_000), 8000);
 });
 
 test("all discrete creation tools defer touch actions; drawing and editing support dragging", () => {
@@ -71,25 +72,9 @@ test("all discrete creation tools defer touch actions; drawing and editing suppo
   for (const tool of ["box", "freehand", "reshape", "select", "transform", "pan"]) assert.equal(touchToolUsesTap(tool), false, tool);
 });
 
-test("overlapping vertex targets choose the closest point on a narrow mobile canvas", () => {
-  const points = [100, 100, 180, 100, 300, 400];
-  assert.equal(nearestTouchVertex(points, 110, 100, 320, 208), 0);
-  assert.equal(nearestTouchVertex(points, 170, 100, 320, 208), 1);
-  assert.equal(nearestTouchVertex(points, 500, 500, 320, 208), -1);
-});
-
-test("vertex hit radius uses screen pixels at different zoom levels and aspect ratios", () => {
-  const points = [100, 100];
-  assert.equal(nearestTouchVertex(points, 160, 100, 320, 208), 0);
-  assert.equal(nearestTouchVertex(points, 160, 100, 1280, 832), -1);
-  assert.equal(nearestTouchVertex(points, 100, 140, 320, 650), -1);
-  assert.equal(nearestTouchVertex(points, 100, 140, 320, 208), 0);
-});
-
 test("a fresh primary touch cannot pinch against an orphaned selection pointer", () => {
   const gesture = new TouchGesture();
   gesture.down(1, 50, 70, true);
-  // The old target disappeared before its pointerup reached the editor.
   assert.equal(gesture.down(2, 150, 170, true), false);
   gesture.move(2, 152, 170);
   assert.equal(gesture.pair(), null);

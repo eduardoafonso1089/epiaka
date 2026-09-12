@@ -8,11 +8,18 @@ your own machine, and the dataset you export never passes through a backend. AI
 assistance is optional and also local: the SAM connector and the GeoTIFF
 converter run on your computer, not in the cloud.
 
+> [!IMPORTANT]
+> **Status of `refactor/editor-architecture`:** the canonical source-pixel editor is active at
+> `/annotate`. Image/annotation/class management, Quality/Review, advanced vector operations,
+> keyboard shortcuts, selective COCO import and the active editor internationalization surface
+> are restored on the canonical architecture. The local SAM UI is intentionally not part of this
+> branch's merge target; it will be integrated from its dedicated branch after this refactor.
+
 ## Image annotator
 
 | | Route | What it does | Exports |
 |---|---|---|---|
-| **Computer vision** | `/annotate` | Boxes, polygons, masks, polylines, and keypoints, with vector editing, snapping, and per-class visibility | COCO, YOLO, GeoJSON, portable project |
+| **Computer vision** | `/annotate` | Boxes, polygons, masks, polylines, and keypoints, with vector editing, snapping, per-class visibility, quality/review and large-raster navigation | COCO, YOLO, GeoJSON, portable project |
 
 Projects can be saved as a project you can save and reopen later: a single portable file with
 images, labels, and annotations, so work resumes on another machine without a
@@ -29,9 +36,7 @@ labels, a deterministic training/validation split, `classes.txt`, and
 
 ## Geospatial input
 
-The image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly,
-reads them by tiles, and crops a region into the project as a regular image.
-Annotations drawn over a georeferenced crop can be exported as GeoJSON.
+The refactored image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly. COGs can be rendered natively as a tiled raster without a PNG intermediary, while the crop workflow remains available. Annotations over georeferenced assets can be exported as GeoJSON.
 
 Files that are not proper COGs still open, but the reader has to transfer far
 more than it needs. The local converter below turns them into real COGs.
@@ -41,13 +46,7 @@ more than it needs. The local converter below turns them into real COGs.
 Two optional connectors run on your own machine. Both are self-contained
 installers downloaded from the app, and neither sends anything to a server.
 
-**Local SAM** — AI pre-annotation. The **Enable local SAM** screen offers
-`public/poligome-sam-windows.bat` and `public/poligome-sam-macos-linux.sh`: they
-prepare Python when needed, create an isolated environment, install the
-dependencies, download the official ViT-B checkpoint, and start the connector on
-`http://127.0.0.1:7860`. It detects CUDA, Apple Silicon/MPS, or CPU
-automatically and caches the current image's embedding so further prompts are
-fast. The manual route is `public/poligome-sam-local.py`.
+**Local SAM** — AI pre-annotation. The connector and installers remain in the repository, but the canonical editor UI for SAM is being developed on a separate branch and is not a blocker for merging `refactor/editor-architecture`.
 
 **Local COG converter** — for large rasters. `public/poligome-cog-windows.bat`
 and `public/poligome-cog-macos-linux.sh` install rasterio and rio-cogeo and
@@ -65,9 +64,7 @@ origins. Keep both services bound to loopback; they are not public APIs.
 
 ## Interface
 
-Four languages — Portuguese, English, French, and Spanish — with light, dark,
-and system themes. Keyboard shortcuts cover the drawing tools, and the language
-and theme choices are remembered per browser.
+The landing page and canonical editor share Portuguese, English, French and Spanish preferences plus light, dark and system themes. The canonical editor uses the same global visual tokens as the rest of Poligome, while editor-specific layout classes live under `app/editor` so visual cleanup does not reintroduce coupling to the legacy annotator DOM.
 
 ## Development
 
@@ -86,8 +83,9 @@ path, including the workaround for networks that block the npm registry.
 
 ```
 app/page.tsx          landing
-app/annotate/         image annotator
-app/lib/              exporters, geometry, SAM and COG clients, i18n
+app/annotate/         image annotator route
+app/editor/           canonical editor architecture and interface
+app/lib/              shared project, raster, SAM and i18n utilities
 public/               local connector installers, favicon and cursors
 docs/PLATFORM.md      hosting platform, bindings, and auth notes
 ```

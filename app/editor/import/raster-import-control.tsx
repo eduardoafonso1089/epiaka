@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Asset } from "../../lib/types";
-import { getCopy } from "../../lib/i18n";
+import { getCopy, storedLanguage, type Language } from "../../lib/i18n";
 import { readRasterSidecars } from "../../lib/georeference";
 import type { RasterReference } from "../../lib/georeference";
 import type { Recorte } from "../../lib/cog";
@@ -23,6 +23,7 @@ export type RasterImportResult = {
 
 export type RasterImportControlProps = {
   makeId: (prefix: string) => string;
+  language?: Language;
   disabled?: boolean;
   onImported: (result: RasterImportResult) => void;
   onMessage?: (message: string) => void;
@@ -47,27 +48,27 @@ function cropName(sourceName: string) {
   return `${name.replace(/\.[^/.]+$/, "") || "raster"}-crop.png`;
 }
 
-export function RasterImportControl({ makeId, disabled = false, onImported, onMessage }: RasterImportControlProps) {
+export function RasterImportControl({ makeId, language, disabled = false, onImported, onMessage }: RasterImportControlProps) {
   const cropInputRef = useRef<HTMLInputElement>(null);
   const tiledInputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<PendingRaster | null>(null);
   const [urlVisible, setUrlVisible] = useState(false);
   const [url, setUrl] = useState("");
   const [openingTiled, setOpeningTiled] = useState(false);
-  const copy = getCopy("pt");
+  const copy = getCopy(language ?? storedLanguage());
 
   async function chooseCrop(files: File[]) {
     if (!files.length) return;
     const rasters = files.filter((file) => ehArquivoTiff(file.name, file.type));
     if (rasters.length !== 1) {
-      onMessage?.(rasters.length ? "Selecione um GeoTIFF/COG por vez; sidecars podem ser incluídos junto." : "Nenhum arquivo TIFF/GeoTIFF válido foi selecionado.");
+      onMessage?.(rasters.length ? copy.rasterImportHint : copy.rasterUnsupported);
       return;
     }
     try {
       const reference = await readRasterSidecars(rasters[0], files);
       setPending({ origin: rasters[0], name: rasters[0].name, reference });
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : "Falha ao ler arquivos auxiliares do raster.");
+      onMessage?.(error instanceof Error ? error.message : copy.rasterInvalidReference);
     }
   }
 
@@ -75,7 +76,7 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
     if (!files.length || openingTiled) return;
     const rasters = files.filter((file) => ehArquivoTiff(file.name, file.type));
     if (rasters.length !== 1) {
-      onMessage?.(rasters.length ? "Selecione um COG tiled por vez; sidecars podem ser incluídos junto." : "Nenhum TIFF/COG válido foi selecionado.");
+      onMessage?.(rasters.length ? copy.rasterImportHint : copy.rasterUnsupported);
       return;
     }
     setOpeningTiled(true);
@@ -85,12 +86,12 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
       onImported({
         asset,
         objectUrl: asset.src.startsWith("blob:") ? asset.src : undefined,
-        message: `COG tiled aberto: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).`,
+        message: `${copy.cogOpenTiff}: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).`,
       });
     } catch (error) {
       onMessage?.(error instanceof Error && error.message === "rasterTiledRequired"
-        ? "Este TIFF não é tiled. Use o modo de recorte ou converta-o para COG antes de abrir no modo tiled."
-        : error instanceof Error ? error.message : "Falha ao abrir COG tiled.");
+        ? copy.rasterUnsupported
+        : error instanceof Error ? error.message : copy.rasterInvalidTiff);
     } finally {
       setOpeningTiled(false);
     }
@@ -103,21 +104,21 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
     try {
       parsed = new URL(value);
     } catch {
-      onMessage?.("Informe uma URL HTTP/HTTPS válida para o COG.");
+      onMessage?.(copy.rasterUnsupported);
       return;
     }
     if (!/^https?:$/.test(parsed.protocol)) {
-      onMessage?.("A URL do COG precisa usar HTTP ou HTTPS.");
+      onMessage?.(copy.rasterUnsupported);
       return;
     }
     setOpeningTiled(true);
     try {
       const source = parsed.toString();
       const asset = await createTiledRasterAsset({ origin: source, name: sourceBaseName(source), makeId });
-      onImported({ asset, message: `COG remoto tiled aberto: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).` });
+      onImported({ asset, message: `${copy.cogOpenTiff}: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).` });
       setUrlVisible(false);
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : "Falha ao abrir COG remoto tiled.");
+      onMessage?.(error instanceof Error ? error.message : copy.rasterInvalidTiff);
     } finally {
       setOpeningTiled(false);
     }
@@ -139,9 +140,7 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
     onImported({
       asset,
       objectUrl,
-      message: recorte.geo
-        ? `Recorte GeoTIFF/COG adicionado: ${asset.name} (${recorte.largura}×${recorte.altura}px, ${recorte.geo.crs}).`
-        : `Recorte TIFF adicionado em espaço de pixels: ${asset.name} (${recorte.largura}×${recorte.altura}px).`,
+      message: `${copy.cogCropAdded} ${asset.name} (${recorte.largura}×${recorte.altura}px${recorte.geo ? `, ${recorte.geo.crs}` : ""}).`,
     });
   }
 
@@ -168,11 +167,11 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
         event.currentTarget.value = "";
       }}
     />
-    <button type="button" disabled={disabled} onClick={() => cropInputRef.current?.click()}>
-      GeoTIFF / COG recorte
+    <button type="button" title={copy.rasterImportHint} disabled={disabled} onClick={() => cropInputRef.current?.click()}>
+      {copy.cogOpenTiff} · {copy.cogModeRect}
     </button>
-    <button type="button" disabled={disabled || openingTiled} onClick={() => tiledInputRef.current?.click()}>
-      {openingTiled ? "Abrindo COG…" : "COG tiled"}
+    <button type="button" title={copy.rasterImportHint} disabled={disabled || openingTiled} onClick={() => tiledInputRef.current?.click()}>
+      {openingTiled ? `${copy.progress}…` : `${copy.cogOpenTiff} · tiled`}
     </button>
     <button type="button" disabled={disabled || openingTiled} onClick={() => setUrlVisible((value) => !value)}>
       COG URL
@@ -182,13 +181,13 @@ export function RasterImportControl({ makeId, disabled = false, onImported, onMe
         type="url"
         value={url}
         placeholder="https://…/orthomosaic.tif"
-        aria-label="URL do COG"
+        aria-label="COG URL"
         onChange={(event) => setUrl(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Enter") void openRemoteTiled(); }}
         style={{ minWidth: 260 }}
       />
-      <button type="button" disabled={!url.trim() || openingTiled} onClick={() => void openRemoteTiled()}>Abrir tiled</button>
-      <button type="button" onClick={() => setUrlVisible(false)}>Cancelar</button>
+      <button type="button" disabled={!url.trim() || openingTiled} onClick={() => void openRemoteTiled()}>{copy.openProject}</button>
+      <button type="button" onClick={() => setUrlVisible(false)}>{copy.cancel}</button>
     </span>}
     {pending && <CogCropDialog
       origem={pending.origin}

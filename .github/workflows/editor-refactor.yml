@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/editor-architecture
+      - fix/cloudflare-next-build
   pull_request:
 
 permissions:
@@ -33,6 +34,9 @@ jobs:
 
       - name: Build verified app
         run: npm run build
+
+      - name: Build Cloudflare Pages artifact
+        run: npm run build:pages
 
       - name: Run tests
         run: node --import tsx --test tests/*.test.mjs

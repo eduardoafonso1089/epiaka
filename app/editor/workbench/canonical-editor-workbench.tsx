@@ -8,6 +8,7 @@ import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, openEditorProject, saveEditorProject } from "../session/editor-session-io";
 import { loadLocalImageAssets } from "../session/image-assets";
+import { CocoImportControl } from "../import/coco-import-control";
 import { useEditorState } from "../state/use-editor-state";
 import { useCanvasInteractions } from "../interactions/use-canvas-interactions";
 import { EditorCanvas } from "../canvas/editor-canvas";
@@ -124,6 +125,16 @@ export function CanonicalEditorWorkbench() {
     } finally { setLoading(false); }
   }
 
+  function applyCocoImport(result: { labels: Label[]; annotations: EditorAnnotation[]; message: string }) {
+    setLabels(result.labels);
+    if (!result.labels.some((label) => label.id === activeLabel)) setActiveLabel(result.labels[0]?.id ?? EMPTY_LABELS[0].id);
+    editor.replaceAnnotations(result.annotations, false);
+    setSessionDirty(true);
+    setMessage(result.message);
+    drawing.cancelDraft();
+    setTool("select");
+  }
+
   function chooseTool(next: DrawingTool) {
     if (next !== tool) drawing.cancelDraft();
     setTool(next);
@@ -174,6 +185,7 @@ export function CanonicalEditorWorkbench() {
         <button onClick={loadDemo} disabled={loading}>Demo</button>
         <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V3</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
+        <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
         <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
         <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V3</button>

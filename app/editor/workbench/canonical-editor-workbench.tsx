@@ -217,7 +217,7 @@ export function CanonicalEditorWorkbench() {
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
         <strong style={{ marginRight: 8 }}>Poligome · editor canônico</strong>
-        <button onClick={loadDemo} disabled={loading}>Demo</button>
+        <button onClick={() => void loadDemo()} disabled={loading}>Demo</button>
         <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V4</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
         <RasterImportControl makeId={makeId} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />

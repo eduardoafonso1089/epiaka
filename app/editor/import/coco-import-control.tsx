@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy, storedLanguage, type Language } from "../../lib/i18n";
+import { translateErrorCode } from "../../lib/error-message";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { CocoGeometry } from "./coco-import";
 import {
@@ -51,7 +52,7 @@ export function CocoImportControl({
     setBusy(true);
     try {
       const document = JSON.parse(await file.text()) as CocoDocumentInput;
-      const plan = planCocoDocument(document, assets);
+      const plan = planCocoDocument(document, assets, { unlabeledName: copy.unlabeled });
       if (!plan.candidates.length) {
         onImported({ labels, annotations, message: copy.noCategoriesSelected });
         return;
@@ -64,7 +65,7 @@ export function CocoImportControl({
       onImported({
         labels,
         annotations,
-        message: error instanceof Error ? `${copy.projectOpenError} ${error.message}` : copy.projectOpenError,
+        message: translateErrorCode(error, copy, copy.projectOpenError),
       });
     } finally {
       setBusy(false);
@@ -99,6 +100,7 @@ export function CocoImportControl({
     const result = importCocoDocument(pending.document, assets, labels, makeId, {
       selectedAnnotationIndexes: selectedIndexes,
       geometryTypes,
+      unlabeledName: copy.unlabeled,
     });
     onImported({
       labels: result.labels,

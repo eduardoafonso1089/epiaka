@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -26,11 +28,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Fetch main parity reference
+        run: git fetch origin main:refs/remotes/origin/main
+
       - name: Build verified app
         run: npm run build
 
       - name: Run tests
         run: node --import tsx --test tests/*.test.mjs
+
+      - name: Check editor i18n parity debt
+        run: node scripts/check-editor-i18n-parity.mjs
+
+      - name: Check cross-branch export goldens
+        run: node --import tsx scripts/check-export-parity.mjs
+
+      - name: Smoke demo route
+        run: node --import tsx --test tests/demo-route.test.mjs
 
       - name: Report COG tile benchmark
         run: COG_BENCH_ITERATIONS=5000 npm run benchmark:cog

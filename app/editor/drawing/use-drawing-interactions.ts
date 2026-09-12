@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import type { Size2D } from "../../lib/editor-viewport";
 import type { EditorAnnotation } from "../models/annotation-model";
+import { snapPointToAnnotations } from "../geometry/vector-operations";
 import { clientPointToImage } from "../viewport/svg-image-space";
 import {
   annotationBase,
@@ -32,6 +33,7 @@ export type DrawingInteractionOptions = {
   labelId: string;
   makeId: (prefix: string) => string;
   addAnnotation: (annotation: EditorAnnotation, select?: boolean) => void;
+  snap?: { enabled: boolean; tolerance: number; annotations: EditorAnnotation[] };
 };
 
 type StartState = {
@@ -56,6 +58,7 @@ export function useDrawingInteractions({
   labelId,
   makeId,
   addAnnotation,
+  snap,
 }: DrawingInteractionOptions) {
   const [draft, setDraft] = useState<DrawingDraft>(null);
   const startRef = useRef<StartState | null>(null);
@@ -87,8 +90,14 @@ export function useDrawingInteractions({
     return committed;
   }, [assetId, commit, draft, labelId, makeId]);
 
-  const appendDiscretePoint = useCallback((point: { x: number; y: number }) => {
+  const snapDiscretePoint = useCallback((point: { x: number; y: number }) => {
+    if (!snap?.enabled) return point;
+    return snapPointToAnnotations(point, snap.annotations, "", snap.tolerance);
+  }, [snap]);
+
+  const appendDiscretePoint = useCallback((rawPoint: { x: number; y: number }) => {
     if (!assetId) return;
+    const point = snapDiscretePoint(rawPoint);
     if (tool === "point") {
       commit(pointFromDraft(annotationBase(makeId("point"), assetId, labelId), point));
       return;
@@ -99,7 +108,7 @@ export function useDrawingInteractions({
         return { type: tool, points: [...points, ...flatPoint(point)] };
       });
     }
-  }, [assetId, commit, labelId, makeId, tool]);
+  }, [assetId, commit, labelId, makeId, snapDiscretePoint, tool]);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     if (tool === "select" || tool === "pan" || !assetId || event.button !== 0) return;

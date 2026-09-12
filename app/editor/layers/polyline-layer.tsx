@@ -1,12 +1,15 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { Annotation } from "../../lib/types";
-import { pointsToSvg } from "../../lib/geometry";
+import type { PolylineAnnotation } from "../models/annotation-model";
 import { VertexHandles, type SelectedVertex } from "./vertex-handles";
 
+function verticesToSvg(annotation: PolylineAnnotation) {
+  return annotation.vertices.map((vertex) => `${vertex.x},${vertex.y}`).join(" ");
+}
+
 export type PolylineLayerProps = {
-  annotation: Annotation;
+  annotation: PolylineAnnotation;
   color: string;
   tool: string;
   selected: boolean;
@@ -21,13 +24,13 @@ export type PolylineLayerProps = {
   onMoveAnnotation: (event: ReactPointerEvent<SVGElement>) => void;
   onFinishAnnotation: (event: ReactPointerEvent<SVGElement>) => void;
   onCancel: () => void;
-  onBeginVertexDrag: (event: ReactPointerEvent<SVGElement>, vertexIndex: number) => void;
+  onBeginVertexDrag: (event: ReactPointerEvent<SVGElement>, vertexId: string) => void;
   onMoveVertex: (event: ReactPointerEvent<SVGElement>) => void;
   onFinishVertex: (event: ReactPointerEvent<SVGElement>) => void;
-  onInsertVertex: (event: ReactPointerEvent<SVGElement>, edgeIndex: number, x: number, y: number) => void;
+  onInsertVertex: (event: ReactPointerEvent<SVGElement>, afterVertexId: string, x: number, y: number) => void;
 };
 
-/** Presentational open-polyline layer sharing the same vertex controls as polygons. */
+/** Presentational open-polyline layer over the canonical vertex-based model. */
 export function PolylineLayer({
   annotation,
   color,
@@ -49,7 +52,7 @@ export function PolylineLayer({
   onFinishVertex,
   onInsertVertex,
 }: PolylineLayerProps) {
-  const points = annotation.pts ?? [];
+  const points = verticesToSvg(annotation);
   const showHandles = tool === "select" && selected && primarySelected;
 
   return <g data-annotation-id={annotation.id}>
@@ -59,18 +62,18 @@ export function PolylineLayer({
       onPointerMove={onMoveAnnotation}
       onPointerUp={onFinishAnnotation}
       onPointerCancel={onCancel}
-      points={pointsToSvg(points)}
+      points={points}
       strokeWidth={Math.max(14, lineThickness + 12)}
     />
     <polyline
       className="line-shape"
-      points={pointsToSvg(points)}
+      points={points}
       stroke={color}
       strokeWidth={selected ? lineThickness + 2 : lineThickness}
     />
     {showHandles && <VertexHandles
       annotationId={annotation.id}
-      points={points}
+      vertices={annotation.vertices}
       open
       selectedVertex={selectedVertex}
       touchMode={touchMode}

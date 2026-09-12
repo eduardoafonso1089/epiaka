@@ -7,8 +7,9 @@ const point = await fs.readFile(new URL("../app/editor/layers/point-layer.tsx", 
 
 test("box layer owns canonical resize and rotation rendering contracts", () => {
   assert.match(box, /BoxAnnotation/);
-  assert.match(box, /annotation\.width/);
-  assert.match(box, /annotation\.height/);
+  assert.match(box, /const \{ x, y, width, height \} = annotation/);
+  assert.match(box, /width=\{width\}/);
+  assert.match(box, /height=\{height\}/);
   assert.match(box, /box-resize-handle/);
   assert.match(box, /box-rotation-handle/);
   assert.match(box, /onResizeStart/);

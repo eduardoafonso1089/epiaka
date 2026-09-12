@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import type { Size2D } from "../../lib/editor-viewport";
-import type { PolygonAnnotation } from "../models/annotation-model";
+import type { EditorAnnotation, PolygonAnnotation } from "../models/annotation-model";
 import type { EditorAction } from "../state/editor-state";
 import type { VectorTool } from "../commands/editor-shortcuts";
 import { clientPointToImage } from "../viewport/svg-image-space";
@@ -11,6 +11,7 @@ import { polygonTransformCenter, transformPolygonAnnotation } from "../geometry/
 import {
   addPolygonHole,
   reshapePolygonAnnotation,
+  snapPointToAnnotations,
   splitPolygonAnnotation,
   type Point,
 } from "../geometry/vector-operations";
@@ -39,6 +40,7 @@ type Options = {
   activePolygon: PolygonAnnotation | null;
   makeId: (prefix: string) => string;
   dispatch: (action: EditorAction) => void;
+  snap?: { enabled: boolean; tolerance: number; annotations: EditorAnnotation[] };
   onResult?: (result: AdvancedVectorResult) => void;
 };
 
@@ -56,7 +58,7 @@ function isTransformStroke(stroke: PointerStroke): stroke is TransformStroke {
   return Boolean(stroke && "original" in stroke);
 }
 
-export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activePolygon, makeId, dispatch, onResult }: Options) {
+export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activePolygon, makeId, dispatch, snap, onResult }: Options) {
   const [draft, setDraft] = useState<AdvancedVectorDraft>(null);
   const strokeRef = useRef<PointerStroke>(null);
 
@@ -81,15 +83,18 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
     return true;
   }, [activePolygon, dispatch, draft, makeId, onResult]);
 
-  const pointFor = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+  const pointFor = useCallback((event: ReactPointerEvent<SVGSVGElement>, applySnap = false) => {
     const svg = svgRef.current;
-    return svg ? clientPointToImage(svg, event.clientX, event.clientY, imageSize) : null;
-  }, [imageSize, svgRef]);
+    if (!svg) return null;
+    const point = clientPointToImage(svg, event.clientX, event.clientY, imageSize);
+    if (!applySnap || !snap?.enabled) return point;
+    return snapPointToAnnotations(point, snap.annotations, activePolygon?.id ?? "", snap.tolerance);
+  }, [activePolygon?.id, imageSize, snap, svgRef]);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     if (!tool || !activePolygon || event.button !== 0) return;
     if (tool !== "transform" && event.target !== event.currentTarget) return;
-    const point = pointFor(event);
+    const point = pointFor(event, tool === "split" || tool === "reshape");
     if (!point) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
 
@@ -147,7 +152,7 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
   const onPointerUp = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     const stroke = strokeRef.current;
     if (!stroke || stroke.pointerId !== event.pointerId || !activePolygon || !tool) return;
-    const point = pointFor(event);
+    const point = pointFor(event, tool === "split" || tool === "reshape");
 
     if (isTransformStroke(stroke)) {
       strokeRef.current = null;

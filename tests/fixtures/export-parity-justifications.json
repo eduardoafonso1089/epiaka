@@ -1,9 +1,4 @@
 {
-  "coco.info.version": {
-    "main": "1.0",
-    "refactor": "4.0",
-    "reason": "Pending product decision D8. COCO export versioning must not silently inherit the internal .plgm schema version."
-  },
   "coco.point_bbox_area": {
     "main": "point helper bbox/area derived from the legacy normalized annotation marker",
     "refactor": "fixed 8-source-pixel keypoint helper bbox with area 0",

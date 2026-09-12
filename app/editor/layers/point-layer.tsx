@@ -1,16 +1,16 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { Annotation } from "../../lib/types";
+import type { PointAnnotation } from "../models/annotation-model";
 
 type Props = {
-  annotation: Annotation;
+  annotation: PointAnnotation;
   color: string;
   selected: boolean;
   selecting: boolean;
   markerRadius: number;
   markerAspect: number;
-  onPointerDown: (event: ReactPointerEvent<SVGElement>, annotation: Annotation) => void;
+  onPointerDown: (event: ReactPointerEvent<SVGElement>, annotation: PointAnnotation) => void;
   onPointerMove: (event: ReactPointerEvent<SVGElement>) => void;
   onPointerUp: (event: ReactPointerEvent<SVGElement>) => void;
   onPointerCancel: () => void;
@@ -20,6 +20,7 @@ export function PointLayer({ annotation, color, selected, selecting, markerRadiu
   const radius = markerRadius * (selected ? 1.32 : 1);
   return (
     <g
+      data-annotation-id={annotation.id}
       className={selecting ? "movable-annotation" : ""}
       onPointerDown={(event) => onPointerDown(event, annotation)}
       onPointerMove={onPointerMove}

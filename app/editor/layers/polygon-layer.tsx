@@ -1,18 +1,22 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { Annotation } from "../../lib/types";
+import type { PolygonAnnotation } from "../models/annotation-model";
+import type { Vertex } from "../models/vertex-model";
 import { VertexHandles, type SelectedVertex } from "./vertex-handles";
 
-function polygonPath(outer: number[] = [], holes: number[][] = []) {
-  return [outer, ...holes]
-    .filter((ring) => ring.length >= 6)
-    .map((ring) => `M ${ring[0]} ${ring[1]} ${ring.slice(2).reduce((path, coordinate, index) => index % 2 === 0 ? `${path} L ${coordinate} ${ring[index + 3]}` : path, "")} Z`)
-    .join(" ");
+function ringPath(vertices: Vertex[]) {
+  if (vertices.length < 3) return "";
+  const [first, ...rest] = vertices;
+  return `M ${first.x} ${first.y}${rest.map((vertex) => ` L ${vertex.x} ${vertex.y}`).join("")} Z`;
+}
+
+function polygonPath(annotation: PolygonAnnotation) {
+  return [annotation.vertices, ...annotation.holes].map(ringPath).filter(Boolean).join(" ");
 }
 
 export type PolygonLayerProps = {
-  annotation: Annotation;
+  annotation: PolygonAnnotation;
   color: string;
   tool: string;
   selected: boolean;
@@ -27,13 +31,13 @@ export type PolygonLayerProps = {
   onMoveAnnotation: (event: ReactPointerEvent<SVGElement>) => void;
   onFinishAnnotation: (event: ReactPointerEvent<SVGElement>) => void;
   onCancel: () => void;
-  onBeginVertexDrag: (event: ReactPointerEvent<SVGElement>, vertexIndex: number) => void;
+  onBeginVertexDrag: (event: ReactPointerEvent<SVGElement>, vertexId: string) => void;
   onMoveVertex: (event: ReactPointerEvent<SVGElement>) => void;
   onFinishVertex: (event: ReactPointerEvent<SVGElement>) => void;
-  onInsertVertex: (event: ReactPointerEvent<SVGElement>, edgeIndex: number, x: number, y: number) => void;
+  onInsertVertex: (event: ReactPointerEvent<SVGElement>, afterVertexId: string, x: number, y: number) => void;
 };
 
-/** Presentational polygon layer. All editor state/commands stay outside this component. */
+/** Presentational polygon layer over the canonical vertex-based annotation model. */
 export function PolygonLayer({
   annotation,
   color,
@@ -55,7 +59,6 @@ export function PolygonLayer({
   onFinishVertex,
   onInsertVertex,
 }: PolygonLayerProps) {
-  const points = annotation.pts ?? [];
   const showHandles = tool === "select" && selected && primarySelected;
 
   return <g data-annotation-id={annotation.id}>
@@ -66,14 +69,14 @@ export function PolygonLayer({
       onPointerMove={onMoveAnnotation}
       onPointerUp={onFinishAnnotation}
       onPointerCancel={onCancel}
-      d={polygonPath(points, annotation.holes ?? [])}
+      d={polygonPath(annotation)}
       fill={`${color}30`}
       stroke={color}
       strokeWidth={selected ? lineThickness + 2 : lineThickness}
     />
     {showHandles && <VertexHandles
       annotationId={annotation.id}
-      points={points}
+      vertices={annotation.vertices}
       selectedVertex={selectedVertex}
       touchMode={touchMode}
       touchRadius={touchRadius}

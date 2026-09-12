@@ -1,13 +1,21 @@
 import type { Language } from "./i18n";
-import type { Annotation, Asset, Label } from "./types";
+import type { Asset, Label } from "./types";
 import type { EditorAnnotation } from "../editor/models/annotation-model";
-import { toLegacyAnnotations } from "../editor/models/legacy-annotation-adapter";
 import { createBox, createPoint, createPolygonFromFlat, createPolylineFromFlat } from "../editor/models/annotation-factory";
 
-type CanonicalDemoProject = { name: string; assets: Asset[]; labels: Label[]; annotations: EditorAnnotation[]; objectUrls: string[] };
-type LegacyDemoProject = Omit<CanonicalDemoProject, "annotations"> & { annotations: Annotation[] };
+type CanonicalDemoProject = {
+  name: string;
+  assets: Asset[];
+  labels: Label[];
+  annotations: EditorAnnotation[];
+  objectUrls: string[];
+};
 
-const demoCopy: Record<Language, { project: string; scenes: [string, string, string]; labels: [string, string, string, string, string] }> = {
+const demoCopy: Record<Language, {
+  project: string;
+  scenes: [string, string, string];
+  labels: [string, string, string, string, string];
+}> = {
   pt: { project: "Demo — Mapeamento por imagens aéreas", scenes: ["quadra-urbana.jpg", "parque-municipal.jpg", "zona-rural.jpg"], labels: ["Edificação", "Vegetação", "Veículo", "Água", "Caminho"] },
   en: { project: "Demo — Aerial image mapping", scenes: ["urban-block.jpg", "city-park.jpg", "rural-area.jpg"], labels: ["Building", "Vegetation", "Vehicle", "Water", "Path"] },
   fr: { project: "Démo — Cartographie par images aériennes", scenes: ["quartier-urbain.jpg", "parc-municipal.jpg", "zone-rurale.jpg"], labels: ["Bâtiment", "Végétation", "Véhicule", "Eau", "Chemin"] },
@@ -15,7 +23,7 @@ const demoCopy: Record<Language, { project: string; scenes: [string, string, str
 };
 
 const sources = ["/demo/urban-aerial.jpg", "/demo/park-aerial.jpg", "/demo/rural-aerial.jpg"];
-const DEMO_SCALE = 1.2; // fixtures below are authored once, then mapped to the real 1200x780 image pixels.
+const DEMO_SCALE = 1.2;
 
 function scaleAnnotation(annotation: EditorAnnotation, scale: number): EditorAnnotation {
   if (annotation.type === "polygon") return {
@@ -23,8 +31,12 @@ function scaleAnnotation(annotation: EditorAnnotation, scale: number): EditorAnn
     vertices: annotation.vertices.map((vertex) => ({ ...vertex, x: vertex.x * scale, y: vertex.y * scale })),
     holes: annotation.holes.map((hole) => hole.map((vertex) => ({ ...vertex, x: vertex.x * scale, y: vertex.y * scale }))),
   };
-  if (annotation.type === "line") return { ...annotation, vertices: annotation.vertices.map((vertex) => ({ ...vertex, x: vertex.x * scale, y: vertex.y * scale })) };
-  if (annotation.type === "box") return { ...annotation, x: annotation.x * scale, y: annotation.y * scale, width: annotation.width * scale, height: annotation.height * scale };
+  if (annotation.type === "line") {
+    return { ...annotation, vertices: annotation.vertices.map((vertex) => ({ ...vertex, x: vertex.x * scale, y: vertex.y * scale })) };
+  }
+  if (annotation.type === "box") {
+    return { ...annotation, x: annotation.x * scale, y: annotation.y * scale, width: annotation.width * scale, height: annotation.height * scale };
+  }
   return { ...annotation, x: annotation.x * scale, y: annotation.y * scale };
 }
 
@@ -35,7 +47,15 @@ export async function createCanonicalDemoProject(language: Language): Promise<Ca
   const objectUrls = blobs.map((blob) => URL.createObjectURL(blob));
   const text = demoCopy[language];
   const ids = ["demo-urban", "demo-park", "demo-rural"];
-  const assets = blobs.map((blob, index): Asset => ({ id: ids[index], name: text.scenes[index], src: objectUrls[index], local: true, byteSize: blob.size, width: 1200, height: 780 }));
+  const assets = blobs.map((blob, index): Asset => ({
+    id: ids[index],
+    name: text.scenes[index],
+    src: objectUrls[index],
+    local: true,
+    byteSize: blob.size,
+    width: 1200,
+    height: 780,
+  }));
   const labels: Label[] = [
     { id: "demo-building", name: text.labels[0], color: "#8D75FF", key: "1" },
     { id: "demo-vegetation", name: text.labels[1], color: "#4DAA78", key: "2" },
@@ -63,12 +83,11 @@ export async function createCanonicalDemoProject(language: Language): Promise<Ca
     createBox({ id: "demo-c5", asset: ids[2], label: labels[2].id }, { x:439,y:269,width:24,height:18 }),
     createPolylineFromFlat({ id: "demo-c6", asset: ids[2], label: labels[4].id }, [2.3225389172264768,286.89786964584556,106.74859251201693,290.66104301415714,213.05619662202884,284.0754896196119,326.89000279292657,271.8451761725994,439,272,538.5644357553397,264.3188294359763,630,269,810,268,1000,272]),
   ];
-  return { name: text.project, assets, labels, annotations: referenceAnnotations.map((annotation) => scaleAnnotation(annotation, DEMO_SCALE)), objectUrls };
-}
-
-// Transitional legacy demo adapter. The canonical demo above is always source-image pixels.
-export async function createDemoProject(language: Language): Promise<LegacyDemoProject> {
-  const demo = await createCanonicalDemoProject(language);
-  const normalized = demo.annotations.map((annotation) => scaleAnnotation(annotation, 1 / DEMO_SCALE));
-  return { ...demo, annotations: toLegacyAnnotations(normalized) };
+  return {
+    name: text.project,
+    assets,
+    labels,
+    annotations: referenceAnnotations.map((annotation) => scaleAnnotation(annotation, DEMO_SCALE)),
+    objectUrls,
+  };
 }

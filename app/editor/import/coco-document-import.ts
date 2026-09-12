@@ -30,7 +30,9 @@ export type CocoDocumentPlan = {
 export type CocoDocumentImportOptions = {
   selectedAnnotationIndexes?: Iterable<number>;
   geometryTypes?: Iterable<CocoGeometry>;
+  unlabeledName?: string;
 };
+export type CocoDocumentPlanOptions = { unlabeledName?: string };
 export type CocoDocumentImportResult = { labels: Label[]; annotations: EditorAnnotation[]; imported: number; unmatched: number };
 
 const IMPORT_COLORS = ["#6c8cff", "#d987ff", "#26c6b6", "#ff8a65", "#ffd166", "#7ee081", "#59b0f6", "#f26d9d"];
@@ -61,7 +63,7 @@ function matchedImages(images: CocoImageInput[], assets: Asset[]) {
   }));
 }
 
-export function planCocoDocument(document: CocoDocumentInput, assets: Asset[]): CocoDocumentPlan {
+export function planCocoDocument(document: CocoDocumentInput, assets: Asset[], options: CocoDocumentPlanOptions = {}): CocoDocumentPlan {
   const { images, categories, annotations } = documentParts(document);
   const imageById = matchedImages(images, assets);
   const categoryById = new Map(categories.flatMap((category) => typeof category.id === "number" ? [[category.id, category] as const] : []));
@@ -82,7 +84,7 @@ export function planCocoDocument(document: CocoDocumentInput, assets: Asset[]): 
       imageId: annotation.image_id,
       categoryId: typeof annotation.category_id === "number" ? annotation.category_id : undefined,
       imageName: imageEntry.image.file_name ?? imageEntry.asset.name,
-      labelName: category?.name?.trim() || (typeof annotation.category_id === "number" ? `Classe ${annotation.category_id}` : "Sem label"),
+      labelName: category?.name?.trim() || (typeof annotation.category_id === "number" ? `#${annotation.category_id}` : options.unlabeledName ?? "Unlabeled"),
       geometries,
     });
   });
@@ -111,9 +113,10 @@ export function importCocoDocument(
   const labelByCategory = new Map<number, Label>();
   const selectedIndexes = options.selectedAnnotationIndexes ? new Set(options.selectedAnnotationIndexes) : null;
   const allowedGeometryTypes = new Set(options.geometryTypes ?? ALL_GEOMETRIES);
+  const unlabeledName = options.unlabeledName?.trim() || currentLabels.find((label) => label.id === "unlabeled")?.name || "Unlabeled";
 
   const ensureLabel = (name: string, preferredPrefix = "label") => {
-    const normalized = name.trim() || "Sem label";
+    const normalized = name.trim() || unlabeledName;
     const existing = labels.find((label) => label.name.toLocaleLowerCase() === normalized.toLocaleLowerCase());
     if (existing) return existing;
     const created: Label = { id: makeId(preferredPrefix), name: normalized, color: IMPORT_COLORS[labels.length % IMPORT_COLORS.length], key: "" };
@@ -134,10 +137,10 @@ export function importCocoDocument(
     const category = typeof input.category_id === "number" ? categoryById.get(input.category_id) : undefined;
     let label: Label;
     if (typeof input.category_id === "number") {
-      label = labelByCategory.get(input.category_id) ?? ensureLabel(category?.name?.trim() || `Classe ${input.category_id}`);
+      label = labelByCategory.get(input.category_id) ?? ensureLabel(category?.name?.trim() || `#${input.category_id}`);
       labelByCategory.set(input.category_id, label);
     } else {
-      label = ensureLabel("Sem label");
+      label = ensureLabel(unlabeledName);
     }
 
     const sourceWidth = Number(imageEntry.image.width ?? imageEntry.asset.width);

@@ -125,13 +125,12 @@ function parseManifestV4(value: unknown, copy: Copy): ProjectManifestV4 {
 async function portableAssets(zip: JSZip, assets: Asset[], mode: ProjectSaveMode, copy: Copy) {
   return Promise.all(assets.map(async (asset, index): Promise<PortableAsset> => {
     const { src, local, runtimeRasterSource, ...metadata } = asset;
-    void runtimeRasterSource;
     if (mode === "annotations" || asset.missing) return { ...metadata, missing: true };
     const shouldBundle = Boolean(asset.local || src.startsWith("blob:") || src.startsWith("data:"));
     void local;
     if (!shouldBundle) return { ...metadata, source: src };
 
-    const sourceBlob = asset.runtimeRasterSource ?? await (async () => {
+    const sourceBlob = runtimeRasterSource ?? await (async () => {
       const response = await fetch(src);
       if (!response.ok) throw new Error(fill(copy.errProjectReadImage, { name: asset.name }));
       return response.blob();
@@ -151,7 +150,10 @@ async function hydrateAssets(zip: JSZip, manifest: ProjectManifestV4, copy: Copy
         const imageEntry = zip.file(bundledPath);
         if (!imageEntry) throw new Error(fill(copy.errProjectImageMissing, { name: asset.name }));
         const imageBlob = await imageEntry.async("blob");
-        const src = URL.createObjectURL(imageBlob);
+        const runtimeRasterSource = metadata.raster?.mode === "tiled"
+          ? new File([imageBlob], asset.name, { type: imageBlob.type || "image/tiff" })
+          : undefined;
+        const src = URL.createObjectURL(runtimeRasterSource ?? imageBlob);
         objectUrls.push(src);
         return {
           ...metadata,
@@ -159,7 +161,7 @@ async function hydrateAssets(zip: JSZip, manifest: ProjectManifestV4, copy: Copy
           local: true,
           missing: false,
           byteSize: metadata.byteSize ?? imageBlob.size,
-          runtimeRasterSource: metadata.raster?.mode === "tiled" ? imageBlob : undefined,
+          runtimeRasterSource,
           raster: metadata.raster?.mode === "tiled" ? { ...metadata.raster, sourceType: "bundled" } : metadata.raster,
         };
       }

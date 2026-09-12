@@ -2,19 +2,10 @@ import type { BoxAnnotation, EditorAnnotation } from "../models/annotation-model
 import type { Vertex } from "../models/vertex-model";
 import { deleteVertex, insertVertex, moveVertices, updateVertex } from "../models/vertex-model";
 
-export const EDITOR_WIDTH = 1000;
-export const EDITOR_HEIGHT = 650;
 export const MIN_VERTEX_DISTANCE = 10;
 
 export type Bounds = { x: number; y: number; width: number; height: number };
 export type BoxResizeCorner = "nw" | "ne" | "se" | "sw";
-
-export function clampPoint(point: { x: number; y: number }) {
-  return {
-    x: Math.max(0, Math.min(EDITOR_WIDTH, point.x)),
-    y: Math.max(0, Math.min(EDITOR_HEIGHT, point.y)),
-  };
-}
 
 export function verticesBounds(vertices: Vertex[]): Bounds {
   if (!vertices.length) return { x: 0, y: 0, width: 0, height: 0 };
@@ -27,9 +18,7 @@ export function verticesBounds(vertices: Vertex[]): Bounds {
 
 export function annotationBounds(annotation: EditorAnnotation): Bounds {
   if (annotation.type === "polygon" || annotation.type === "line") return verticesBounds(annotation.vertices);
-  if (annotation.type === "box") {
-    return { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height };
-  }
+  if (annotation.type === "box") return { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height };
   return { x: annotation.x - 4, y: annotation.y - 4, width: 8, height: 8 };
 }
 
@@ -45,11 +34,7 @@ export function translateAnnotation(annotation: EditorAnnotation, dx: number, dy
   return { ...annotation, x: annotation.x + dx, y: annotation.y + dy };
 }
 
-function rotateAround(
-  point: { x: number; y: number },
-  center: { x: number; y: number },
-  angle: number,
-) {
+function rotateAround(point: { x: number; y: number }, center: { x: number; y: number }, angle: number) {
   const cosine = Math.cos(angle);
   const sine = Math.sin(angle);
   const dx = point.x - center.x;
@@ -60,11 +45,7 @@ function rotateAround(
   };
 }
 
-/**
- * Resizes a possibly rotated box by one visual corner while keeping the opposite visual
- * corner fixed. Pointer coordinates arrive in editor/world space; the resize is solved in
- * the box's unrotated local frame and the new centre is rotated back into world space.
- */
+/** Resize in source-image pixel space while preserving the opposite visual corner. */
 export function resizeBoxFromCorner(
   annotation: BoxAnnotation,
   corner: BoxResizeCorner,
@@ -72,11 +53,8 @@ export function resizeBoxFromCorner(
   minimumSize = 1,
 ): BoxAnnotation {
   const rotation = annotation.rotation ?? 0;
-  const center = {
-    x: annotation.x + annotation.width / 2,
-    y: annotation.y + annotation.height / 2,
-  };
-  const localPointer = rotateAround(clampPoint(pointer), center, -rotation);
+  const center = { x: annotation.x + annotation.width / 2, y: annotation.y + annotation.height / 2 };
+  const localPointer = rotateAround(pointer, center, -rotation);
   const left = annotation.x;
   const right = annotation.x + annotation.width;
   const top = annotation.y;
@@ -96,23 +74,16 @@ export function resizeBoxFromCorner(
   const width = Math.max(minimumSize, Math.abs(fixedX - dragX));
   const height = Math.max(minimumSize, Math.abs(fixedY - dragY));
 
-  return {
-    ...annotation,
-    x: worldCenter.x - width / 2,
-    y: worldCenter.y - height / 2,
-    width,
-    height,
-  };
+  return { ...annotation, x: worldCenter.x - width / 2, y: worldCenter.y - height / 2, width, height };
 }
 
 export function updateAnnotationVertex(annotation: EditorAnnotation, vertexId: string, point: { x: number; y: number }): EditorAnnotation {
   if (annotation.type !== "polygon" && annotation.type !== "line") return annotation;
-  const target = clampPoint(point);
   const overlaps = annotation.vertices.some((vertex) =>
-    vertex.id !== vertexId && Math.hypot(vertex.x - target.x, vertex.y - target.y) < MIN_VERTEX_DISTANCE,
+    vertex.id !== vertexId && Math.hypot(vertex.x - point.x, vertex.y - point.y) < MIN_VERTEX_DISTANCE,
   );
   if (overlaps) return annotation;
-  return { ...annotation, vertices: updateVertex(annotation.vertices, vertexId, target) };
+  return { ...annotation, vertices: updateVertex(annotation.vertices, vertexId, point) };
 }
 
 export function insertAnnotationVertex(
@@ -122,15 +93,9 @@ export function insertAnnotationVertex(
   vertexId: string,
 ): EditorAnnotation {
   if (annotation.type !== "polygon" && annotation.type !== "line") return annotation;
-  const target = clampPoint(point);
-  const tooClose = annotation.vertices.some((vertex) =>
-    Math.hypot(vertex.x - target.x, vertex.y - target.y) < MIN_VERTEX_DISTANCE,
-  );
+  const tooClose = annotation.vertices.some((vertex) => Math.hypot(vertex.x - point.x, vertex.y - point.y) < MIN_VERTEX_DISTANCE);
   if (tooClose) return annotation;
-  return {
-    ...annotation,
-    vertices: insertVertex(annotation.vertices, afterVertexId, target, () => vertexId),
-  };
+  return { ...annotation, vertices: insertVertex(annotation.vertices, afterVertexId, point, () => vertexId) };
 }
 
 export function deleteAnnotationVertex(annotation: EditorAnnotation, vertexId: string): EditorAnnotation | null {
@@ -148,11 +113,7 @@ export function edgeMidpoints(vertices: Vertex[], open = false) {
     const current = vertices[index];
     const next = vertices[(index + 1) % vertices.length];
     if (Math.hypot(current.x - next.x, current.y - next.y) < MIN_VERTEX_DISTANCE * 3) continue;
-    result.push({
-      afterVertexId: current.id,
-      x: (current.x + next.x) / 2,
-      y: (current.y + next.y) / 2,
-    });
+    result.push({ afterVertexId: current.id, x: (current.x + next.x) / 2, y: (current.y + next.y) / 2 });
   }
   return result;
 }

@@ -3,6 +3,8 @@ import { downloadBlob } from "./exporters";
 import { fill } from "./i18n";
 import type { Copy } from "./i18n";
 import type { Annotation, Asset, Label } from "./types";
+import type { EditorAnnotation } from "../editor/models/annotation-model";
+import { fromLegacyAnnotations, toLegacyAnnotations } from "../editor/models/legacy-annotation-adapter";
 
 type PortableAsset = Omit<Asset, "src" | "local"> & {
   bundled_path?: string;
@@ -17,12 +19,12 @@ export type ProjectLayout = {
 
 type ProjectManifest = {
   format: "poligome-project";
-  version: 2;
+  version: 3;
   project_name: string;
   saved_at: string;
   assets: PortableAsset[];
   labels: Label[];
-  annotations: Annotation[];
+  annotations: EditorAnnotation[];
   layout?: {
     left_panel_width: number;
     right_panel_width: number;
@@ -53,19 +55,44 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function parseLayout(value: unknown): ProjectManifest["layout"] {
   if (!isObject(value)) return undefined;
   const left = value.left_panel_width;
   const right = value.right_panel_width;
-  if (typeof left !== "number" || !Number.isFinite(left) || typeof right !== "number" || !Number.isFinite(right)) return undefined;
+  if (!isFiniteNumber(left) || !isFiniteNumber(right)) return undefined;
   return {
     left_panel_width: Math.round(left),
     right_panel_width: Math.round(right),
   };
 }
 
+function validVertex(value: unknown) {
+  return isObject(value) && typeof value.id === "string" && isFiniteNumber(value.x) && isFiniteNumber(value.y);
+}
+
+function validAnnotation(value: unknown): value is EditorAnnotation {
+  if (!isObject(value) || typeof value.id !== "string" || typeof value.asset !== "string" || typeof value.label !== "string") return false;
+  if (value.type === "point") return isFiniteNumber(value.x) && isFiniteNumber(value.y);
+  if (value.type === "box") {
+    return isFiniteNumber(value.x) && isFiniteNumber(value.y) && isFiniteNumber(value.width) && isFiniteNumber(value.height) &&
+      (value.rotation === undefined || isFiniteNumber(value.rotation));
+  }
+  if (value.type === "line") return Array.isArray(value.vertices) && value.vertices.length >= 2 && value.vertices.every(validVertex);
+  if (value.type === "polygon") {
+    return Array.isArray(value.vertices) && value.vertices.length >= 3 && value.vertices.every(validVertex) &&
+      Array.isArray(value.holes) && value.holes.every((hole) => Array.isArray(hole) && hole.length >= 3 && hole.every(validVertex));
+  }
+  return false;
+}
+
 function parseManifest(value: unknown, copy: Copy): ProjectManifest {
-  if (!isObject(value) || value.format !== "poligome-project" || value.version !== 2) {
+  // V3 is intentionally strict. Older project manifests are not migrated here anymore;
+  // compatibility code belongs outside the current editor architecture.
+  if (!isObject(value) || value.format !== "poligome-project" || value.version !== 3) {
     throw new Error(copy.errProjectFormat);
   }
   if (typeof value.project_name !== "string" || !Array.isArray(value.assets) || !Array.isArray(value.labels) || !Array.isArray(value.annotations)) {
@@ -79,17 +106,14 @@ function parseManifest(value: unknown, copy: Copy): ProjectManifest {
   const labels = value.labels.filter((item): item is Label =>
     isObject(item) && typeof item.id === "string" && typeof item.name === "string" && typeof item.color === "string" && typeof item.key === "string",
   );
-  const annotations = value.annotations.filter((item): item is Annotation =>
-    isObject(item) && typeof item.id === "string" && typeof item.asset === "string" && typeof item.label === "string" &&
-    (item.type === "box" || item.type === "polygon" || item.type === "line" || item.type === "point"),
-  );
+  const annotations = value.annotations.filter(validAnnotation);
 
   if (!assets.length || !labels.length) throw new Error(copy.errProjectEmpty);
   const assetIds = new Set(assets.map((item) => item.id));
   const labelIds = new Set(labels.map((item) => item.id));
   return {
     format: "poligome-project",
-    version: 2,
+    version: 3,
     project_name: value.project_name.trim() || copy.defaultProjectName,
     saved_at: typeof value.saved_at === "string" ? value.saved_at : new Date().toISOString(),
     assets,
@@ -118,12 +142,12 @@ export async function savePoligomeProject(projectName: string, assets: Asset[], 
 
   const manifest: ProjectManifest = {
     format: "poligome-project",
-    version: 2,
+    version: 3,
     project_name: projectName.trim() || copy.defaultProjectName,
     saved_at: new Date().toISOString(),
     assets: portableAssets,
     labels,
-    annotations,
+    annotations: fromLegacyAnnotations(annotations),
     layout: layout ? {
       left_panel_width: Math.round(layout.leftPanelWidth),
       right_panel_width: Math.round(layout.rightPanelWidth),
@@ -162,7 +186,9 @@ export async function openPoligomeProject(file: File, copy: Copy): Promise<Loade
       projectName: manifest.project_name,
       assets,
       labels: manifest.labels,
-      annotations: manifest.annotations,
+      // Temporary boundary while legacy-page.tsx is being retired. Project V3 itself no
+      // longer stores flat points and no longer accepts V2 manifests.
+      annotations: toLegacyAnnotations(manifest.annotations),
       layout: manifest.layout ? {
         leftPanelWidth: manifest.layout.left_panel_width,
         rightPanelWidth: manifest.layout.right_panel_width,

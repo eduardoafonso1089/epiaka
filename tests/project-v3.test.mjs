@@ -27,7 +27,7 @@ function installDownloadCapture() {
 
 test('project v3 persists polygon vertices with stable ids instead of flat pts', async () => {
   const capture=installDownloadCapture();
-  const assets=[{id:'a',name:'image.png',src:'',missing:true,width:100,width:100,height:100}];
+  const assets=[{id:'a',name:'image.png',src:'',missing:true,width:100,height:100}];
   const labels=[{id:'weed',name:'Weed',color:'#00ff00',key:'1'}];
   const annotations=[{id:'p',asset:'a',label:'weed',type:'polygon',pts:[10,20,30,40,50,60],holes:[]}];
   try {

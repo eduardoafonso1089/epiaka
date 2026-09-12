@@ -2,9 +2,8 @@ import JSZip from "jszip";
 import { downloadBlob } from "./exporters";
 import { fill } from "./i18n";
 import type { Copy } from "./i18n";
-import type { Annotation, Asset, Label } from "./types";
+import type { Asset, Label } from "./types";
 import type { EditorAnnotation } from "../editor/models/annotation-model";
-import { fromLegacyAnnotations, toLegacyAnnotations } from "../editor/models/legacy-annotation-adapter";
 
 type PortableAsset = Omit<Asset, "src" | "local"> & {
   bundled_path?: string;
@@ -35,7 +34,7 @@ export type LoadedPoligomeProject = {
   projectName: string;
   assets: Asset[];
   labels: Label[];
-  annotations: Annotation[];
+  annotations: EditorAnnotation[];
   layout?: ProjectLayout;
   objectUrls: string[];
   missingImages: number;
@@ -90,8 +89,6 @@ function validAnnotation(value: unknown): value is EditorAnnotation {
 }
 
 function parseManifest(value: unknown, copy: Copy): ProjectManifest {
-  // V3 is intentionally strict. Older project manifests are not migrated here anymore;
-  // compatibility code belongs outside the current editor architecture.
   if (!isObject(value) || value.format !== "poligome-project" || value.version !== 3) {
     throw new Error(copy.errProjectFormat);
   }
@@ -123,7 +120,7 @@ function parseManifest(value: unknown, copy: Copy): ProjectManifest {
   };
 }
 
-export async function savePoligomeProject(projectName: string, assets: Asset[], labels: Label[], annotations: Annotation[], mode: ProjectSaveMode, copy: Copy, layout?: ProjectLayout) {
+export async function savePoligomeProject(projectName: string, assets: Asset[], labels: Label[], annotations: EditorAnnotation[], mode: ProjectSaveMode, copy: Copy, layout?: ProjectLayout) {
   const zip = new JSZip();
   const portableAssets = await Promise.all(assets.map(async (asset, index): Promise<PortableAsset> => {
     const { src, local, ...metadata } = asset;
@@ -147,7 +144,7 @@ export async function savePoligomeProject(projectName: string, assets: Asset[], 
     saved_at: new Date().toISOString(),
     assets: portableAssets,
     labels,
-    annotations: fromLegacyAnnotations(annotations),
+    annotations,
     layout: layout ? {
       left_panel_width: Math.round(layout.leftPanelWidth),
       right_panel_width: Math.round(layout.rightPanelWidth),
@@ -186,9 +183,7 @@ export async function openPoligomeProject(file: File, copy: Copy): Promise<Loade
       projectName: manifest.project_name,
       assets,
       labels: manifest.labels,
-      // Temporary boundary while legacy-page.tsx is being retired. Project V3 itself no
-      // longer stores flat points and no longer accepts V2 manifests.
-      annotations: toLegacyAnnotations(manifest.annotations),
+      annotations: manifest.annotations,
       layout: manifest.layout ? {
         leftPanelWidth: manifest.layout.left_panel_width,
         rightPanelWidth: manifest.layout.right_panel_width,

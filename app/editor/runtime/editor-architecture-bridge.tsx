@@ -45,8 +45,8 @@ function stageTool(root: HTMLElement | null) {
 
 function targetMode(target: EventTarget | null, root: HTMLElement | null): Exclude<InteractionMode, "idle"> {
   if (!(target instanceof Element)) return interactionModeForTool(stageTool(root));
-  if (target.closest(".vertex-handle,.edge-handle,.polygon-close-point")) return "edit";
-  if (target.closest(".box-resize-handle")) return "resize";
+  if (target.closest(".vertex-handle,.edge-handle,.polygon-close-point,.touch-handle-hit")) return "edit";
+  if (target.closest(".box-resize-handle,.box-touch-handle-hit")) return "resize";
   if (target.closest(".rotation-handle")) return "rotate";
   return interactionModeForTool(stageTool(root));
 }
@@ -75,21 +75,35 @@ export function EditorArchitectureBridge({ children }: { children: ReactNode }) 
   const syncViewport = () => {
     const root = rootRef.current;
     const scroller = root?.querySelector<HTMLElement>(".scroll");
+    const canvas = root?.querySelector<HTMLElement>(".canvas");
     const image = root?.querySelector<HTMLImageElement>("img.image-current");
     if (!scroller) return;
-    viewportRef.current.setViewport({ width: scroller.clientWidth, height: scroller.clientHeight });
-    viewportRef.current.setScroll(scroller.scrollLeft, scroller.scrollTop);
-    if (image?.naturalWidth && image?.naturalHeight) {
-      viewportRef.current.setImage({ width: image.naturalWidth, height: image.naturalHeight });
-    }
+
+    const viewport = { width: scroller.clientWidth, height: scroller.clientHeight };
+    const imageSize = image?.naturalWidth && image?.naturalHeight
+      ? { width: image.naturalWidth, height: image.naturalHeight }
+      : viewportRef.current.snapshot().image;
+    const zoom = canvas?.getBoundingClientRect().width && viewport.width
+      ? canvas.getBoundingClientRect().width / viewport.width * 100
+      : viewportRef.current.snapshot().zoom;
+
+    viewportRef.current.sync({
+      viewport,
+      image: imageSize,
+      zoom,
+      scrollLeft: scroller.scrollLeft,
+      scrollTop: scroller.scrollTop,
+    });
   };
 
   const exposeState = () => {
     const root = rootRef.current;
     if (!root) return;
     const interaction = interactionRef.current.snapshot();
+    const viewport = viewportRef.current.snapshot();
     root.dataset.editorMode = interaction.mode;
     root.dataset.editorTool = stageTool(root);
+    root.dataset.editorZoom = viewport.zoom.toFixed(2);
   };
 
   const pointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -97,7 +111,7 @@ export function EditorArchitectureBridge({ children }: { children: ReactNode }) 
     const mode = targetMode(event.target, rootRef.current);
     const active = interactionRef.current.snapshot();
     if (active.mode !== "idle" && !interactionRef.current.owns(event.pointerId)) {
-      // Multi-touch navigation is owned by the legacy gesture implementation for now.
+      // Multi-touch navigation is still executed by the existing gesture implementation.
       if (event.pointerType !== "touch") return;
       interactionRef.current.cancel();
     }
@@ -121,25 +135,62 @@ export function EditorArchitectureBridge({ children }: { children: ReactNode }) 
     const point = transform.screenToAnnotation({ x: event.clientX, y: event.clientY });
     root.dataset.annotationX = point.x.toFixed(3);
     root.dataset.annotationY = point.y.toFixed(3);
+    exposeState();
   };
 
   const pointerFinish = (event: ReactPointerEvent<HTMLDivElement>) => {
     interactionRef.current.finish(event.pointerId);
+    syncViewport();
     exposeState();
   };
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    exposeState();
-    const stage = root.querySelector<HTMLElement>(".stage");
-    const observer = stage ? new MutationObserver(exposeState) : null;
-    if (stage) observer?.observe(stage, { attributes: true, attributeFilter: ["class"] });
-    const resize = new ResizeObserver(syncViewport);
-    resize.observe(root);
+
+    const bind = () => {
+      const stage = root.querySelector<HTMLElement>(".stage");
+      const scroller = root.querySelector<HTMLElement>(".scroll");
+      const canvas = root.querySelector<HTMLElement>(".canvas");
+      syncViewport();
+      exposeState();
+
+      const stageObserver = stage ? new MutationObserver(() => {
+        syncViewport();
+        exposeState();
+      }) : null;
+      if (stage) stageObserver?.observe(stage, { attributes: true, attributeFilter: ["class"] });
+
+      const resize = new ResizeObserver(() => {
+        syncViewport();
+        exposeState();
+      });
+      if (scroller) resize.observe(scroller);
+      if (canvas) resize.observe(canvas);
+
+      const onScroll = () => {
+        syncViewport();
+        exposeState();
+      };
+      scroller?.addEventListener("scroll", onScroll, { passive: true });
+
+      return () => {
+        stageObserver?.disconnect();
+        resize.disconnect();
+        scroller?.removeEventListener("scroll", onScroll);
+      };
+    };
+
+    let unbind = bind();
+    const structureObserver = new MutationObserver(() => {
+      unbind();
+      unbind = bind();
+    });
+    structureObserver.observe(root, { childList: true, subtree: true });
+
     return () => {
-      observer?.disconnect();
-      resize.disconnect();
+      structureObserver.disconnect();
+      unbind();
       interactionRef.current.cancel();
     };
   }, []);

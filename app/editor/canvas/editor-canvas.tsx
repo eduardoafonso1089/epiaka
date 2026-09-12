@@ -3,6 +3,7 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, Ref } from "react";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { Label } from "../../lib/types";
+import type { Size2D } from "../../lib/editor-viewport";
 import type { SelectedVertex } from "../state/editor-state";
 import { AnnotationLayer } from "../layers/annotation-layer";
 import { SelectionLayer } from "../selection/selection-layer";
@@ -10,6 +11,7 @@ import type { SelectionMarquee } from "../selection/selection-model";
 import type { BoxCorner } from "../layers/box-layer";
 
 export type EditorCanvasProps = {
+  imageSize: Size2D;
   annotations: EditorAnnotation[];
   labels: Label[];
   tool: string;
@@ -55,13 +57,15 @@ export type EditorCanvasProps = {
 export function EditorCanvas(props: EditorCanvasProps) {
   const labelById = new Map(props.labels.map((label) => [label.id, label]));
   const selected = new Set(props.selectedIds);
+  const width = Math.max(1, props.imageSize.width);
+  const height = Math.max(1, props.imageSize.height);
 
   return <svg
     ref={props.svgRef}
     className={props.className}
     style={props.style}
     aria-label={props.ariaLabel}
-    viewBox="0 0 1000 650"
+    viewBox={`0 0 ${width} ${height}`}
     preserveAspectRatio="none"
     onPointerDownCapture={props.onPointerDownCapture}
     onPointerMoveCapture={props.onPointerMoveCapture}

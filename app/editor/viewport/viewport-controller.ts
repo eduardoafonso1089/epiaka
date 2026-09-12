@@ -40,8 +40,22 @@ export class ViewportController {
     this.state = { ...this.state, image: { ...image } };
   }
 
+  setZoom(zoom: number) {
+    this.state = { ...this.state, zoom: Math.max(10, Math.min(400, zoom)) };
+  }
+
   setScroll(scrollLeft: number, scrollTop: number) {
     this.state = { ...this.state, scrollLeft, scrollTop };
+  }
+
+  sync(partial: Partial<ViewportState>) {
+    if (partial.viewport) this.setViewport(partial.viewport);
+    if (partial.image) this.setImage(partial.image);
+    if (typeof partial.zoom === "number") this.setZoom(partial.zoom);
+    if (typeof partial.scrollLeft === "number" || typeof partial.scrollTop === "number") {
+      this.setScroll(partial.scrollLeft ?? this.state.scrollLeft, partial.scrollTop ?? this.state.scrollTop);
+    }
+    return this.snapshot();
   }
 
   zoomAt(nextZoom: number, frame: ScreenFrame, pointer: Point2D) {

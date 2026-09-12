@@ -157,12 +157,47 @@ async function snapshot(base, legacy) {
   };
 }
 
+async function nonUniformYoloSnapshot(base, legacy) {
+  const width = 4032;
+  const height = 3024;
+  const scaleX = width / 1000;
+  const scaleY = height / 650;
+  const asset = { id: 'nonuniform', name: 'nonuniform.jpg', src: '/demo/nonuniform.jpg', local: false, width, height };
+  const labels = [{ id: 'target', name: 'target', color: '#6c8cff', key: '' }];
+  const legacyAnnotations = [
+    { id: 'box', asset: asset.id, label: labels[0].id, type: 'box', x: 100, y: 65, w: 300, h: 195, rotation: 0 },
+    { id: 'polygon', asset: asset.id, label: labels[0].id, type: 'polygon', pts: [100, 65, 900, 65, 900, 585, 100, 585] },
+  ];
+  const canonicalAnnotations = [
+    { id: 'box', asset: asset.id, label: labels[0].id, type: 'box', x: 100 * scaleX, y: 65 * scaleY, width: 300 * scaleX, height: 195 * scaleY, rotation: 0 },
+    { id: 'polygon', asset: asset.id, label: labels[0].id, type: 'polygon', vertices: [
+      { id: 'p0', x: 100 * scaleX, y: 65 * scaleY },
+      { id: 'p1', x: 900 * scaleX, y: 65 * scaleY },
+      { id: 'p2', x: 900 * scaleX, y: 585 * scaleY },
+      { id: 'p3', x: 100 * scaleX, y: 585 * scaleY },
+    ], holes: [] },
+  ];
+  lastBlob = null;
+  if (legacy) {
+    const exporters = await moduleAt(base, 'app/lib/exporters.ts');
+    await exporters.exportYoloZip([asset], labels, legacyAnnotations, 'golden-nonuniform');
+  } else {
+    const exporters = await moduleAt(base, 'app/editor/export/export-files.ts');
+    await exporters.exportEditorYoloZip([asset], labels, canonicalAnnotations, 'golden-nonuniform');
+  }
+  return zipSnapshot(lastBlob);
+}
+
 try {
   const main = await snapshot(mainRoot, true);
   const refactor = await snapshot(root, false);
+  const mainNonUniformYolo = await nonUniformYoloSnapshot(mainRoot, true);
+  const refactorNonUniformYolo = await nonUniformYoloSnapshot(root, false);
   assert.deepEqual(normalizeCoco(refactor.coco), normalizeCoco(main.coco), 'COCO demo golden diverged beyond explicitly tracked differences');
   assert.equal(refactor.coco.info.version, main.coco.info.version, 'COCO metadata version must remain externally compatible');
   assert.deepEqual(round(refactor.yolo), round(main.yolo), 'YOLO demo golden diverged');
+  assert.deepEqual(round(refactorNonUniformYolo), round(mainNonUniformYolo), 'YOLO non-uniform source-dimension golden diverged');
+  assert.equal(refactorNonUniformYolo['labels/train/0001-nonuniform.txt'], '0 0.250000 0.250000 0.300000 0.300000\n0 0.100000 0.100000 0.900000 0.100000 0.900000 0.900000 0.100000 0.900000');
   assert.deepEqual(round(refactor.geojson), round(main.geojson), 'GeoJSON demo golden diverged');
   assert.deepEqual(refactor.semanticProject, main.semanticProject, 'semantic .plgm demo content diverged');
 
@@ -171,7 +206,7 @@ try {
   assert.equal(main.manifest.coordinate_space ?? null, justifications['project.coordinate_space'].main);
   assert.equal(refactor.manifest.coordinate_space ?? null, justifications['project.coordinate_space'].refactor);
   for (const [name, item] of Object.entries(justifications)) assert.ok(item.reason?.trim(), `${name} requires a reason`);
-  console.log('Cross-branch demo goldens passed: COCO, YOLO, GeoJSON and semantic .plgm parity; intentional differences are explicitly justified.');
+  console.log('Cross-branch goldens passed: demo COCO/YOLO/GeoJSON/.plgm parity plus non-uniform YOLO source-dimension parity; intentional differences are explicitly justified.');
 } finally {
   URL.createObjectURL = originalCreate;
   URL.revokeObjectURL = originalRevoke;

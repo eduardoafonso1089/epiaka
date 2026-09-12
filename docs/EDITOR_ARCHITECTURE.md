@@ -29,7 +29,6 @@ type PolygonAnnotation = {
   type: "polygon";
   vertices: Vertex[];
   holes: Vertex[][];
-  // ...annotation metadata
 };
 ```
 
@@ -75,7 +74,21 @@ The `.plgm` extension therefore identifies the current Poligome project containe
 
 New editor code should use this module rather than `app/lib/geometry.ts`. The latter remains only for `legacy-page.tsx` and flat-array utilities that have not yet been deleted.
 
-## Extracted rendering layers
+## Canonical state
+
+`app/editor/state/editor-state.ts` centralizes editor state that used to be distributed across independent React states:
+
+- `EditorAnnotation[]`;
+- undo and redo history;
+- single/multiple selection;
+- selected vertex by `vertexId`;
+- saved/dirty state.
+
+All geometry mutations in the reducer target annotation IDs and stable vertex IDs. `use-editor-state.ts` exposes the reducer through a small React API and derives the selected annotation(s) without duplicating state.
+
+This state is the intended replacement for the legacy combination of `annotations`, `history`, `redoHistory`, `selected`, `multiSelected` and `selectedVertex`.
+
+## Rendering
 
 Rendering extraction lives under `app/editor/layers`:
 
@@ -83,18 +96,21 @@ Rendering extraction lives under `app/editor/layers`:
 - `polygon-layer.tsx` — consumes `PolygonAnnotation`;
 - `polyline-layer.tsx` — consumes `PolylineAnnotation`;
 - `box-layer.tsx` — consumes `BoxAnnotation` with `width`/`height`;
-- `point-layer.tsx` — consumes `PointAnnotation`.
+- `point-layer.tsx` — consumes `PointAnnotation`;
+- `annotation-layer.tsx` — canonical geometry dispatcher.
 
-The new rendering stack has no dependency on the legacy `Annotation` type or flat `pts` arrays.
+`app/editor/canvas/editor-canvas.tsx` composes the annotation dispatcher and selection marquee over `EditorAnnotation[]`. It is the replacement boundary for the large geometry-specific `visibleAnnotations.map(...)` block in `legacy-page.tsx`.
+
+The new rendering stack has no dependency on the legacy `Annotation` type, flat `pts` arrays, `vertexIndex`, or `w`/`h` box fields.
 
 ## Selection
 
 Selection extraction lives under `app/editor/selection`:
 
-- `selection-model.ts` — marquee normalization, single selection, toggle selection, range selection and additive marquee selection;
+- `selection-model.ts` — marquee normalization, single selection, toggle selection, range selection and additive marquee selection over `EditorAnnotation[]`;
 - `selection-layer.tsx` — stateless SVG marquee rendering.
 
-The existing route still owns the React state, but selection semantics can now migrate to these pure functions without duplicating policy inside pointer handlers.
+Selection no longer imports `app/lib/types.ts` or `app/lib/geometry.ts`.
 
 ## Route split
 
@@ -120,11 +136,15 @@ The previous monolithic route implementation lives in `legacy-page.tsx` while fu
 10. Move `.plgm` persistence to strict vertex-based V3 and drop V2 compatibility. **Done.**
 11. Move extracted layers to canonical annotation types and vertex IDs. **Done.**
 12. Add canonical annotation geometry and ID-based vertex interactions. **Done.**
-13. Wire extracted annotation layers and selection into the route. **Next.**
-14. Move route React state from legacy `Annotation` to `EditorAnnotation` and delete deprecated project façades plus `legacy-annotation-adapter.ts`.
-15. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
-16. Remove `legacy-page.tsx` once all rendering and interactions have moved.
+13. Move selection to canonical annotations. **Done.**
+14. Introduce canonical reducer/hook for annotations, history, selection and vertex state. **Done.**
+15. Add `AnnotationLayer` + `EditorCanvas` canonical rendering composition. **Done.**
+16. Migrate export paths to `EditorAnnotation[]`. **Next.**
+17. Replace route React state with `useEditorState` and wire `EditorCanvas` into the route.
+18. Delete deprecated project façades, `legacy-annotation-adapter.ts` and obsolete flat geometry APIs.
+19. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
+20. Remove `legacy-page.tsx` once the remaining panels/tools are extracted.
 
 ## Tests
 
-The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, canonical vertex mutations, canonical annotation geometry, interaction ownership, annotation layer contracts, vertex hit-testing/topology, selection semantics, and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.
+The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, canonical vertex mutations, canonical annotation geometry, canonical state/undo/redo, interaction ownership, annotation/canvas layer contracts, vertex hit-testing/topology, selection semantics, and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.

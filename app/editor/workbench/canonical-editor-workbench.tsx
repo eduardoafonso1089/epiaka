@@ -23,8 +23,11 @@ import { CogTiledLayer } from "../raster/cog-tiled-layer";
 import { demoRouteTarget } from "../session/demo-route";
 import { QualityReviewPanel } from "../review/quality-review-panel";
 import { setAssetReviewScore, setLabelReviewScore } from "../review/quality-review-model";
+import { EditorManagementPanels } from "../panels/editor-management-panels";
+import { createLabel as createPanelLabel, moveItemById, recolorLabel, renameLabel, UNLABELED_ID } from "../panels/panel-model";
+import { selectRange } from "../selection/selection-model";
 
-const EMPTY_LABELS: Label[] = [{ id: "unlabeled", name: "Sem label", color: "#929a95", key: "" }];
+const EMPTY_LABELS: Label[] = [{ id: UNLABELED_ID, name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
   { id: "select", label: "Selecionar" },
   { id: "pan", label: "Mão" },
@@ -45,6 +48,8 @@ export function CanonicalEditorWorkbench() {
   const [language, setLanguage] = useState<Language>("pt");
   const [saveMode, setSaveMode] = useState<"annotations" | "complete">("complete");
   const [reviewMode, setReviewMode] = useState<"quality" | "review">("quality");
+  const [hiddenAnnotationIds, setHiddenAnnotationIds] = useState<Set<string>>(() => new Set());
+  const [hiddenLabelIds, setHiddenLabelIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
   const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4, adicione imagens ou importe GeoTIFF/COG.");
@@ -86,7 +91,14 @@ export function CanonicalEditorWorkbench() {
     document.documentElement.dataset.theme = storedTheme();
   }, []);
 
-  const visibleAnnotations = useMemo(() => asset ? editor.annotations.filter((annotation) => annotation.asset === asset.id) : [], [asset, editor.annotations]);
+  const activeAssetAnnotations = useMemo(
+    () => asset ? editor.annotations.filter((annotation) => annotation.asset === asset.id) : [],
+    [asset, editor.annotations],
+  );
+  const visibleAnnotations = useMemo(
+    () => activeAssetAnnotations.filter((annotation) => !hiddenAnnotationIds.has(annotation.id) && !hiddenLabelIds.has(annotation.label)),
+    [activeAssetAnnotations, hiddenAnnotationIds, hiddenLabelIds],
+  );
   const selectedIds = editor.selection.multiSelected.length ? editor.selection.multiSelected : editor.selection.selected ? [editor.selection.selected] : [];
   const activeColor = labels.find((label) => label.id === activeLabel)?.color ?? "#929a95";
   const projectDirty = sessionDirty || !editor.saved;
@@ -96,6 +108,11 @@ export function CanonicalEditorWorkbench() {
     drawing.cancelDraft();
     editor.dispatch({ type: "clear-selection" });
     viewport.zoomTo(92);
+  }
+
+  function resetTransientVisibility() {
+    setHiddenAnnotationIds(new Set());
+    setHiddenLabelIds(new Set());
   }
 
   async function loadDemo(requestedLanguage: Language = language) {
@@ -109,6 +126,7 @@ export function CanonicalEditorWorkbench() {
       setCurrent(demo.assets[0]?.id ?? "");
       setProjectName(demo.name);
       editor.replaceAnnotations(demo.annotations, true);
+      resetTransientVisibility();
       setSessionDirty(false);
       resetInteractionState();
       setMessage("Demo carregado em coordenadas de pixel da imagem.");
@@ -139,6 +157,7 @@ export function CanonicalEditorWorkbench() {
       setCurrent(loaded.assets.find((item) => !item.missing)?.id ?? loaded.assets[0]?.id ?? "");
       setProjectName(loaded.projectName);
       editor.replaceAnnotations(loaded.annotations, true);
+      resetTransientVisibility();
       setSessionDirty(false);
       resetInteractionState();
       setMessage(loaded.missingImages ? `Projeto V4 aberto. ${loaded.missingImages} imagem(ns) ausente(s).` : `Projeto V4 aberto: ${file.name}`);
@@ -179,6 +198,7 @@ export function CanonicalEditorWorkbench() {
     setLabels(result.labels);
     if (!result.labels.some((label) => label.id === activeLabel)) setActiveLabel(result.labels[0]?.id ?? EMPTY_LABELS[0].id);
     editor.replaceAnnotations(result.annotations, false);
+    resetTransientVisibility();
     setSessionDirty(true);
     setMessage(result.message);
     drawing.cancelDraft();
@@ -191,13 +211,127 @@ export function CanonicalEditorWorkbench() {
     if (next !== "select") editor.dispatch({ type: "clear-selection" });
   }
 
+  function selectAsset(id: string) {
+    if (!assets.some((item) => item.id === id)) return;
+    drawing.cancelDraft();
+    setCurrent(id);
+    editor.dispatch({ type: "clear-selection" });
+    viewport.zoomTo(92);
+  }
+
   function stepImage(delta: number) {
     if (!asset || !assets.length) return;
     const index = assets.findIndex((item) => item.id === asset.id);
     const next = Math.max(0, Math.min(assets.length - 1, index + delta));
-    drawing.cancelDraft();
-    setCurrent(assets[next].id);
-    editor.dispatch({ type: "clear-selection" });
+    selectAsset(assets[next].id);
+  }
+
+  function moveAsset(id: string, delta: -1 | 1) {
+    setAssets((items) => {
+      const next = moveItemById(items, id, delta);
+      if (next !== items) setSessionDirty(true);
+      return next;
+    });
+  }
+
+  function deleteAsset(id: string) {
+    const index = assets.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const item = assets[index];
+    const annotationIds = editor.annotations.filter((annotation) => annotation.asset === id).map((annotation) => annotation.id);
+    if (annotationIds.length) editor.deleteAnnotations(annotationIds);
+    const remaining = assets.filter((candidate) => candidate.id !== id);
+    setAssets(remaining);
+    setHiddenAnnotationIds((currentHidden) => new Set([...currentHidden].filter((annotationId) => !annotationIds.includes(annotationId))));
+    if (current === id) {
+      setCurrent(remaining[Math.min(index, Math.max(0, remaining.length - 1))]?.id ?? "");
+      editor.dispatch({ type: "clear-selection" });
+      viewport.zoomTo(92);
+    }
+    if (item.src.startsWith("blob:")) {
+      objectUrls.current = objectUrls.current.filter((url) => url !== item.src);
+      URL.revokeObjectURL(item.src);
+    }
+    setSessionDirty(true);
+  }
+
+  function selectAnnotationFromPanel(id: string, modifiers: { shift: boolean; additive: boolean }) {
+    if (modifiers.shift) {
+      editor.setSelection(selectRange(activeAssetAnnotations, editor.selection, id, modifiers.additive));
+      return;
+    }
+    editor.dispatch({ type: modifiers.additive ? "toggle-selection" : "select-single", id });
+  }
+
+  function selectAllActiveAnnotations() {
+    const ids = activeAssetAnnotations.map((annotation) => annotation.id);
+    editor.setSelection({ selected: ids.at(-1) ?? null, multiSelected: ids, anchorId: ids[0] ?? null });
+  }
+
+  function toggleAnnotationVisibility(id: string) {
+    setHiddenAnnotationIds((currentHidden) => {
+      const next = new Set(currentHidden);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleLabelVisibility(id: string) {
+    setHiddenLabelIds((currentHidden) => {
+      const next = new Set(currentHidden);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function deleteAnnotations(ids: string[]) {
+    if (!ids.length) return;
+    editor.deleteAnnotations(ids);
+    setHiddenAnnotationIds((currentHidden) => new Set([...currentHidden].filter((id) => !ids.includes(id))));
+  }
+
+  function batchReclassify(ids: string[], labelId: string) {
+    if (!ids.length || !labels.some((label) => label.id === labelId)) return;
+    editor.dispatch({ type: "reclassify-annotations", ids, labelId });
+  }
+
+  function createLabel(name: string, color: string) {
+    const id = makeId("label");
+    const next = createPanelLabel(labels, id, name, color);
+    if (next === labels) return;
+    setLabels(next);
+    setActiveLabel(id);
+    setSessionDirty(true);
+  }
+
+  function changeLabelName(id: string, name: string) {
+    setLabels((items) => {
+      const next = renameLabel(items, id, name);
+      if (next !== items) setSessionDirty(true);
+      return next;
+    });
+  }
+
+  function changeLabelColor(id: string, color: string) {
+    setLabels((items) => {
+      const next = recolorLabel(items, id, color);
+      if (next !== items) setSessionDirty(true);
+      return next;
+    });
+  }
+
+  function deleteLabel(id: string) {
+    if (id === UNLABELED_ID || !labels.some((label) => label.id === id)) return;
+    const affected = editor.annotations.filter((annotation) => annotation.label === id).map((annotation) => annotation.id);
+    if (affected.length) editor.dispatch({ type: "reclassify-annotations", ids: affected, labelId: UNLABELED_ID });
+    setLabels((items) => items.filter((label) => label.id !== id));
+    setHiddenLabelIds((currentHidden) => {
+      const next = new Set(currentHidden);
+      next.delete(id);
+      return next;
+    });
+    if (activeLabel === id) setActiveLabel(UNLABELED_ID);
+    setSessionDirty(true);
   }
 
   function reviewAsset(score: number) {
@@ -270,7 +404,7 @@ export function CanonicalEditorWorkbench() {
         <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V4</button>
         <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button>
         <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>
-        <span style={{ opacity: .7, marginLeft: "auto" }}>{asset ? `${imageIndex + 1}/${assets.length} · ${visibleAnnotations.length} anotações` : "sem imagem"}</span>
+        <span style={{ opacity: .7, marginLeft: "auto" }}>{asset ? `${imageIndex + 1}/${assets.length} · ${activeAssetAnnotations.length} anotações` : "sem imagem"}</span>
       </header>
 
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
@@ -337,6 +471,35 @@ export function CanonicalEditorWorkbench() {
           </div>
         </div>
       </section>
+
+      <EditorManagementPanels
+        assets={assets}
+        currentAssetId={asset?.id ?? ""}
+        annotations={editor.annotations}
+        activeAssetAnnotations={activeAssetAnnotations}
+        labels={labels}
+        activeLabelId={activeLabel}
+        selection={editor.selection}
+        hiddenAnnotationIds={hiddenAnnotationIds}
+        hiddenLabelIds={hiddenLabelIds}
+        copy={copy}
+        onSelectAsset={selectAsset}
+        onMoveAsset={moveAsset}
+        onDeleteAsset={deleteAsset}
+        onSelectAnnotation={selectAnnotationFromPanel}
+        onMoveAnnotation={(id, delta) => editor.dispatch({ type: "reorder-annotation", id, delta })}
+        onDeleteAnnotations={deleteAnnotations}
+        onToggleAnnotationVisibility={toggleAnnotationVisibility}
+        onToggleLabelVisibility={toggleLabelVisibility}
+        onSelectAllAnnotations={selectAllActiveAnnotations}
+        onClearAnnotationSelection={() => editor.dispatch({ type: "clear-selection" })}
+        onActiveLabelChange={setActiveLabel}
+        onBatchReclassify={batchReclassify}
+        onCreateLabel={createLabel}
+        onRenameLabel={changeLabelName}
+        onRecolorLabel={changeLabelColor}
+        onDeleteLabel={deleteLabel}
+      />
 
       <QualityReviewPanel
         mode={reviewMode}

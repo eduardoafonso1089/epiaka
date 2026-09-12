@@ -1,31 +1,14 @@
 import type { Asset, Label } from "../../lib/types";
 import type { EditorAnnotation } from "../models/annotation-model";
-import {
-  cocoAnnotationToEditor,
-  cocoGeometryTypes,
-  type CocoAnnotationInput,
-  type CocoCategoryInput,
-} from "./coco-import";
+import { cocoAnnotationToEditor, cocoGeometryTypes, type CocoAnnotationInput, type CocoCategoryInput } from "./coco-import";
 
-export type CocoImageInput = {
-  id?: number;
-  file_name?: string;
-  width?: number;
-  height?: number;
-};
-
+export type CocoImageInput = { id?: number; file_name?: string; width?: number; height?: number };
 export type CocoDocumentInput = {
   images?: CocoImageInput[];
   categories?: CocoCategoryInput[];
   annotations?: Array<CocoAnnotationInput & { image_id?: number; category_id?: number }>;
 };
-
-export type CocoDocumentImportResult = {
-  labels: Label[];
-  annotations: EditorAnnotation[];
-  imported: number;
-  unmatched: number;
-};
+export type CocoDocumentImportResult = { labels: Label[]; annotations: EditorAnnotation[]; imported: number; unmatched: number };
 
 const IMPORT_COLORS = ["#6c8cff", "#d987ff", "#26c6b6", "#ff8a65", "#ffd166", "#7ee081", "#59b0f6", "#f26d9d"];
 
@@ -37,12 +20,7 @@ function names(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && !!item.trim()).map((item) => item.trim()) : [];
 }
 
-export function importCocoDocument(
-  document: CocoDocumentInput,
-  assets: Asset[],
-  currentLabels: Label[],
-  makeId: (prefix: string) => string,
-): CocoDocumentImportResult {
+export function importCocoDocument(document: CocoDocumentInput, assets: Asset[], currentLabels: Label[], makeId: (prefix: string) => string): CocoDocumentImportResult {
   const images = Array.isArray(document.images) ? document.images : [];
   const categories = Array.isArray(document.categories) ? document.categories : [];
   const sourceAnnotations = Array.isArray(document.annotations) ? document.annotations : [];
@@ -63,12 +41,7 @@ export function importCocoDocument(
     const normalized = name.trim() || "Sem label";
     const existing = labels.find((label) => label.name.toLocaleLowerCase() === normalized.toLocaleLowerCase());
     if (existing) return existing;
-    const created: Label = {
-      id: makeId(preferredPrefix),
-      name: normalized,
-      color: IMPORT_COLORS[labels.length % IMPORT_COLORS.length],
-      key: "",
-    };
+    const created: Label = { id: makeId(preferredPrefix), name: normalized, color: IMPORT_COLORS[labels.length % IMPORT_COLORS.length], key: "" };
     labels.push(created);
     return created;
   };
@@ -92,7 +65,9 @@ export function importCocoDocument(
 
     const sourceWidth = Number(imageEntry.image.width ?? imageEntry.asset.width);
     const sourceHeight = Number(imageEntry.image.height ?? imageEntry.asset.height);
-    if (!Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    const targetWidth = Number(imageEntry.asset.width);
+    const targetHeight = Number(imageEntry.asset.height);
+    if (![sourceWidth, sourceHeight, targetWidth, targetHeight].every((value) => Number.isFinite(value) && value > 0)) {
       unmatched += 1;
       continue;
     }
@@ -102,6 +77,8 @@ export function importCocoDocument(
       assetId: imageEntry.asset.id,
       sourceWidth,
       sourceHeight,
+      targetWidth,
+      targetHeight,
       labelId: label.id,
       geometryTypes,
       annotationId: () => makeId("annotation"),

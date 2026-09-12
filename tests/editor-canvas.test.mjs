@@ -6,8 +6,11 @@ const canvas=readFileSync(new URL('../app/editor/canvas/editor-canvas.tsx',impor
 const dispatcher=readFileSync(new URL('../app/editor/layers/annotation-layer.tsx',import.meta.url),'utf8');
 const selection=readFileSync(new URL('../app/editor/selection/selection-model.ts',import.meta.url),'utf8');
 
-test('canonical canvas renders through the annotation dispatcher',()=>{
+test('canonical canvas renders through the annotation dispatcher in source-image space',()=>{
   assert.match(canvas,/EditorAnnotation\[\]/);
+  assert.match(canvas,/imageSize/);
+  assert.match(canvas,/viewBox=\{`0 0 \$\{width\} \$\{height\}`\}/);
+  assert.doesNotMatch(canvas,/viewBox="0 0 1000 650"/);
   assert.match(canvas,/<AnnotationLayer/);
   assert.match(canvas,/<SelectionLayer/);
   assert.doesNotMatch(canvas,/\.pts\b/);

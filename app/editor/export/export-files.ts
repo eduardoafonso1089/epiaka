@@ -26,7 +26,7 @@ function safeBaseName(name: string, fallback: string) {
 
 export function buildCocoDocument(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
   return {
-    info: { description: "Poligome dataset", version: "4.0" },
+    info: { description: "Poligome dataset", version: "1.0" },
     images: assets.map((asset, index) => ({
       id: index + 1,
       file_name: asset.name,

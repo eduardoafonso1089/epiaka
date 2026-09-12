@@ -2,27 +2,31 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs/promises';
 
-test('canonical raster control preserves georeference metadata and uses the shared cropper', async () => {
+test('canonical raster control preserves georeference metadata and keeps crop mode available', async () => {
   const source = await fs.readFile(new URL('../app/editor/import/raster-import-control.tsx', import.meta.url), 'utf8');
   assert.match(source, /readRasterSidecars/);
   assert.match(source, /CogCropDialog/);
   assert.match(source, /geo:\s*recorte\.geo/);
   assert.match(source, /URL\.createObjectURL\(recorte\.blob\)/);
-  assert.match(source, /GeoTIFF \/ COG/);
+  assert.match(source, /GeoTIFF \/ COG recorte/);
 });
 
-test('canonical raster control exposes remote COG URLs over HTTP range-compatible cropper flow', async () => {
+test('canonical raster control opens local and remote COGs as native tiled assets', async () => {
   const source = await fs.readFile(new URL('../app/editor/import/raster-import-control.tsx', import.meta.url), 'utf8');
-  assert.match(source, /COG por URL/);
+  assert.match(source, /createTiledRasterAsset/);
+  assert.match(source, /COG tiled/);
+  assert.match(source, /COG URL/);
   assert.match(source, /new URL\(value\)/);
   assert.match(source, /\^https\?:\$/);
-  assert.match(source, /origin: parsed\.toString\(\)/);
+  assert.match(source, /origin:\s*source/);
 });
 
-test('canonical workbench installs raster crops as active V4 assets', async () => {
+test('canonical workbench installs raster assets and renders tiled COGs behind annotations', async () => {
   const source = await fs.readFile(new URL('../app/editor/workbench/canonical-editor-workbench.tsx', import.meta.url), 'utf8');
   assert.match(source, /RasterImportControl/);
+  assert.match(source, /CogTiledLayer/);
+  assert.match(source, /asset\?\.raster\?\.mode === "tiled"/);
   assert.match(source, /setAssets\(\(items\) => \[\.\.\.items, result\.asset\]\)/);
   assert.match(source, /setCurrent\(result\.asset\.id\)/);
-  assert.match(source, /objectUrls\.current\.push\(result\.objectUrl\)/);
+  assert.match(source, /if \(result\.objectUrl\) objectUrls\.current\.push\(result\.objectUrl\)/);
 });

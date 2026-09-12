@@ -127,7 +127,8 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
   const onWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
-    zoomTo(state.zoom + (event.deltaY < 0 ? 10 : -10), { x: event.clientX, y: event.clientY });
+    const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
+    zoomTo(state.zoom * factor, { x: event.clientX, y: event.clientY });
   }, [state.zoom, zoomTo]);
 
   useLayoutEffect(() => {
@@ -140,6 +141,7 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
     canvasRef,
     state,
     layout: controllerRef.current.layout(),
+    maxZoom: controllerRef.current.maxZoom(),
     onScroll,
     onWheel,
     zoomTo,

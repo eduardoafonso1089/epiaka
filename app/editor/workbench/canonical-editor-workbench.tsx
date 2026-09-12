@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Asset, Label } from "../../lib/types";
-import { getCopy } from "../../lib/i18n";
+import { getCopy, storedLanguage, storedTheme, type Language } from "../../lib/i18n";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, openEditorProject, saveEditorProject } from "../session/editor-session-io";
@@ -40,6 +40,7 @@ export function CanonicalEditorWorkbench() {
   const [tool, setTool] = useState<DrawingTool>("select");
   const [current, setCurrent] = useState("");
   const [projectName, setProjectName] = useState("Poligome V4");
+  const [language, setLanguage] = useState<Language>("pt");
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
   const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4, adicione imagens ou importe GeoTIFF/COG.");
@@ -49,6 +50,7 @@ export function CanonicalEditorWorkbench() {
   const idCounter = useRef(0);
   const demoQueryHandled = useRef(false);
   const editor = useEditorState();
+  const copy = getCopy(language);
   const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
   const imageSize = { width: asset?.width ?? 1, height: asset?.height ?? 1 };
   const viewport = useEditorViewport({ image: imageSize, initialZoom: 92 });
@@ -75,6 +77,10 @@ export function CanonicalEditorWorkbench() {
     objectUrls.current = next;
   }, []);
   useEffect(() => () => objectUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
+  useEffect(() => {
+    setLanguage(storedLanguage());
+    document.documentElement.dataset.theme = storedTheme();
+  }, []);
 
   const visibleAnnotations = useMemo(() => asset ? editor.annotations.filter((annotation) => annotation.asset === asset.id) : [], [asset, editor.annotations]);
   const selectedIds = editor.selection.multiSelected.length ? editor.selection.multiSelected : editor.selection.selected ? [editor.selection.selected] : [];
@@ -88,10 +94,10 @@ export function CanonicalEditorWorkbench() {
     viewport.zoomTo(92);
   }
 
-  async function loadDemo() {
+  async function loadDemo(requestedLanguage: Language = language) {
     setLoading(true);
     try {
-      const demo = await createEditorDemo("pt");
+      const demo = await createEditorDemo(requestedLanguage);
       replaceObjectUrls(demo.objectUrls);
       setAssets(demo.assets);
       setLabels(demo.labels);
@@ -115,13 +121,13 @@ export function CanonicalEditorWorkbench() {
     const target = demoRouteTarget(window.location.href);
     if (target === null) return;
     window.history.replaceState(window.history.state, "", target);
-    void loadDemo();
+    void loadDemo(storedLanguage());
   }, []);
 
   async function openProject(file: File) {
     setLoading(true);
     try {
-      const loaded = await openEditorProject(file, getCopy("pt"));
+      const loaded = await openEditorProject(file, copy);
       replaceObjectUrls(loaded.objectUrls);
       setAssets(loaded.assets);
       setLabels(loaded.labels);
@@ -194,7 +200,7 @@ export function CanonicalEditorWorkbench() {
     if (!assets.length) return;
     setLoading(true);
     try {
-      const name = await saveEditorProject(projectName, assets, labels, editor.annotations, "complete", getCopy("pt"));
+      const name = await saveEditorProject(projectName, assets, labels, editor.annotations, "complete", copy);
       editor.markSaved();
       setSessionDirty(false);
       setMessage(`Projeto V4 salvo: ${name}`);
@@ -221,7 +227,7 @@ export function CanonicalEditorWorkbench() {
   const boxRotationTouchRadius = screenPixelsToImageUnits(20, imageSize, viewport.layout.width);
   const canvasCursor = panning ? (touch.navigating ? "grabbing" : "grab") : selecting ? "default" : "crosshair";
 
-  return <main style={{ minHeight: "100vh", background: "#111315", color: "#f4f5f5", padding: 16, fontFamily: "system-ui, sans-serif" }}>
+  return <main style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>
     <input ref={projectInputRef} type="file" accept=".plgm,application/vnd.poligome.project+zip" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void openProject(file); event.currentTarget.value = ""; }} />
     <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" multiple hidden onChange={(event) => { void addImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
 
@@ -256,7 +262,7 @@ export function CanonicalEditorWorkbench() {
         {message} <span style={{ opacity: .7 }}>{touch.touchMode ? "Dois dedos: zoom e pan. Mão: pan com um dedo." : "Ctrl/⌘ + roda ajusta o zoom no cursor."}</span>
       </div>
 
-      <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "#080909", overflow: "auto", border: "1px solid #34383b", borderRadius: 8, overscrollBehavior: "contain" }}>
+      <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "var(--canvas-bg)", overflow: "auto", border: "1px solid var(--line)", borderRadius: 8, overscrollBehavior: "contain" }}>
         <div style={{ position: "relative", width: viewport.layout.surfaceWidth, height: viewport.layout.surfaceHeight }}>
           <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
             {asset?.raster?.mode === "tiled" ? <CogTiledLayer asset={asset} viewport={viewport.state} layout={viewport.layout} onError={setMessage} />

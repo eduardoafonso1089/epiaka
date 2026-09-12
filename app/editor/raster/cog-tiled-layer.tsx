@@ -129,11 +129,11 @@ export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLaye
   }), [asset.width, asset.height, layout.width, layout.height, layout.left, layout.top, viewport.scrollLeft, viewport.scrollTop, viewport.viewport.width, viewport.viewport.height]);
 
   if (!session || asset.raster?.mode !== "tiled") {
-    return <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", background: "#080909", color: "#9ba3a7", fontSize: 12 }}>Carregando COG…</div>;
+    return <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", background: "var(--canvas-bg)", color: "var(--muted)", fontSize: 12 }}>Carregando COG…</div>;
   }
   const sourceWidth = asset.width ?? session.largura;
   const sourceHeight = asset.height ?? session.altura;
-  return <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", background: "#080909" }}>
+  return <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", background: "var(--canvas-bg)" }}>
     {tiles.map((tile) => <TileCanvas key={tile.key} session={session} tile={tile} sourceWidth={sourceWidth} sourceHeight={sourceHeight} cache={cacheRef.current} />)}
   </div>;
 }

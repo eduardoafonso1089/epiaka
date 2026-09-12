@@ -9,16 +9,16 @@ const assets=[
   {id:'img-b',name:'photo-b.png',src:'',width:2000,height:1300},
 ];
 
-test('COCO document resolves image names and creates canonical labels/annotations',()=>{
+test('COCO document resolves image names and maps geometry to loaded image pixels',()=>{
   const result=importCocoDocument({
     images:[
       {id:1,file_name:'photo-a.jpg',width:1000,height:650},
-      {id:2,file_name:'/remote/photo-b.png',width:2000,height:1300},
+      {id:2,file_name:'/remote/photo-b.png',width:1000,height:650},
     ],
     categories:[{id:5,name:'Weed'}],
     annotations:[
       {image_id:1,category_id:5,bbox:[100,65,200,130]},
-      {image_id:2,category_id:5,segmentation:[[200,130,400,130,400,260]]},
+      {image_id:2,category_id:5,segmentation:[[100,65,200,65,200,130]]},
     ],
   },assets,[],ids());
   assert.equal(result.imported,2);
@@ -31,7 +31,7 @@ test('COCO document resolves image names and creates canonical labels/annotation
     {x:100,y:65,width:200,height:130},
   );
   assert.equal(result.annotations[1].type,'polygon');
-  assert.deepEqual(result.annotations[1].vertices.map(({x,y})=>[x,y]),[[100,65],[200,65],[200,130]]);
+  assert.deepEqual(result.annotations[1].vertices.map(({x,y})=>[x,y]),[[200,130],[400,130],[400,260]]);
 });
 
 test('COCO keypoint labels reuse an existing class and unmatched images are counted',()=>{

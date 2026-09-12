@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { WheelEvent as ReactWheelEvent } from "react";
 import { ViewportController, type ViewportState } from "./viewport-controller";
 import type { Size2D } from "../../lib/editor-viewport";
 
@@ -97,7 +98,7 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
     zoomTo(state.zoom + delta, point);
   }, [state.zoom, zoomTo]);
 
-  const onWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+  const onWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
     zoomTo(state.zoom + (event.deltaY < 0 ? 10 : -10), { x: event.clientX, y: event.clientY });

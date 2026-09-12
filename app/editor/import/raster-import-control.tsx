@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { Asset } from "../../lib/types";
 import { getCopy, storedLanguage, type Language } from "../../lib/i18n";
+import { translateErrorCode } from "../../lib/error-message";
 import { readRasterSidecars } from "../../lib/georeference";
 import type { RasterReference } from "../../lib/georeference";
 import type { Recorte } from "../../lib/cog";
@@ -68,7 +69,7 @@ export function RasterImportControl({ makeId, language, disabled = false, onImpo
       const reference = await readRasterSidecars(rasters[0], files);
       setPending({ origin: rasters[0], name: rasters[0].name, reference });
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : copy.rasterInvalidReference);
+      onMessage?.(translateErrorCode(error, copy, copy.rasterInvalidReference));
     }
   }
 
@@ -91,7 +92,7 @@ export function RasterImportControl({ makeId, language, disabled = false, onImpo
     } catch (error) {
       onMessage?.(error instanceof Error && error.message === "rasterTiledRequired"
         ? copy.rasterUnsupported
-        : error instanceof Error ? error.message : copy.rasterInvalidTiff);
+        : translateErrorCode(error, copy, copy.rasterInvalidTiff));
     } finally {
       setOpeningTiled(false);
     }
@@ -118,7 +119,7 @@ export function RasterImportControl({ makeId, language, disabled = false, onImpo
       onImported({ asset, message: `${copy.cogOpenTiff}: ${asset.name} (${asset.width}×${asset.height}px${asset.geo ? `, ${asset.geo.crs}` : ""}).` });
       setUrlVisible(false);
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : copy.rasterInvalidTiff);
+      onMessage?.(translateErrorCode(error, copy, copy.rasterInvalidTiff));
     } finally {
       setOpeningTiled(false);
     }

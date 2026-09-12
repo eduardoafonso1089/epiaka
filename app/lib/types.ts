@@ -65,7 +65,11 @@ export type Asset = {
   height?: number;
   geo?: GeoRef;
   raster?: RasterAsset;
-  /** Runtime-only local/bundled tiled raster. Never serialized. */
+  /**
+   * Runtime-only handle to a local/bundled tiled raster. This field itself is never
+   * serialized into project.json; in a complete .plgm, project.ts may bundle the
+   * underlying raster bytes and restore a new runtime handle when the project opens.
+   */
   runtimeRasterSource?: File;
   reviewScore?: number;
 };

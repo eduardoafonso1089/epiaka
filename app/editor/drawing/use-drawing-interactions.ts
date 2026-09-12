@@ -127,11 +127,12 @@ export function useDrawingInteractions({
       return;
     }
 
+    const startPoint = tool === "freehand" ? snapDiscretePoint(point) : point;
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    startRef.current = { ...point, clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId, pointerType: event.pointerType, moved: false };
-    if (tool === "box") setDraft({ type: "box", box: { x: point.x, y: point.y, w: 0, h: 0 } });
-    else if (tool === "freehand") setDraft({ type: "freehand", points: flatPoint(point) });
-  }, [appendDiscretePoint, assetId, imageSize, svgRef, tool]);
+    startRef.current = { ...startPoint, clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId, pointerType: event.pointerType, moved: false };
+    if (tool === "box") setDraft({ type: "box", box: { x: startPoint.x, y: startPoint.y, w: 0, h: 0 } });
+    else if (tool === "freehand") setDraft({ type: "freehand", points: flatPoint(startPoint) });
+  }, [appendDiscretePoint, assetId, imageSize, snapDiscretePoint, svgRef, tool]);
 
   const onPointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     const start = startRef.current;

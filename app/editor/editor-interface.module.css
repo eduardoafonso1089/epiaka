@@ -1,0 +1,551 @@
+.interfaceRoot {
+  height: 100vh;
+  overflow: auto;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans), system-ui, sans-serif;
+}
+
+.interfaceFrame {
+  width: min(100%, 1480px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 14px;
+}
+
+.primaryBar,
+.toolBar,
+.vectorBar,
+.statusBar,
+.panelHeader,
+.controlRow,
+.batchRow,
+.scoreRow,
+.reviewTabs {
+  display: flex;
+  align-items: center;
+}
+
+.primaryBar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  gap: 7px;
+  flex-wrap: wrap;
+  min-height: 52px;
+  margin: -14px -14px 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.brand {
+  margin-right: 6px;
+  font-size: 17px;
+  letter-spacing: -.02em;
+  color: var(--ink);
+}
+
+.primaryMeta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.interfaceRoot button,
+.interfaceRoot select,
+.interfaceRoot input:not([type="color"]) {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.interfaceRoot button {
+  padding: 0 10px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease, opacity .12s ease;
+}
+
+.interfaceRoot button:hover:not(:disabled),
+.interfaceRoot button[aria-pressed="true"] {
+  border-color: var(--tool-active-border);
+  background: var(--tool-active-bg);
+  color: var(--tool-active-ink);
+}
+
+.interfaceRoot button:disabled {
+  opacity: .42;
+  cursor: default;
+}
+
+.interfaceRoot select,
+.interfaceRoot input:not([type="color"]) {
+  padding: 0 8px;
+  outline: none;
+}
+
+.interfaceRoot select:focus,
+.interfaceRoot input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+.toolBar,
+.vectorBar {
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.toolBar {
+  border-radius: 9px 9px 0 0;
+}
+
+.vectorBar {
+  margin-top: -1px;
+  border-radius: 0 0 9px 9px;
+}
+
+.toolButtonActive {
+  font-weight: 700;
+}
+
+.toolSpacer {
+  width: 7px;
+}
+
+.zoomGroup {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.zoomGroup button {
+  min-width: 34px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.zoomGroup button + button {
+  border-left: 1px solid var(--line);
+}
+
+.messageBar {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-height: 34px;
+  padding: 7px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.messagePrimary {
+  color: var(--ink);
+}
+
+.messageSecondary {
+  opacity: .72;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: min(72vh, 820px);
+  min-height: 360px;
+  margin: 0 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(color-mix(in srgb, var(--line) 55%, transparent) .7px, transparent .7px);
+  background-size: 14px 14px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 20%, transparent);
+}
+
+.stageSurface {
+  position: relative;
+}
+
+.stageCanvas {
+  position: absolute;
+}
+
+.sourceImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+  pointer-events: none;
+}
+
+.emptyStage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.managementGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.panelCard,
+.reviewPanel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--paper) 35%, transparent);
+}
+
+.panelCard {
+  padding: 10px;
+}
+
+.panelHeader {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panelHeader strong {
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.counter {
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--tool-active-bg);
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.helperText {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.panelInput {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.list {
+  display: grid;
+  gap: 4px;
+  max-height: 270px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.row,
+.annotationRow,
+.labelRow {
+  display: grid;
+  gap: 4px;
+  align-items: center;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.row {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.annotationRow {
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+}
+
+.labelRow {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+}
+
+.row:hover,
+.annotationRow:hover,
+.labelRow:hover {
+  background: var(--surface-soft);
+}
+
+.rowSelected {
+  border-color: var(--tool-active-border);
+  background: var(--tool-active-bg);
+}
+
+.rowHidden {
+  opacity: .52;
+}
+
+.rowMain {
+  min-width: 0;
+  overflow: hidden;
+  border: 0 !important;
+  background: transparent !important;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowAction {
+  min-width: 30px;
+  padding: 0 7px !important;
+}
+
+.dangerAction:hover:not(:disabled) {
+  border-color: var(--danger-border) !important;
+  background: var(--danger-bg) !important;
+  color: var(--danger) !important;
+}
+
+.controlRow,
+.batchRow {
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.batchRow {
+  padding: 7px;
+  border-radius: 7px;
+  background: var(--surface-soft);
+}
+
+.classCreator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.colorInput {
+  width: 34px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+}
+
+.labelDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--label-color, var(--muted));
+}
+
+.activeClass {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.activeClass select {
+  max-width: 100%;
+  margin-left: 4px;
+}
+
+.reviewPanel {
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.reviewTabs {
+  gap: 4px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reviewTabs button[aria-pressed="true"] {
+  color: var(--tool-active-ink);
+  font-weight: 700;
+}
+
+.reviewSection {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.reviewSection:first-child {
+  border-top: 0;
+}
+
+.metricRow {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 3fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.metricClassRow {
+  display: grid;
+  grid-template-columns: 12px minmax(100px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.metricAreaRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.metricName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricTrack {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.metricFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.metricDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--label-color, var(--muted));
+}
+
+.metricGrow {
+  flex: 1;
+}
+
+.scoreRow {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.scoreButton {
+  min-width: 34px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 18px;
+}
+
+.scoreOff {
+  opacity: .3;
+}
+
+.reviewHint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.statusBar {
+  gap: 14px;
+  flex-wrap: wrap;
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.statusBar span:last-child {
+  margin-left: auto;
+}
+
+@media (max-width: 1080px) {
+  .managementGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .managementGrid > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .interfaceFrame {
+    padding: 8px;
+  }
+
+  .primaryBar {
+    position: static;
+    margin: -8px -8px 8px;
+    padding: 8px;
+  }
+
+  .primaryMeta {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .toolBar,
+  .vectorBar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .stage {
+    height: 58vh;
+    min-height: 300px;
+  }
+
+  .managementGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .managementGrid > :last-child {
+    grid-column: auto;
+  }
+
+  .classCreator {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .classCreator button {
+    grid-column: 1 / -1;
+  }
+
+  .statusBar span:last-child {
+    margin-left: 0;
+  }
+}

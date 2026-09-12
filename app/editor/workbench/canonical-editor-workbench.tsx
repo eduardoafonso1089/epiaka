@@ -20,6 +20,7 @@ import { useEditorViewport } from "../viewport/use-editor-viewport";
 import { useTouchNavigation } from "../viewport/use-touch-navigation";
 import { screenPixelsToImageUnits } from "../viewport/svg-image-space";
 import { CogTiledLayer } from "../raster/cog-tiled-layer";
+import { demoRouteTarget } from "../session/demo-route";
 
 const EMPTY_LABELS: Label[] = [{ id: "unlabeled", name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
@@ -46,6 +47,7 @@ export function CanonicalEditorWorkbench() {
   const projectInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
+  const demoQueryHandled = useRef(false);
   const editor = useEditorState();
   const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
   const imageSize = { width: asset?.width ?? 1, height: asset?.height ?? 1 };
@@ -106,6 +108,15 @@ export function CanonicalEditorWorkbench() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (demoQueryHandled.current || typeof window === "undefined") return;
+    demoQueryHandled.current = true;
+    const target = demoRouteTarget(window.location.href);
+    if (target === null) return;
+    window.history.replaceState(window.history.state, "", target);
+    void loadDemo();
+  }, []);
 
   async function openProject(file: File) {
     setLoading(true);

@@ -7,6 +7,7 @@ import type { PolygonAnnotation } from "../models/annotation-model";
 import type { EditorAction } from "../state/editor-state";
 import type { VectorTool } from "../commands/editor-shortcuts";
 import { clientPointToImage } from "../viewport/svg-image-space";
+import { polygonTransformCenter, transformPolygonAnnotation } from "../geometry/polygon-transform";
 import {
   addPolygonHole,
   reshapePolygonAnnotation,
@@ -29,7 +30,8 @@ export type AdvancedVectorResult =
   | "reshape-removed"
   | "reshape-mixed"
   | "reshape-crossings"
-  | "reshape-direction";
+  | "reshape-direction"
+  | "transform-done";
 
 type Options = {
   svgRef: RefObject<SVGSVGElement | null>;
@@ -41,7 +43,19 @@ type Options = {
   onResult?: (result: AdvancedVectorResult) => void;
 };
 
-type PointerStroke = { pointerId: number; points: Point[] } | null;
+type DrawStroke = { pointerId: number; points: Point[] };
+type TransformStroke = {
+  pointerId: number;
+  original: PolygonAnnotation;
+  center: Point;
+  startDistance: number;
+  startAngle: number;
+};
+type PointerStroke = DrawStroke | TransformStroke | null;
+
+function isTransformStroke(stroke: PointerStroke): stroke is TransformStroke {
+  return Boolean(stroke && "original" in stroke);
+}
 
 export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activePolygon, makeId, dispatch, onResult }: Options) {
   const [draft, setDraft] = useState<AdvancedVectorDraft>(null);
@@ -50,9 +64,10 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
   const canFinish = useMemo(() => draft?.type === "hole" && draft.points.length >= 3, [draft]);
 
   const cancel = useCallback(() => {
+    if (isTransformStroke(strokeRef.current)) dispatch({ type: "cancel-gesture" });
     strokeRef.current = null;
     setDraft(null);
-  }, []);
+  }, [dispatch]);
 
   const finishHole = useCallback(() => {
     if (!activePolygon || draft?.type !== "hole" || draft.points.length < 3) return false;
@@ -73,10 +88,27 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
   }, [imageSize, svgRef]);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!tool || !activePolygon || event.button !== 0 || event.target !== event.currentTarget) return;
+    if (!tool || !activePolygon || event.button !== 0) return;
+    if (tool !== "transform" && event.target !== event.currentTarget) return;
     const point = pointFor(event);
     if (!point) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    if (tool === "transform") {
+      const center = polygonTransformCenter(activePolygon);
+      const startDistance = Math.hypot(point.x - center.x, point.y - center.y);
+      if (startDistance < 1) return;
+      strokeRef.current = {
+        pointerId: event.pointerId,
+        original: activePolygon,
+        center,
+        startDistance,
+        startAngle: Math.atan2(point.y - center.y, point.x - center.x),
+      };
+      dispatch({ type: "begin-gesture" });
+      return;
+    }
+
     if (tool === "hole") {
       setDraft((current) => ({ type: "hole", points: current?.type === "hole" ? [...current.points, point] : [point] }));
       return;
@@ -84,13 +116,22 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
     strokeRef.current = { pointerId: event.pointerId, points: [point] };
     if (tool === "split") setDraft({ type: "split", start: point, end: point });
     else setDraft({ type: "reshape", points: [point] });
-  }, [activePolygon, pointFor, tool]);
+  }, [activePolygon, dispatch, pointFor, tool]);
 
   const onPointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     const stroke = strokeRef.current;
     if (!stroke || stroke.pointerId !== event.pointerId || !tool) return;
     const point = pointFor(event);
     if (!point) return;
+
+    if (isTransformStroke(stroke)) {
+      const distance = Math.hypot(point.x - stroke.center.x, point.y - stroke.center.y);
+      const scale = distance / stroke.startDistance;
+      const angle = Math.atan2(point.y - stroke.center.y, point.x - stroke.center.x) - stroke.startAngle;
+      dispatch({ type: "replace-annotation", annotation: transformPolygonAnnotation(stroke.original, stroke.center, scale, angle) });
+      return;
+    }
+
     if (tool === "split") {
       const start = stroke.points[0];
       setDraft({ type: "split", start, end: point });
@@ -102,12 +143,25 @@ export function useAdvancedVectorInteractions({ svgRef, imageSize, tool, activeP
       stroke.points.push(point);
       setDraft({ type: "reshape", points: [...stroke.points] });
     }
-  }, [pointFor, tool]);
+  }, [dispatch, pointFor, tool]);
 
   const onPointerUp = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     const stroke = strokeRef.current;
     if (!stroke || stroke.pointerId !== event.pointerId || !activePolygon || !tool) return;
     const point = pointFor(event);
+
+    if (isTransformStroke(stroke)) {
+      strokeRef.current = null;
+      if (!point) { dispatch({ type: "cancel-gesture" }); return; }
+      const distance = Math.hypot(point.x - stroke.center.x, point.y - stroke.center.y);
+      const scale = distance / stroke.startDistance;
+      const angle = Math.atan2(point.y - stroke.center.y, point.x - stroke.center.x) - stroke.startAngle;
+      dispatch({ type: "replace-annotation", annotation: transformPolygonAnnotation(stroke.original, stroke.center, scale, angle) });
+      dispatch({ type: "commit-gesture" });
+      onResult?.("transform-done");
+      return;
+    }
+
     strokeRef.current = null;
     if (!point) { setDraft(null); return; }
 

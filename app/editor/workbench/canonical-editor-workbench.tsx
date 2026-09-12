@@ -7,7 +7,7 @@ import { getCopy, storedLanguage, storedTheme, type Language } from "../../lib/i
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, openEditorProject, saveEditorProject } from "../session/editor-session-io";
-import { loadLocalImageAssets } from "../session/image-assets";
+import { loadLocalImageAssets, relinkMissingAssets } from "../session/image-assets";
 import { CocoImportControl } from "../import/coco-import-control";
 import { RasterImportControl, type RasterImportResult } from "../import/raster-import-control";
 import { ExportControls } from "../export/export-controls";
@@ -54,6 +54,7 @@ export function CanonicalEditorWorkbench() {
   const objectUrls = useRef<string[]>([]);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const relinkInputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
   const demoQueryHandled = useRef(false);
   const editor = useEditorState();
@@ -93,6 +94,7 @@ export function CanonicalEditorWorkbench() {
   const activePolygon = editor.selectedAnnotation?.type === "polygon" && editor.selectedAnnotation.asset === asset?.id ? editor.selectedAnnotation : null;
   const activeColor = labels.find((label) => label.id === activeLabel)?.color ?? "#929a95";
   const projectDirty = sessionDirty || !editor.saved;
+  const missingImageCount = assets.filter((item) => item.missing).length;
   const snapTolerance = screenPixelsToImageUnits(13, imageSize, viewport.layout.width);
 
   const interactions = useCanvasInteractions({
@@ -217,7 +219,7 @@ export function CanonicalEditorWorkbench() {
       resetTransientVisibility();
       setSessionDirty(false);
       resetInteractionState();
-      setMessage(`${copy.projectOpened}: ${file.name}`);
+      setMessage(`${copy.projectOpened}: ${file.name}${loaded.missingImages ? ` · ${loaded.missingImages} ${copy.projectImagesNeedReload}` : ""}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : copy.projectOpenError);
     } finally {
@@ -237,6 +239,25 @@ export function CanonicalEditorWorkbench() {
         setSessionDirty(true);
       }
       setMessage(`${copy.importImages}: ${loaded.assets.length}${loaded.rejected.length ? ` · ${loaded.rejected.length}` : ""}.`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function relinkProjectImages(files: File[]) {
+    if (!files.length || !missingImageCount) return;
+    setLoading(true);
+    try {
+      const result = await relinkMissingAssets(assets, files);
+      objectUrls.current.push(...result.objectUrls);
+      if (result.restoredIds.length) {
+        setAssets(result.assets);
+        setSessionDirty(true);
+        if (!current || assets.find((item) => item.id === current)?.missing) setCurrent(result.restoredIds[0]);
+        setMessage(`${result.restoredIds.length} ${copy.projectImagesRestored}${result.rejected.length ? ` · ${result.rejected.length} ${copy.projectImagesNeedReload}` : ""}`);
+      } else {
+        setMessage(`${copy.imageMissingHint}${result.rejected.length ? ` · ${result.rejected.length}` : ""}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -514,6 +535,7 @@ export function CanonicalEditorWorkbench() {
   return <main style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>
     <input ref={projectInputRef} type="file" accept=".plgm,application/vnd.poligome.project+zip" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void openProject(file); event.currentTarget.value = ""; }} />
     <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" multiple hidden onChange={(event) => { void addImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
+    <input ref={relinkInputRef} type="file" accept="image/*,.tif,.tiff" multiple hidden onChange={(event) => { void relinkProjectImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
 
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
@@ -521,6 +543,7 @@ export function CanonicalEditorWorkbench() {
         <button onClick={() => void loadDemo()} disabled={loading}>{copy.tryDemo}</button>
         <button onClick={() => projectInputRef.current?.click()} disabled={loading}>{copy.openProject}</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>{copy.importImages}</button>
+        {missingImageCount > 0 && <button onClick={() => relinkInputRef.current?.click()} disabled={loading}>{copy.reloadProjectImages} ({missingImageCount})</button>}
         <RasterImportControl makeId={makeId} language={language} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />
         <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} language={language} disabled={loading} onImported={applyCocoImport} />
         <ExportControls assets={assets} labels={labels} annotations={editor.annotations} language={language} disabled={loading} onMessage={setMessage} />
@@ -572,7 +595,7 @@ export function CanonicalEditorWorkbench() {
           <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
             {asset?.raster?.mode === "tiled" ? <CogTiledLayer asset={asset} viewport={viewport.state} layout={viewport.layout} onError={setMessage} />
               : asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} />
-              : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? copy.imageMissingHint : copy.imageNotLoaded}</div>}
+              : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", gap: 8, opacity: .75 }}><span>{asset?.missing ? copy.imageMissingHint : copy.imageNotLoaded}</span>{asset?.missing && <button onClick={() => relinkInputRef.current?.click()}>{copy.reloadProjectImages}</button>}</div>}
             {asset && !asset.missing && <EditorCanvas
               imageSize={imageSize}
               svgRef={viewport.canvasRef}

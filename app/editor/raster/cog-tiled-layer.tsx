@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Asset } from "../../lib/types";
+import type { Copy } from "../../lib/i18n";
+import { translateErrorCode } from "../../lib/error-message";
 import { leMetadados, prepareDisplay, readRgba, type SessaoRaster } from "../../lib/cog";
 import type { ViewportState } from "../viewport/viewport-controller";
 import { planRasterTiles, type RasterTile } from "./tile-plan";
@@ -18,6 +20,7 @@ export type CogTiledLayerProps = {
     left: number;
     top: number;
   };
+  copy: Copy;
   onError?: (message: string) => void;
 };
 
@@ -79,7 +82,7 @@ function TileCanvas({ session, tile, sourceWidth, sourceHeight, cache }: {
   />;
 }
 
-export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLayerProps) {
+export function CogTiledLayer({ asset, viewport, layout, copy, onError }: CogTiledLayerProps) {
   const [session, setSession] = useState<SessaoRaster | null>(null);
   const cacheRef = useRef(new LruCache<ImageData>(COG_TILE_CACHE_LIMIT));
 
@@ -104,7 +107,7 @@ export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLaye
         setSession(next);
       })
       .catch((error) => {
-        if (!controller.signal.aborted) onError?.(error instanceof Error ? error.message : "Falha ao abrir COG tiled.");
+        if (!controller.signal.aborted) onError?.(translateErrorCode(error, copy, copy.rasterInvalidTiff));
       });
     return () => {
       live = false;
@@ -113,7 +116,7 @@ export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLaye
       setSession(null);
       cacheRef.current.clear();
     };
-  }, [asset.id, asset.src, asset.runtimeRasterSource, asset.raster?.mode]);
+  }, [asset.id, asset.src, asset.runtimeRasterSource, asset.raster?.mode, copy, onError]);
 
   const tiles = useMemo(() => planRasterTiles({
     sourceWidth: asset.width ?? 1,
@@ -129,7 +132,7 @@ export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLaye
   }), [asset.width, asset.height, layout.width, layout.height, layout.left, layout.top, viewport.scrollLeft, viewport.scrollTop, viewport.viewport.width, viewport.viewport.height]);
 
   if (!session || asset.raster?.mode !== "tiled") {
-    return <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", background: "var(--canvas-bg)", color: "var(--muted)", fontSize: 12 }}>Carregando COG…</div>;
+    return <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", background: "var(--canvas-bg)", color: "var(--muted)", fontSize: 12 }}>{copy.progress}…</div>;
   }
   const sourceWidth = asset.width ?? session.largura;
   const sourceHeight = asset.height ?? session.altura;

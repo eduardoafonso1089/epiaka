@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy, storedLanguage, storedTheme, type Language } from "../../lib/i18n";
+import { translateErrorCode } from "../../lib/error-message";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, openEditorProject, saveEditorProject } from "../session/editor-session-io";
@@ -96,6 +97,7 @@ export function CanonicalEditorWorkbench() {
   const projectDirty = sessionDirty || !editor.saved;
   const missingImageCount = assets.filter((item) => item.missing).length;
   const snapTolerance = screenPixelsToImageUnits(13, imageSize, viewport.layout.width);
+  const snap = { enabled: snapEnabled, tolerance: snapTolerance, annotations: visibleAnnotations };
 
   const interactions = useCanvasInteractions({
     svgRef: viewport.canvasRef,
@@ -104,9 +106,18 @@ export function CanonicalEditorWorkbench() {
     dispatch: editor.dispatch,
     makeId,
     activeAssetId: current || null,
-    snap: { enabled: snapEnabled, tolerance: snapTolerance, annotations: visibleAnnotations },
+    snap,
   });
-  const drawing = useDrawingInteractions({ svgRef: viewport.canvasRef, imageSize, tool, assetId: current || null, labelId: activeLabel, makeId, addAnnotation: editor.addAnnotation });
+  const drawing = useDrawingInteractions({
+    svgRef: viewport.canvasRef,
+    imageSize,
+    tool,
+    assetId: current || null,
+    labelId: activeLabel,
+    makeId,
+    addAnnotation: editor.addAnnotation,
+    snap,
+  });
 
   const vectorResultMessage = useCallback((result: AdvancedVectorResult) => {
     const messages: Record<AdvancedVectorResult, string> = {
@@ -130,6 +141,7 @@ export function CanonicalEditorWorkbench() {
     activePolygon,
     makeId,
     dispatch: editor.dispatch,
+    snap,
     onResult: vectorResultMessage,
   });
 
@@ -220,7 +232,7 @@ export function CanonicalEditorWorkbench() {
       resetInteractionState();
       setMessage(copy.demoReady);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : copy.demoError);
+      setMessage(translateErrorCode(error, copy, copy.demoError));
     } finally {
       setLoading(false);
     }
@@ -251,7 +263,7 @@ export function CanonicalEditorWorkbench() {
       resetInteractionState();
       setMessage(`${copy.projectOpened}: ${file.name}${loaded.missingImages ? ` · ${loaded.missingImages} ${copy.projectImagesNeedReload}` : ""}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : copy.projectOpenError);
+      setMessage(translateErrorCode(error, copy, copy.projectOpenError));
     } finally {
       setLoading(false);
     }
@@ -521,7 +533,7 @@ export function CanonicalEditorWorkbench() {
       setSessionDirty(false);
       setMessage(`${copy.projectSaved}: ${name}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : copy.projectSaveError);
+      setMessage(translateErrorCode(error, copy, copy.projectSaveError));
     } finally {
       setLoading(false);
     }
@@ -582,7 +594,7 @@ export function CanonicalEditorWorkbench() {
     <AdvancedVectorDraftLayer draft={advanced.draft} color={activeColor} lineThickness={lineThickness} />
   </>;
 
-  return <main style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>
+  return <main aria-label={`${copy.appTitle}: ${projectName}`} style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>
     <input ref={projectInputRef} type="file" accept=".plgm,application/vnd.poligome.project+zip" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file && (!projectDirty || window.confirm(copy.replaceUnsavedProject))) void openProject(file); event.currentTarget.value = ""; }} />
     <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" multiple hidden onChange={(event) => { void addImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
     <input ref={relinkInputRef} type="file" accept="image/*,.tif,.tiff" multiple hidden onChange={(event) => { void relinkProjectImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
@@ -647,7 +659,7 @@ export function CanonicalEditorWorkbench() {
       <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "var(--canvas-bg)", overflow: "auto", border: "1px solid var(--line)", borderRadius: 8, overscrollBehavior: "contain" }}>
         <div style={{ position: "relative", width: viewport.layout.surfaceWidth, height: viewport.layout.surfaceHeight }}>
           <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
-            {asset?.raster?.mode === "tiled" ? <CogTiledLayer asset={asset} viewport={viewport.state} layout={viewport.layout} onError={setMessage} />
+            {asset?.raster?.mode === "tiled" ? <CogTiledLayer asset={asset} viewport={viewport.state} layout={viewport.layout} copy={copy} onError={setMessage} />
               : asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} />
               : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", gap: 8, opacity: .75 }}><span>{asset?.missing ? copy.imageMissingHint : copy.imageNotLoaded}</span>{asset?.missing && <button onClick={() => relinkInputRef.current?.click()}>{copy.reloadProjectImages}</button>}</div>}
             {asset && !asset.missing && <EditorCanvas

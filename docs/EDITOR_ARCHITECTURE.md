@@ -4,23 +4,32 @@ This document describes the incremental editor refactor introduced on `refactor/
 
 ## Goals
 
-- Keep COCO, YOLO and GeoJSON export behavior stable while the editor internals change.
-- Keep annotation coordinates in the existing `1000 x 650` editor space for now.
-- Centralize coordinate conversion instead of repeating DOM/zoom math in tools.
+- Use source-image pixels as the single canonical geometry space.
+- Centralize screen/image conversion instead of repeating DOM/zoom math in tools.
+- Keep viewport changes, pan and zoom completely separate from annotation geometry.
 - Make pointer interactions mutually exclusive and explicit.
 - Make vertex identity part of the canonical annotation model rather than reconstructing it from flat coordinate offsets.
-- Remove backward-compatibility code for old `.plgm` project manifests instead of carrying legacy format constraints through the new editor.
-- Keep the implementation independent. CVAT and Label Studio were architectural references only; no third-party source code was copied into these modules.
+- Remove backward-compatibility requirements for previous `.plgm` manifests.
+- Keep the implementation independent. CVAT and Label Studio were architectural references only; no third-party source code was copied.
 
 ## Coordinate spaces
 
-The editor defines three explicit coordinate spaces: browser screen pixels, the `1000 x 650` annotation space, and native source-image pixels. `ViewportTransform` converts between them.
+The canonical editor has two relevant coordinate spaces:
 
-The `1000 x 650` space is currently retained as an editor coordinate convention, not as a compatibility requirement for old project files. It can be changed independently in a future migration because persistence is now versioned separately from the legacy route implementation.
+1. browser screen pixels;
+2. native source-image pixels.
+
+`EditorAnnotation` geometry is always stored in native source-image pixels. A 4032×3024 image therefore uses coordinates in the ranges `x=[0,4032]`, `y=[0,3024]`.
+
+Viewport size, zoom, scroll and device dimensions never rewrite annotation coordinates. `app/editor/viewport/svg-image-space.ts` converts browser client coordinates into source-image coordinates by inverting the SVG screen CTM, following the same architectural principle used by CVAT. A bounding-rectangle fallback exists for DOM/test environments without SVG CTM support.
+
+The former `1000×650` annotation convention is not part of the canonical editor anymore. It remains only inside the legacy route and its transitional bridge until `legacy-page.tsx` is deleted.
+
+Handle radii, hit targets and strokes are specified conceptually in screen pixels and converted into image units at render time, keeping them visually stable across zoom and image resolution.
 
 ## Canonical annotation model
 
-`app/editor/models/annotation-model.ts` defines the target editor representation. Polygon and polyline geometry is vertex-based:
+`app/editor/models/annotation-model.ts` defines the editor representation. Polygon and polyline geometry is vertex-based:
 
 ```ts
 type Vertex = { id: string; x: number; y: number };
@@ -32,105 +41,91 @@ type PolygonAnnotation = {
 };
 ```
 
-Boxes use explicit `width`/`height`, and points use explicit `x`/`y` coordinates.
+Boxes use explicit `width`/`height`, points use explicit `x`/`y`, and all geometry values are source-image pixels.
 
-`app/editor/models/legacy-annotation-adapter.ts` is a temporary in-memory boundary for `legacy-page.tsx`. It is not part of project persistence and does not provide backward compatibility for old project manifests.
+`app/editor/models/legacy-annotation-adapter.ts` is only a temporary boundary for `legacy-page.tsx` and must not be used by canonical editor code.
 
-## Project format V3
+## Project format V4
 
-The current `.plgm` container remains a ZIP-based Poligome project, but the manifest is now strictly **version 3**.
+The canonical `.plgm` project manifest is strictly **version 4** and declares:
 
-V3 changes:
+```json
+{
+  "version": 4,
+  "coordinate_space": "image-pixels"
+}
+```
 
-- polygon/polyline geometry is stored as `vertices` with stable IDs;
-- polygon holes are stored as arrays of vertices;
-- boxes use `width` and `height` rather than the legacy `w`/`h` naming;
-- flat `pts` arrays are not stored in the manifest;
-- V2 manifests are rejected rather than silently migrated.
+V4 stores `EditorAnnotation[]` directly: stable vertex IDs, holes as vertex arrays, boxes with `width`/`height`, and geometry in native image pixels. Canonical V4 loading does not migrate V3 or older manifests.
 
-The canonical project API is `savePoligomeProjectV3()` / `openPoligomeProjectV3()`, both typed with `EditorAnnotation[]`. The old function names remain only as deprecated in-memory façades for the route that has not yet migrated its React state.
+The canonical API is `savePoligomeProjectV4()` / `openPoligomeProjectV4()`.
 
-The `.plgm` extension therefore identifies the current Poligome project container, not a promise of backward compatibility with earlier manifest versions.
+A temporary V3 path still exists only so the old `/annotate` implementation can remain operational during the route replacement. It is not a compatibility requirement and will be deleted with the legacy route.
 
-## Viewport
+## Viewport and touch navigation
 
-`app/editor/viewport/viewport-controller.ts` contains the pure viewport state model. The live `/annotate` route is wrapped by `EditorArchitectureBridge`, which mirrors viewport size, source-image size, scroll and zoom into this controller while the legacy editor is progressively extracted.
+`app/editor/viewport/viewport-controller.ts` owns viewport dimensions, image dimensions, zoom and scroll. Its canonical transform uses image space as annotation space.
+
+`app/editor/viewport/use-editor-viewport.ts` adapts this pure model to the DOM. `app/editor/viewport/use-touch-navigation.ts` arbitrates mobile gestures:
+
+- one-finger pan in the Hand tool;
+- two-finger pinch + pan in any tool;
+- a second finger cancels active drawing/editing before navigation owns the gesture;
+- discrete touch drawing commits on pointer-up, preventing stray vertices when pinch begins.
+
+Pan and pinch mutate only viewport state, never `EditorAnnotation` geometry.
 
 ## Interactions
 
 `app/editor/interactions/interaction-controller.ts` provides explicit pointer ownership for editor gestures. Supported modes are `idle`, `select`, `draw`, `edit`, `pan`, `resize`, `rotate` and `model`.
 
-`app/editor/interactions/vertex-interactions.ts` uses `EditorAnnotation[]` and stable `vertexId` references for hit-testing and linked topology. No index-based vertex identity remains in the new interaction layer.
+`app/editor/interactions/use-canvas-interactions.ts` owns canonical pointer callbacks for annotation drag, vertex drag/insertion, box resize/rotation and marquee selection. It converts client coordinates directly to source-image pixels.
 
-`app/editor/interactions/use-canvas-interactions.ts` owns canonical pointer callbacks for annotation drag, vertex drag/insertion, box resize/rotation and canvas deselection. Continuous gestures use editor-state transactions rather than creating one undo snapshot per pointer move.
+Continuous gestures use editor-state transactions so a complete drag/resize/rotation creates a single undo entry.
 
 ## Canonical geometry
 
-`app/editor/geometry/annotation-geometry.ts` owns geometry operations over the canonical model:
+`app/editor/geometry/annotation-geometry.ts` owns geometry operations over `EditorAnnotation`:
 
 - bounds;
 - translation;
+- rotated box resizing;
 - vertex insertion/update/deletion by ID;
-- edge midpoint generation;
-- editor-boundary clamping.
+- edge midpoint generation.
 
-New editor code should use this module rather than `app/lib/geometry.ts`. The latter remains only for `legacy-page.tsx` and flat-array utilities that have not yet been deleted.
+It no longer clamps canonical geometry to a fixed `1000×650` editor rectangle.
+
+`app/lib/geometry.ts` remains legacy-only until `legacy-page.tsx` is removed.
 
 ## Canonical state
 
-`app/editor/state/editor-state.ts` centralizes editor state that used to be distributed across independent React states:
+`app/editor/state/editor-state.ts` centralizes:
 
 - `EditorAnnotation[]`;
-- undo and redo history;
+- undo/redo history;
 - single/multiple selection;
 - selected vertex by `vertexId`;
 - saved/dirty state;
 - active gesture snapshot.
 
-Continuous pointer edits use `begin-gesture`, live geometry mutations and `commit-gesture` / `cancel-gesture`. A complete drag, resize or rotation therefore creates a single undo entry rather than one entry per `pointermove`.
-
-`use-editor-state.ts` exposes the reducer through a small React API and derives the selected annotation(s) without duplicating state.
-
-This state is the intended replacement for the legacy combination of `annotations`, `history`, `redoHistory`, `selected`, `multiSelected` and `selectedVertex`.
+`use-editor-state.ts` exposes the reducer through a small React API.
 
 ## Rendering
 
-Rendering extraction lives under `app/editor/layers`:
+Rendering lives under `app/editor/layers` and consumes canonical annotation types. `app/editor/canvas/editor-canvas.tsx` receives the current image size and uses a dynamic SVG `viewBox="0 0 imageWidth imageHeight"`.
 
-- `vertex-handles.tsx` — consumes `Vertex[]` directly and emits vertex IDs;
-- `polygon-layer.tsx` — consumes `PolygonAnnotation`;
-- `polyline-layer.tsx` — consumes `PolylineAnnotation`;
-- `box-layer.tsx` — consumes `BoxAnnotation` with `width`/`height`;
-- `point-layer.tsx` — consumes `PointAnnotation`;
-- `annotation-layer.tsx` — canonical geometry dispatcher.
+The rendering stack has no dependency on legacy `pts`, `vertexIndex`, or `w/h` box fields.
 
-`app/editor/canvas/editor-canvas.tsx` composes the annotation dispatcher and selection marquee over `EditorAnnotation[]`. It is the replacement boundary for the large geometry-specific `visibleAnnotations.map(...)` block in `legacy-page.tsx`.
+## Import/export boundaries
 
-The new rendering stack has no dependency on the legacy `Annotation` type, flat `pts` arrays, `vertexIndex`, or `w`/`h` box fields.
+Internal geometry remains in source-image pixels.
 
-## Selection
+- COCO import/export uses image pixels directly. If a COCO document declares dimensions different from the loaded image, import performs only the required source-image-to-target-image scaling.
+- YOLO normalization occurs only when producing YOLO rows, using the actual asset width/height.
+- GeoJSON projects source-image pixels through raster/georeference metadata.
+- Flat coordinate arrays are allowed only at external format boundaries.
 
-Selection extraction lives under `app/editor/selection`:
-
-- `selection-model.ts` — marquee normalization, single selection, toggle selection, range selection and additive marquee selection over `EditorAnnotation[]`;
-- `selection-layer.tsx` — stateless SVG marquee rendering.
-
-Selection no longer imports `app/lib/types.ts` or `app/lib/geometry.ts`.
-
-## Canonical input/output boundary
-
-Canonical producers now exist for the major annotation sources:
-
-- drawing tools via `app/editor/drawing/annotation-builder.ts`;
-- demo data via `createCanonicalDemoProject()`;
-- COCO via `app/editor/import/coco-import.ts`;
-- SAM/model output via canonical model-output helpers.
-
-`app/editor/export/annotation-export.ts` converts canonical geometry directly into external payloads for COCO, YOLO and GeoJSON.
-
-Flat numeric coordinate arrays are allowed at import/export transport boundaries because those external formats use them. They are no longer the editor's internal geometry representation.
-
-`app/editor/session/editor-session-io.ts` is the canonical session boundary for project V3 persistence, demo loading and the import/export codecs. It has no dependency on the legacy annotation adapter.
+`app/editor/session/editor-session-io.ts` is the canonical V4 project/demo/import/export boundary and does not use the legacy annotation adapter.
 
 ## Route split
 
@@ -138,43 +133,41 @@ Flat numeric coordinate arrays are allowed at import/export transport boundaries
 /annotate
   layout.tsx -> EditorArchitectureBridge
   page.tsx   -> legacy-page.tsx
+
+/annotate-next
+  CanonicalEditorWorkbench
+  -> source-image pixels
+  -> EditorState
+  -> EditorCanvas
+  -> ViewportController
 ```
 
-The previous monolithic route implementation lives in `legacy-page.tsx` while functionality is extracted into focused modules. New editor code should be added under `app/editor` rather than growing `legacy-page.tsx` further.
-
-The remaining route cut is now mostly orchestration: replacing its legacy React annotation state with `useEditorState`, wiring `EditorCanvas`, then deleting the duplicated SVG/interaction code.
+`/annotate-next` is the integration surface for the canonical editor while functional parity is completed. New editor functionality belongs under `app/editor`, not in `legacy-page.tsx`.
 
 ## Validation
 
-`.github/workflows/editor-refactor.yml` defines a Node 22.13 validation workflow for this branch that runs the Next build and the test suite. The workflow file is present, but no successful status has been observed through the available connector yet, so the branch must not be described as build-green until a run is visible.
+`.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build and the complete test suite on pushes to the refactor branch.
+
+The last fully validated touch/pan/pinch baseline passed build and tests. The source-image/V4 migration is being validated incrementally; do not call a commit green until its own workflow run succeeds.
 
 ## Migration status
 
-1. Centralize screen/annotation/image conversion with `ViewportTransform`. **Done.**
-2. Introduce `ViewportController` and mirror the live editor into it. **Done.**
-3. Introduce `InteractionController` and mirror live pointer ownership. **Done.**
-4. Introduce the `Vertex[]` model. **Done.**
-5. Split the route from the legacy monolith. **Done.**
-6. Extract polygon/polyline/vertex/box/point rendering into stateless components. **Done.**
-7. Route live legacy vertex geometry through `Vertex[]`. **Done.**
-8. Extract pure selection semantics and marquee rendering. **Done.**
-9. Introduce the canonical `EditorAnnotation` model. **Done.**
-10. Move `.plgm` persistence to strict vertex-based V3 and drop V2 compatibility. **Done.**
-11. Move extracted layers to canonical annotation types and vertex IDs. **Done.**
-12. Add canonical annotation geometry and ID-based vertex interactions. **Done.**
-13. Move selection to canonical annotations. **Done.**
-14. Introduce canonical reducer/hook for annotations, history, selection and vertex state. **Done.**
-15. Add gesture transactions so drag/resize/rotate create one undo step. **Done.**
-16. Add `AnnotationLayer` + `EditorCanvas` canonical rendering composition. **Done.**
-17. Add canonical canvas interaction callbacks. **Done.**
-18. Add canonical COCO/YOLO/GeoJSON export codecs. **Done.**
-19. Add canonical producers for drawing, demo, COCO import and SAM/model output. **Done.**
-20. Add canonical session IO boundary. **Done.**
-21. Replace route React annotation state with `useEditorState` and wire `EditorCanvas`. **Next.**
-22. Delete deprecated project façades, `legacy-annotation-adapter.ts` and obsolete flat geometry APIs.
-23. Route zoom/pan/fit writes through `ViewportController` rather than only mirroring them.
-24. Remove `legacy-page.tsx` once the remaining panels/tools are extracted.
-
-## Tests
-
-The branch adds regression/contract coverage for viewport transforms, resolution-independent pointer deltas, canonical vertex mutations, canonical annotation geometry, canonical state/undo/redo including gesture transactions, canonical export/import codecs, canvas interaction contracts, annotation/canvas layer contracts, vertex hit-testing/topology, selection semantics, session IO and the strict V3 project manifest. V3 tests explicitly verify vertex IDs in persisted projects and rejection of V2 manifests.
+1. Centralize viewport transforms. **Done.**
+2. Introduce `ViewportController`. **Done.**
+3. Introduce explicit interaction ownership. **Done.**
+4. Introduce stable `Vertex[]` geometry. **Done.**
+5. Split the legacy route. **Done.**
+6. Extract canonical rendering layers. **Done.**
+7. Extract canonical selection/state/history. **Done.**
+8. Add gesture transactions. **Done.**
+9. Add `AnnotationLayer` + `EditorCanvas`. **Done.**
+10. Add canonical drawing/demo/COCO/model producers. **Done.**
+11. Add canonical COCO/YOLO/GeoJSON outputs. **Done.**
+12. Add canonical session IO. **Done.**
+13. Add mobile one-finger pan and two-finger pinch+pan. **Done.**
+14. Replace fixed `1000×650` canonical geometry with native source-image pixels. **Done.**
+15. Move canonical project persistence to strict V4 `image-pixels`. **Done.**
+16. Validate source-image/V4 migration and remove obsolete normalized-coordinate tests. **In progress.**
+17. Complete remaining feature parity (SAM/COG/panels) in `/annotate-next`.
+18. Replace `/annotate` with the canonical route.
+19. Delete V3 transitional project path, `legacy-annotation-adapter.ts`, `app/lib/geometry.ts` legacy APIs and `legacy-page.tsx`.

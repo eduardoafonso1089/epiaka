@@ -1,6 +1,7 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { edgeMidpoints } from "../geometry/annotation-geometry";
 import type { Vertex } from "../models/vertex-model";
 
 export type SelectedVertex = { annotationId: string; vertexId: string } | null;
@@ -22,21 +23,6 @@ export type VertexHandlesProps = {
   onInsertVertex: (event: ReactPointerEvent<SVGElement>, afterVertexId: string, x: number, y: number) => void;
 };
 
-function edgeMidpoints(vertices: Vertex[], open: boolean) {
-  if (vertices.length < 2) return [];
-  const limit = open ? vertices.length - 1 : vertices.length;
-  return Array.from({ length: limit }, (_, index) => {
-    const current = vertices[index];
-    const next = vertices[(index + 1) % vertices.length];
-    return {
-      id: `${current.id}->${next.id}`,
-      afterVertexId: current.id,
-      x: (current.x + next.x) / 2,
-      y: (current.y + next.y) / 2,
-    };
-  });
-}
-
 /** Rendering-only vertex controls shared by polygons and polylines. */
 export function VertexHandles({
   annotationId,
@@ -57,7 +43,7 @@ export function VertexHandles({
   const midpoints = edgeMidpoints(vertices, open);
 
   return <>
-    {midpoints.map((midpoint) => <g key={midpoint.id}>
+    {midpoints.map((midpoint) => <g key={`${annotationId}:${midpoint.afterVertexId}`}>
       {touchMode && <ellipse
         className="touch-handle-hit"
         data-edge-after-vertex-id={midpoint.afterVertexId}

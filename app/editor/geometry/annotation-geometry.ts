@@ -1,4 +1,4 @@
-import type { EditorAnnotation } from "../models/annotation-model";
+import type { BoxAnnotation, EditorAnnotation } from "../models/annotation-model";
 import type { Vertex } from "../models/vertex-model";
 import { deleteVertex, insertVertex, moveVertices, updateVertex } from "../models/vertex-model";
 
@@ -7,6 +7,7 @@ export const EDITOR_HEIGHT = 650;
 export const MIN_VERTEX_DISTANCE = 10;
 
 export type Bounds = { x: number; y: number; width: number; height: number };
+export type BoxResizeCorner = "nw" | "ne" | "se" | "sw";
 
 export function clampPoint(point: { x: number; y: number }) {
   return {
@@ -42,6 +43,66 @@ export function translateAnnotation(annotation: EditorAnnotation, dx: number, dy
   }
   if (annotation.type === "line") return { ...annotation, vertices: moveVertices(annotation.vertices, dx, dy) };
   return { ...annotation, x: annotation.x + dx, y: annotation.y + dy };
+}
+
+function rotateAround(
+  point: { x: number; y: number },
+  center: { x: number; y: number },
+  angle: number,
+) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return {
+    x: center.x + dx * cosine - dy * sine,
+    y: center.y + dx * sine + dy * cosine,
+  };
+}
+
+/**
+ * Resizes a possibly rotated box by one visual corner while keeping the opposite visual
+ * corner fixed. Pointer coordinates arrive in editor/world space; the resize is solved in
+ * the box's unrotated local frame and the new centre is rotated back into world space.
+ */
+export function resizeBoxFromCorner(
+  annotation: BoxAnnotation,
+  corner: BoxResizeCorner,
+  pointer: { x: number; y: number },
+  minimumSize = 1,
+): BoxAnnotation {
+  const rotation = annotation.rotation ?? 0;
+  const center = {
+    x: annotation.x + annotation.width / 2,
+    y: annotation.y + annotation.height / 2,
+  };
+  const localPointer = rotateAround(clampPoint(pointer), center, -rotation);
+  const left = annotation.x;
+  const right = annotation.x + annotation.width;
+  const top = annotation.y;
+  const bottom = annotation.y + annotation.height;
+
+  const fixedX = corner.includes("w") ? right : left;
+  const fixedY = corner.includes("n") ? bottom : top;
+  const dragX = corner.includes("w")
+    ? Math.min(localPointer.x, fixedX - minimumSize)
+    : Math.max(localPointer.x, fixedX + minimumSize);
+  const dragY = corner.includes("n")
+    ? Math.min(localPointer.y, fixedY - minimumSize)
+    : Math.max(localPointer.y, fixedY + minimumSize);
+
+  const localCenter = { x: (dragX + fixedX) / 2, y: (dragY + fixedY) / 2 };
+  const worldCenter = rotateAround(localCenter, center, rotation);
+  const width = Math.max(minimumSize, Math.abs(fixedX - dragX));
+  const height = Math.max(minimumSize, Math.abs(fixedY - dragY));
+
+  return {
+    ...annotation,
+    x: worldCenter.x - width / 2,
+    y: worldCenter.y - height / 2,
+    width,
+    height,
+  };
 }
 
 export function updateAnnotationVertex(annotation: EditorAnnotation, vertexId: string, point: { x: number; y: number }): EditorAnnotation {

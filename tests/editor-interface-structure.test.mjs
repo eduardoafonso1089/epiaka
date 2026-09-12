@@ -41,6 +41,6 @@ test('documentation calls this an interface structure and records SAM as a separ
   assert.doesNotMatch(architecture, /canonical shell|editor shell/i);
   assert.match(architecture, /SAM is not a merge blocker/);
   assert.match(architecture, /integrated from a separate branch/);
-  assert.match(readme, /SAM UI is intentionally not part of this branch's merge target/);
+  assert.match(readme, /local SAM UI is intentionally not part of this\s+> branch's merge target/i);
   assert.match(readme, /canonical editor uses the same global visual tokens/);
 });

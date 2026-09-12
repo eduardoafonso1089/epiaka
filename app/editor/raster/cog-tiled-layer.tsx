@@ -5,8 +5,7 @@ import type { Asset } from "../../lib/types";
 import { leMetadados, prepareDisplay, readRgba, type SessaoRaster } from "../../lib/cog";
 import type { ViewportState } from "../viewport/viewport-controller";
 import { planRasterTiles, type RasterTile } from "./tile-plan";
-
-const TILE_CACHE_LIMIT = 64;
+import { COG_TILE_CACHE_LIMIT, LruCache } from "./tile-cache";
 
 export type CogTiledLayerProps = {
   asset: Asset;
@@ -22,22 +21,12 @@ export type CogTiledLayerProps = {
   onError?: (message: string) => void;
 };
 
-function putCached(cache: Map<string, ImageData>, key: string, image: ImageData) {
-  cache.delete(key);
-  cache.set(key, image);
-  while (cache.size > TILE_CACHE_LIMIT) {
-    const oldest = cache.keys().next().value as string | undefined;
-    if (!oldest) break;
-    cache.delete(oldest);
-  }
-}
-
 function TileCanvas({ session, tile, sourceWidth, sourceHeight, cache }: {
   session: SessaoRaster;
   tile: RasterTile;
   sourceWidth: number;
   sourceHeight: number;
-  cache: Map<string, ImageData>;
+  cache: LruCache<ImageData>;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -48,7 +37,6 @@ function TileCanvas({ session, tile, sourceWidth, sourceHeight, cache }: {
     canvas.height = tile.outputHeight;
     const cached = cache.get(tile.key);
     if (cached) {
-      putCached(cache, tile.key, cached);
       context.putImageData(cached, 0, 0);
       return;
     }
@@ -62,7 +50,7 @@ function TileCanvas({ session, tile, sourceWidth, sourceHeight, cache }: {
         const currentContext = currentCanvas?.getContext("2d");
         if (!currentCanvas || !currentContext) return;
         const image = new ImageData(pixels, tile.outputWidth, tile.outputHeight);
-        putCached(cache, tile.key, image);
+        cache.set(tile.key, image);
         currentContext.putImageData(image, 0, 0);
       })
       .catch((error) => {
@@ -93,7 +81,7 @@ function TileCanvas({ session, tile, sourceWidth, sourceHeight, cache }: {
 
 export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLayerProps) {
   const [session, setSession] = useState<SessaoRaster | null>(null);
-  const cacheRef = useRef(new Map<string, ImageData>());
+  const cacheRef = useRef(new LruCache<ImageData>(COG_TILE_CACHE_LIMIT));
 
   useEffect(() => {
     cacheRef.current.clear();

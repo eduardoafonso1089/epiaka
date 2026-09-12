@@ -129,23 +129,42 @@ Internal geometry remains in image pixels.
 
 ## Application parity
 
-Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be decided/ported before the refactor is considered product-complete:
+Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be ported before the refactor is considered product-complete:
 
 - advanced vector operations: snapping, reshape, simplify, union/merge, split and polygon-hole creation;
 - image and annotation panels: search, reorder, delete, hide/show and list-based modifier selection;
 - class management: create/rename/color/delete/hide, quick label creation and batch reclassification;
 - local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
-- Quality/Review UI (`reviewScore` remains only in data types);
+- Quality/Review UI, including image/annotation/class `reviewScore` persistence and source-pixel quality summaries;
 - keyboard shortcuts from the previous annotator;
-- selective COCO category/annotation import and cephalometric-landmark import;
+- selective COCO category/annotation import;
 - complete i18n coverage for the canonical workbench;
 - final visual-system decision for the canonical shell.
 
-Until D1/D2 product decisions are made, these missing surfaces must not be treated as dead legacy solely because they have no canonical consumer.
+Cephalometric-landmark import is **not part of Poligome parity** and must not be ported into the canonical editor.
+
+### Product decisions recorded on 2026-09-12
+
+- **D1 — merge strategy: option B.** Keep implementing application parity on `refactor/editor-architecture`; merge into `main` only when the canonical editor has recovered the agreed product surface. Do not restore the legacy annotator as the production `/annotate` route.
+- **D2 — parity scope.** Quality/Review is retained as an important platform capability and is part of the parity target. Cephalometric landmarks are explicitly out of scope because they are unrelated to the product. Other parity items remain in scope unless separately decided otherwise.
+
+Modules reachable only from parity-pending UI must not be treated as dead legacy solely because they have no current canonical consumer.
+
+## Quality and review
+
+The canonical implementation lives under `app/editor/review`.
+
+- `quality-review-model.ts` computes per-image instance balance, per-class instance counts and polygon/box areas directly in native source-image pixels.
+- polygon holes are subtracted from segmentation area;
+- points and lines contribute zero segmentation area;
+- image, annotation and class review scores remain independent 1–5 values persisted by the existing V4 project model;
+- `quality-review-panel.tsx` is the application panel for the quality/review surface.
+
+Quality metrics must never reintroduce the removed `1000×650` normalization.
 
 ## Validation
 
-`.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build and the complete test suite for this branch.
+`.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build, the complete test suite, the i18n parity-debt gate, cross-branch export goldens, the demo-route smoke test and the COG benchmark.
 
 ## Core migration status
 

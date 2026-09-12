@@ -6,16 +6,23 @@ const vertexHandles = readFileSync(new URL('../app/editor/layers/vertex-handles.
 const polygonLayer = readFileSync(new URL('../app/editor/layers/polygon-layer.tsx', import.meta.url), 'utf8');
 const polylineLayer = readFileSync(new URL('../app/editor/layers/polyline-layer.tsx', import.meta.url), 'utf8');
 
-test('vertex handles adapt persisted flat points to stable editor vertex ids', () => {
-  assert.match(vertexHandles, /verticesFromFlatPoints/);
+test('vertex handles consume canonical vertices and preserve ids through events', () => {
+  assert.match(vertexHandles, /vertices: Vertex\[\]/);
   assert.match(vertexHandles, /data-vertex-id/);
-  assert.match(vertexHandles, /\$\{annotationId\}:v\$\{index\}/);
+  assert.match(vertexHandles, /vertex\.id/);
+  assert.match(vertexHandles, /afterVertexId/);
+  assert.doesNotMatch(vertexHandles, /verticesFromFlatPoints/);
+  assert.doesNotMatch(vertexHandles, /vertexIndex/);
 });
 
-test('polygon and polyline layers share the same vertex controls', () => {
-  assert.match(polygonLayer, /<VertexHandles/);
-  assert.match(polylineLayer, /<VertexHandles/);
+test('polygon and polyline layers share canonical vertex controls', () => {
+  assert.match(polygonLayer, /PolygonAnnotation/);
+  assert.match(polylineLayer, /PolylineAnnotation/);
+  assert.match(polygonLayer, /vertices=\{annotation\.vertices\}/);
+  assert.match(polylineLayer, /vertices=\{annotation\.vertices\}/);
   assert.match(polylineLayer, /open/);
+  assert.doesNotMatch(polygonLayer, /annotation\.pts/);
+  assert.doesNotMatch(polylineLayer, /annotation\.pts/);
 });
 
 test('extracted layers remain presentational and expose annotation ids', () => {

@@ -30,6 +30,7 @@ export type EditorAction =
   | { type: "replace-annotations"; annotations: EditorAnnotation[]; markSaved?: boolean }
   | { type: "add-annotation"; annotation: EditorAnnotation; select?: boolean }
   | { type: "delete-annotations"; ids: string[] }
+  | { type: "replace-annotations-batch"; removeIds: string[]; annotations: EditorAnnotation[]; selectIds?: string[] }
   | { type: "reorder-annotation"; id: string; delta: -1 | 1 }
   | { type: "reclassify-annotations"; ids: string[]; labelId: string }
   | { type: "select-single"; id: string }
@@ -141,6 +142,23 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const next = snapshot(state);
       const annotations = state.annotations.filter((annotation) => !ids.has(annotation.id));
       return { ...next, annotations, ...keepExistingSelection(state, annotations) };
+    }
+
+    case "replace-annotations-batch": {
+      const removeIds = new Set(action.removeIds);
+      if (!state.annotations.some((annotation) => removeIds.has(annotation.id)) && !action.annotations.length) return state;
+      const next = snapshot(state);
+      const firstRemovedIndex = state.annotations.findIndex((annotation) => removeIds.has(annotation.id));
+      const kept = state.annotations.filter((annotation) => !removeIds.has(annotation.id));
+      const insertionIndex = firstRemovedIndex < 0 ? kept.length : Math.min(firstRemovedIndex, kept.length);
+      const annotations = [...kept.slice(0, insertionIndex), ...action.annotations, ...kept.slice(insertionIndex)];
+      const selectIds = (action.selectIds ?? action.annotations.map((annotation) => annotation.id)).filter((id) => annotations.some((annotation) => annotation.id === id));
+      return {
+        ...next,
+        annotations,
+        selection: { selected: selectIds.at(-1) ?? null, multiSelected: selectIds, anchorId: selectIds[0] ?? null },
+        selectedVertex: null,
+      };
     }
 
     case "reorder-annotation": {

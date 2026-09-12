@@ -6,6 +6,8 @@ import { leMetadados, prepareDisplay, readRgba, type SessaoRaster } from "../../
 import type { ViewportState } from "../viewport/viewport-controller";
 import { planRasterTiles, type RasterTile } from "./tile-plan";
 
+const TILE_CACHE_LIMIT = 64;
+
 export type CogTiledLayerProps = {
   asset: Asset;
   viewport: ViewportState;
@@ -20,25 +22,48 @@ export type CogTiledLayerProps = {
   onError?: (message: string) => void;
 };
 
-function TileCanvas({ session, tile, sourceWidth, sourceHeight }: {
+function putCached(cache: Map<string, ImageData>, key: string, image: ImageData) {
+  cache.delete(key);
+  cache.set(key, image);
+  while (cache.size > TILE_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    cache.delete(oldest);
+  }
+}
+
+function TileCanvas({ session, tile, sourceWidth, sourceHeight, cache }: {
   session: SessaoRaster;
   tile: RasterTile;
   sourceWidth: number;
   sourceHeight: number;
+  cache: Map<string, ImageData>;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    const canvas = ref.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    canvas.width = tile.outputWidth;
+    canvas.height = tile.outputHeight;
+    const cached = cache.get(tile.key);
+    if (cached) {
+      putCached(cache, tile.key, cached);
+      context.putImageData(cached, 0, 0);
+      return;
+    }
+
     const controller = new AbortController();
     let live = true;
     void readRgba(session, { x: tile.x, y: tile.y, w: tile.width, h: tile.height }, tile.outputWidth, tile.outputHeight, controller.signal)
       .then((pixels) => {
         if (!live || controller.signal.aborted) return;
-        const canvas = ref.current;
-        const context = canvas?.getContext("2d");
-        if (!canvas || !context) return;
-        canvas.width = tile.outputWidth;
-        canvas.height = tile.outputHeight;
-        context.putImageData(new ImageData(pixels, tile.outputWidth, tile.outputHeight), 0, 0);
+        const currentCanvas = ref.current;
+        const currentContext = currentCanvas?.getContext("2d");
+        if (!currentCanvas || !currentContext) return;
+        const image = new ImageData(pixels, tile.outputWidth, tile.outputHeight);
+        putCached(cache, tile.key, image);
+        currentContext.putImageData(image, 0, 0);
       })
       .catch((error) => {
         if (!controller.signal.aborted && error instanceof Error && error.name !== "AbortError") console.warn("COG tile read failed", error);
@@ -47,7 +72,7 @@ function TileCanvas({ session, tile, sourceWidth, sourceHeight }: {
       live = false;
       controller.abort();
     };
-  }, [session, tile.key, tile.x, tile.y, tile.width, tile.height, tile.outputWidth, tile.outputHeight]);
+  }, [session, tile.key, tile.x, tile.y, tile.width, tile.height, tile.outputWidth, tile.outputHeight, cache]);
 
   return <canvas
     ref={ref}
@@ -68,8 +93,10 @@ function TileCanvas({ session, tile, sourceWidth, sourceHeight }: {
 
 export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLayerProps) {
   const [session, setSession] = useState<SessaoRaster | null>(null);
+  const cacheRef = useRef(new Map<string, ImageData>());
 
   useEffect(() => {
+    cacheRef.current.clear();
     if (asset.raster?.mode !== "tiled") {
       setSession(null);
       return;
@@ -96,6 +123,7 @@ export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLaye
       controller.abort();
       opened?.close();
       setSession(null);
+      cacheRef.current.clear();
     };
   }, [asset.id, asset.src, asset.runtimeRasterSource, asset.raster?.mode]);
 
@@ -112,10 +140,12 @@ export function CogTiledLayer({ asset, viewport, layout, onError }: CogTiledLaye
     viewportHeight: viewport.viewport.height,
   }), [asset.width, asset.height, layout.width, layout.height, layout.left, layout.top, viewport.scrollLeft, viewport.scrollTop, viewport.viewport.width, viewport.viewport.height]);
 
-  if (!session || asset.raster?.mode !== "tiled") return null;
+  if (!session || asset.raster?.mode !== "tiled") {
+    return <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", background: "#080909", color: "#9ba3a7", fontSize: 12 }}>Carregando COG…</div>;
+  }
   const sourceWidth = asset.width ?? session.largura;
   const sourceHeight = asset.height ?? session.altura;
   return <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", background: "#080909" }}>
-    {tiles.map((tile) => <TileCanvas key={tile.key} session={session} tile={tile} sourceWidth={sourceWidth} sourceHeight={sourceHeight} />)}
+    {tiles.map((tile) => <TileCanvas key={tile.key} session={session} tile={tile} sourceWidth={sourceWidth} sourceHeight={sourceHeight} cache={cacheRef.current} />)}
   </div>;
 }

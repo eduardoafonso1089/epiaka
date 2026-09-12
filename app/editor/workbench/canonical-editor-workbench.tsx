@@ -21,6 +21,8 @@ import { useTouchNavigation } from "../viewport/use-touch-navigation";
 import { screenPixelsToImageUnits } from "../viewport/svg-image-space";
 import { CogTiledLayer } from "../raster/cog-tiled-layer";
 import { demoRouteTarget } from "../session/demo-route";
+import { QualityReviewPanel } from "../review/quality-review-panel";
+import { setAssetReviewScore, setLabelReviewScore } from "../review/quality-review-model";
 
 const EMPTY_LABELS: Label[] = [{ id: "unlabeled", name: "Sem label", color: "#929a95", key: "" }];
 const TOOLS: Array<{ id: DrawingTool; label: string }> = [
@@ -42,6 +44,7 @@ export function CanonicalEditorWorkbench() {
   const [projectName, setProjectName] = useState("Poligome V4");
   const [language, setLanguage] = useState<Language>("pt");
   const [saveMode, setSaveMode] = useState<"annotations" | "complete">("complete");
+  const [reviewMode, setReviewMode] = useState<"quality" | "review">("quality");
   const [loading, setLoading] = useState(false);
   const [sessionDirty, setSessionDirty] = useState(false);
   const [message, setMessage] = useState("Carregue o demo, abra um .plgm V4, adicione imagens ou importe GeoTIFF/COG.");
@@ -197,6 +200,23 @@ export function CanonicalEditorWorkbench() {
     editor.dispatch({ type: "clear-selection" });
   }
 
+  function reviewAsset(score: number) {
+    if (!asset) return;
+    setAssets((items) => setAssetReviewScore(items, asset.id, score));
+    setSessionDirty(true);
+  }
+
+  function reviewLabel(score: number) {
+    if (!labels.some((label) => label.id === activeLabel)) return;
+    setLabels((items) => setLabelReviewScore(items, activeLabel, score));
+    setSessionDirty(true);
+  }
+
+  function reviewAnnotation(score: number) {
+    if (!editor.selectedAnnotation) return;
+    editor.dispatch({ type: "replace-annotation", annotation: { ...editor.selectedAnnotation, reviewScore: score } });
+  }
+
   async function saveProject() {
     if (!assets.length) return;
     setLoading(true);
@@ -317,6 +337,23 @@ export function CanonicalEditorWorkbench() {
           </div>
         </div>
       </section>
+
+      <QualityReviewPanel
+        mode={reviewMode}
+        assets={assets}
+        labels={labels}
+        annotations={editor.annotations}
+        activeAsset={asset}
+        activeAnnotation={editor.selectedAnnotation}
+        activeLabelId={activeLabel}
+        copy={copy}
+        language={language}
+        onModeChange={setReviewMode}
+        onActiveLabelChange={setActiveLabel}
+        onAssetReview={reviewAsset}
+        onAnnotationReview={reviewAnnotation}
+        onLabelReview={reviewLabel}
+      />
 
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>
         <span>Ferramenta: {tool}</span>

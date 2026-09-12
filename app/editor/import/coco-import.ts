@@ -51,24 +51,31 @@ function coordinatesFromRing(value: unknown, sx: number, sy: number) {
 
 function landmarkPoints(value: unknown): Array<{ x: number; y: number; index: number }> {
   if (!Array.isArray(value)) return [];
-  if (value.every((item) => typeof item === "number")) {
-    const stride = value.length % 3 === 0 ? 3 : 2;
+
+  const allNumbers = value.every((item) => typeof item === "number" && Number.isFinite(item));
+  if (allNumbers) {
+    const numbers = value as number[];
+    const stride = numbers.length >= 3 && numbers.length % 3 === 0 ? 3 : 2;
     const points: Array<{ x: number; y: number; index: number }> = [];
-    for (let offset = 0; offset + 1 < value.length; offset += stride) {
-      const x = Number(value[offset]);
-      const y = Number(value[offset + 1]);
-      const visibility = stride === 3 ? Number(value[offset + 2]) : 1;
-      if (Number.isFinite(x) && Number.isFinite(y) && visibility > 0) points.push({ x, y, index: offset / stride });
+    for (let offset = 0, index = 0; offset + 1 < numbers.length; offset += stride, index += 1) {
+      const x = numbers[offset];
+      const y = numbers[offset + 1];
+      const visibility = stride === 3 ? numbers[offset + 2] : 1;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(visibility) || visibility <= 0) continue;
+      points.push({ x, y, index });
     }
     return points;
   }
+
   return value.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const point = item as { x?: unknown; y?: unknown; visibility?: unknown; v?: unknown };
     const x = Number(point.x);
     const y = Number(point.y);
     const visibility = Number(point.visibility ?? point.v ?? 1);
-    return Number.isFinite(x) && Number.isFinite(y) && visibility > 0 ? [{ x, y, index }] : [];
+    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(visibility) && visibility > 0
+      ? [{ x, y, index }]
+      : [];
   });
 }
 
@@ -76,17 +83,22 @@ function names(value: unknown) {
   return Array.isArray(value) ? value.map((name) => typeof name === "string" ? name.trim() : "") : [];
 }
 
+function sourceScale(width: number, height: number) {
+  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1;
+  const safeHeight = Number.isFinite(height) && height > 0 ? height : 1;
+  return { x: 1000 / safeWidth, y: 650 / safeHeight };
+}
+
 export function cocoAnnotationToEditor(
   input: CocoAnnotationInput,
   context: CocoImportContext,
 ): EditorAnnotation[] {
-  const sx = 1000 / Math.max(1, context.sourceWidth);
-  const sy = 650 / Math.max(1, context.sourceHeight);
+  const scale = sourceScale(context.sourceWidth, context.sourceHeight);
   const result: EditorAnnotation[] = [];
 
   if (context.geometryTypes.has("polygon")) {
     for (const ring of arrays(input.segmentation)) {
-      const coordinates = coordinatesFromRing(ring, sx, sy);
+      const coordinates = coordinatesFromRing(ring, scale.x, scale.y);
       if (coordinates.length < 3) continue;
       result.push(createPolygon(
         { id: context.annotationId(), asset: context.assetId, label: context.labelId },
@@ -103,7 +115,7 @@ export function cocoAnnotationToEditor(
       const label = name && context.pointLabelId ? context.pointLabelId(name, point.index) : context.labelId;
       result.push(createPoint(
         { id: context.annotationId(), asset: context.assetId, label },
-        { x: point.x * sx, y: point.y * sy },
+        { x: point.x * scale.x, y: point.y * scale.y },
       ));
     }
   }
@@ -113,7 +125,7 @@ export function cocoAnnotationToEditor(
     if ([x, y, width, height].every(Number.isFinite)) {
       result.push(createBox(
         { id: context.annotationId(), asset: context.assetId, label: context.labelId },
-        { x: x * sx, y: y * sy, width: width * sx, height: height * sy },
+        { x: x * scale.x, y: y * scale.y, width: width * scale.x, height: height * scale.y },
       ));
     }
   }

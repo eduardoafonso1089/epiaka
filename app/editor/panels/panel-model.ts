@@ -12,15 +12,6 @@ export function moveItemById<T extends { id: string }>(items: T[], id: string, d
   return next;
 }
 
-export function moveIdByDelta(ids: string[], id: string, delta: -1 | 1) {
-  const index = ids.indexOf(id);
-  const target = index + delta;
-  if (index < 0 || target < 0 || target >= ids.length) return ids;
-  const next = [...ids];
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-}
-
 export function renameLabel(labels: Label[], id: string, name: string): Label[] {
   const normalized = name.trim();
   if (!normalized || id === UNLABELED_ID) return labels;

@@ -174,6 +174,36 @@ export function CanonicalEditorWorkbench() {
     setHiddenLabelIds(new Set());
   }
 
+  function resetProjectState() {
+    replaceObjectUrls([]);
+    const unlabeled = { ...EMPTY_LABELS[0], name: copy.unlabeled };
+    setAssets([]);
+    setLabels([unlabeled]);
+    setActiveLabel(unlabeled.id);
+    setCurrent("");
+    setProjectName(copy.defaultProjectName);
+    setSaveMode("complete");
+    editor.replaceAnnotations([], true);
+    resetTransientVisibility();
+    setSessionDirty(false);
+    resetInteractionState();
+  }
+
+  function startNewProject() {
+    const hasCurrentData = assets.length > 0 || editor.annotations.length > 0 || projectDirty;
+    if (hasCurrentData && !window.confirm(copy.replaceUnsavedWithNewProject)) return;
+    resetProjectState();
+    setMessage(copy.newProjectReady);
+  }
+
+  function renameCurrentProject() {
+    const next = window.prompt(copy.renameProject, projectName)?.trim();
+    if (!next || next === projectName) return;
+    setProjectName(next);
+    setSessionDirty(true);
+    setMessage(copy.toastProjectRenamed);
+  }
+
   async function loadDemo(requestedLanguage: Language = language) {
     setLoading(true);
     try {
@@ -435,6 +465,26 @@ export function CanonicalEditorWorkbench() {
     setMessage(copy.toastSimplified);
   }
 
+  function duplicateSelected() {
+    if (!activePolygon) return;
+    const id = makeId("copy");
+    const offset = screenPixelsToImageUnits(22, imageSize, viewport.layout.width);
+    const xs = activePolygon.vertices.map((vertex) => vertex.x);
+    const ys = activePolygon.vertices.map((vertex) => vertex.y);
+    let dx = Math.max(...xs) + offset <= imageSize.width ? offset : -offset;
+    let dy = Math.max(...ys) + offset <= imageSize.height ? offset : -offset;
+    if (Math.min(...xs) + dx < 0) dx = 0;
+    if (Math.min(...ys) + dy < 0) dy = 0;
+    const duplicate: EditorAnnotation = {
+      ...activePolygon,
+      id,
+      vertices: activePolygon.vertices.map((vertex, index) => ({ id: `${id}:outer:v${index}`, x: vertex.x + dx, y: vertex.y + dy })),
+      holes: activePolygon.holes.map((hole, holeIndex) => hole.map((vertex, vertexIndex) => ({ id: `${id}:hole-${holeIndex}:v${vertexIndex}`, x: vertex.x + dx, y: vertex.y + dy }))),
+    };
+    editor.addAnnotation(duplicate, true);
+    setMessage(copy.toastDuplicated);
+  }
+
   function mergeSelected() {
     if (selectedPolygons.length < 2) return;
     const sameLabel = selectedPolygons.every((polygon) => polygon.label === selectedPolygons[0].label);
@@ -533,15 +583,17 @@ export function CanonicalEditorWorkbench() {
   </>;
 
   return <main style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>
-    <input ref={projectInputRef} type="file" accept=".plgm,application/vnd.poligome.project+zip" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void openProject(file); event.currentTarget.value = ""; }} />
+    <input ref={projectInputRef} type="file" accept=".plgm,application/vnd.poligome.project+zip" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file && (!projectDirty || window.confirm(copy.replaceUnsavedProject))) void openProject(file); event.currentTarget.value = ""; }} />
     <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" multiple hidden onChange={(event) => { void addImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
     <input ref={relinkInputRef} type="file" accept="image/*,.tif,.tiff" multiple hidden onChange={(event) => { void relinkProjectImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
 
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-        <strong style={{ marginRight: 8 }}>{copy.appTitle}</strong>
-        <button onClick={() => void loadDemo()} disabled={loading}>{copy.tryDemo}</button>
-        <button onClick={() => projectInputRef.current?.click()} disabled={loading}>{copy.openProject}</button>
+        <strong style={{ marginRight: 8 }}>{projectName}</strong>
+        <button onClick={startNewProject} disabled={loading} title={copy.newProjectHint}>{copy.newProject}</button>
+        <button onClick={renameCurrentProject} disabled={loading}>{copy.renameProject}</button>
+        <button onClick={() => { if (!projectDirty || window.confirm(copy.replaceUnsavedProject)) void loadDemo(); }} disabled={loading}>{copy.tryDemo}</button>
+        <button onClick={() => projectInputRef.current?.click()} disabled={loading} title={copy.openProjectHint}>{copy.openProject}</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>{copy.importImages}</button>
         {missingImageCount > 0 && <button onClick={() => relinkInputRef.current?.click()} disabled={loading}>{copy.reloadProjectImages} ({missingImageCount})</button>}
         <RasterImportControl makeId={makeId} language={language} disabled={loading} onImported={applyRasterImport} onMessage={setMessage} />
@@ -578,10 +630,12 @@ export function CanonicalEditorWorkbench() {
         snapEnabled={snapEnabled}
         vectorTool={vectorTool}
         canSimplify={Boolean(activePolygon)}
+        canDuplicate={Boolean(activePolygon)}
         canMerge={selectedPolygons.length >= 2}
         canEditPolygon={Boolean(activePolygon)}
         onToggleSnap={() => setSnapEnabled((value) => !value)}
         onSimplify={simplifySelected}
+        onDuplicate={duplicateSelected}
         onMerge={mergeSelected}
         onVectorTool={chooseVectorTool}
       />

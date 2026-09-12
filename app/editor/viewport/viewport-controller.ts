@@ -32,20 +32,33 @@ export class ViewportController {
     return new ViewportTransform(frame, this.state.image, DEFAULT_ANNOTATION_SPACE);
   }
 
+  private clampScroll(scrollLeft: number, scrollTop: number) {
+    const layout = this.layout();
+    const maxLeft = Math.max(0, layout.surfaceWidth - this.state.viewport.width);
+    const maxTop = Math.max(0, layout.surfaceHeight - this.state.viewport.height);
+    return {
+      scrollLeft: Math.max(0, Math.min(maxLeft, scrollLeft)),
+      scrollTop: Math.max(0, Math.min(maxTop, scrollTop)),
+    };
+  }
+
   setViewport(viewport: Size2D) {
     this.state = { ...this.state, viewport: { ...viewport } };
+    this.state = { ...this.state, ...this.clampScroll(this.state.scrollLeft, this.state.scrollTop) };
   }
 
   setImage(image: Size2D) {
     this.state = { ...this.state, image: { ...image } };
+    this.state = { ...this.state, ...this.clampScroll(this.state.scrollLeft, this.state.scrollTop) };
   }
 
   setZoom(zoom: number) {
     this.state = { ...this.state, zoom: Math.max(10, Math.min(400, zoom)) };
+    this.state = { ...this.state, ...this.clampScroll(this.state.scrollLeft, this.state.scrollTop) };
   }
 
   setScroll(scrollLeft: number, scrollTop: number) {
-    this.state = { ...this.state, scrollLeft, scrollTop };
+    this.state = { ...this.state, ...this.clampScroll(scrollLeft, scrollTop) };
   }
 
   sync(partial: Partial<ViewportState>) {
@@ -55,6 +68,11 @@ export class ViewportController {
     if (typeof partial.scrollLeft === "number" || typeof partial.scrollTop === "number") {
       this.setScroll(partial.scrollLeft ?? this.state.scrollLeft, partial.scrollTop ?? this.state.scrollTop);
     }
+    return this.snapshot();
+  }
+
+  panBy(pointerDx: number, pointerDy: number) {
+    this.setScroll(this.state.scrollLeft - pointerDx, this.state.scrollTop - pointerDy);
     return this.snapshot();
   }
 
@@ -71,14 +89,24 @@ export class ViewportController {
     const oldCanvasTop = frame.top;
     const nextCanvasLeft = oldCanvasLeft + nextLayout.left - oldLayout.left;
     const nextCanvasTop = oldCanvasTop + nextLayout.top - oldLayout.top;
+    const scrollLeft = anchoredScrollOffset(this.state.scrollLeft, nextCanvasLeft, nextLayout.width, anchorX, pointer.x);
+    const scrollTop = anchoredScrollOffset(this.state.scrollTop, nextCanvasTop, nextLayout.height, anchorY, pointer.y);
 
-    this.state = {
-      ...this.state,
-      zoom: target,
-      scrollLeft: anchoredScrollOffset(this.state.scrollLeft, nextCanvasLeft, nextLayout.width, anchorX, pointer.x),
-      scrollTop: anchoredScrollOffset(this.state.scrollTop, nextCanvasTop, nextLayout.height, anchorY, pointer.y),
-    };
+    this.state = { ...this.state, zoom: target };
+    this.state = { ...this.state, ...this.clampScroll(scrollLeft, scrollTop) };
+    return this.snapshot();
+  }
 
+  /**
+   * Scale around the previous gesture center, then translate the viewport so the
+   * same image content follows the moving midpoint between the two fingers.
+   */
+  pinchPan(nextZoom: number, frame: ScreenFrame, previousCenter: Point2D, currentCenter: Point2D) {
+    this.zoomAt(nextZoom, frame, previousCenter);
+    this.setScroll(
+      this.state.scrollLeft + previousCenter.x - currentCenter.x,
+      this.state.scrollTop + previousCenter.y - currentCenter.y,
+    );
     return this.snapshot();
   }
 }

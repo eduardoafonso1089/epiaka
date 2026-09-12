@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy, storedLanguage, type Language } from "../../lib/i18n";
+import { translateErrorCode } from "../../lib/error-message";
 import type { EditorAnnotation } from "../models/annotation-model";
 import { exportEditorCoco, exportEditorGeoJson, exportEditorYoloZip } from "./export-files";
 
@@ -29,17 +30,17 @@ export function ExportControls({
       exportEditorCoco(assets, labels, annotations);
       onMessage?.(copy.toastExportFile);
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : copy.toastExportFailed);
+      onMessage?.(translateErrorCode(error, copy, copy.toastExportFailed));
     }
   }
 
   async function yolo() {
     setBusy("yolo");
     try {
-      await exportEditorYoloZip(assets, labels, annotations);
+      await exportEditorYoloZip(assets, labels, annotations, copy.yoloReadme);
       onMessage?.(copy.toastExportYolo);
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : copy.toastExportFailed);
+      onMessage?.(translateErrorCode(error, copy, copy.toastExportFailed));
     } finally { setBusy(null); }
   }
 
@@ -48,7 +49,7 @@ export function ExportControls({
       exportEditorGeoJson(assets, labels, annotations);
       onMessage?.(copy.toastExportGeoJson);
     } catch (error) {
-      onMessage?.(error instanceof Error ? error.message : copy.toastExportFailed);
+      onMessage?.(translateErrorCode(error, copy, copy.toastExportFailed));
     }
   }
 

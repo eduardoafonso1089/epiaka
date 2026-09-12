@@ -161,12 +161,11 @@ try {
   const main = await snapshot(mainRoot, true);
   const refactor = await snapshot(root, false);
   assert.deepEqual(normalizeCoco(refactor.coco), normalizeCoco(main.coco), 'COCO demo golden diverged beyond explicitly tracked differences');
+  assert.equal(refactor.coco.info.version, main.coco.info.version, 'COCO metadata version must remain externally compatible');
   assert.deepEqual(round(refactor.yolo), round(main.yolo), 'YOLO demo golden diverged');
   assert.deepEqual(round(refactor.geojson), round(main.geojson), 'GeoJSON demo golden diverged');
   assert.deepEqual(refactor.semanticProject, main.semanticProject, 'semantic .plgm demo content diverged');
 
-  assert.equal(main.coco.info.version, justifications['coco.info.version'].main);
-  assert.equal(refactor.coco.info.version, justifications['coco.info.version'].refactor);
   assert.equal(main.manifest.version, justifications['project.manifest.version'].main);
   assert.equal(refactor.manifest.version, justifications['project.manifest.version'].refactor);
   assert.equal(main.manifest.coordinate_space ?? null, justifications['project.coordinate_space'].main);

@@ -85,9 +85,9 @@ Pan and pinch mutate viewport state only.
 - dirty/saved state;
 - active gesture transaction.
 
-It also owns canonical annotation ordering and batch reclassification. Reordering is constrained to annotations belonging to the same asset, and batch reclassification is a single undoable editor operation.
+It also owns canonical annotation ordering, batch reclassification and atomic batch replacement. Reordering is constrained to annotations belonging to the same asset, batch reclassification is a single undoable editor operation, and merge/split can replace multiple annotations in one history snapshot.
 
-`app/editor/interactions/use-canvas-interactions.ts` handles annotation drag, vertex drag/insertion, rotated box resize/rotation and marquee selection directly in source-image pixels.
+`app/editor/interactions/use-canvas-interactions.ts` handles annotation drag, vertex drag/insertion, rotated box resize/rotation, marquee selection and source-pixel snapping for vertex editing.
 
 A continuous drag/resize/rotation creates one undo step.
 
@@ -133,9 +133,7 @@ Internal geometry remains in image pixels.
 
 Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be ported before the refactor is considered product-complete:
 
-- advanced vector operations: snapping, reshape, simplify, union/merge, split and polygon-hole creation;
 - local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
-- keyboard shortcuts from the previous annotator;
 - selective COCO category/annotation import;
 - complete i18n coverage for the canonical workbench;
 - final visual-system decision for the canonical shell.
@@ -145,7 +143,9 @@ The following application surfaces have already been restored on the canonical a
 - image panel: search, select, reorder and delete;
 - annotation panel: hide/show, delete, asset-local reorder, select-all and Shift/Ctrl/Cmd list selection;
 - class management: quick label creation, rename, color, hide/show, protected `Sem label`, delete with reclassification to `Sem label`, active class selection and batch reclassification;
-- Quality/Review, including image/annotation/class scores and source-pixel dataset summaries.
+- Quality/Review, including image/annotation/class scores and source-pixel dataset summaries;
+- advanced vector operations: snapping, simplify, union/merge, split, polygon-hole creation and reshape;
+- keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys.
 
 Cephalometric-landmark import is **not part of Poligome parity** and must not be ported into the canonical editor.
 
@@ -167,6 +167,42 @@ The canonical management surface lives under `app/editor/panels`.
 - deleting a class preserves its annotations by moving them to the protected `unlabeled` class;
 - annotation reorder never crosses asset boundaries;
 - batch class changes are recorded through `EditorState`, so one batch operation corresponds to one undo step.
+
+## Advanced vector editing
+
+Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` and never uses a normalized editor extent.
+
+- snapping prefers vertices inside the screen-derived tolerance and falls back to edge projection only when no vertex qualifies;
+- simplification uses Ramer-Douglas-Peucker in source-image pixels and rejects invalid output rings;
+- polygon union/difference is delegated to the existing `polygon-clipping` dependency while Poligome retains its own interaction and model semantics;
+- split derives its cutter scale from the real image dimensions, including very large rasters;
+- polygon holes are validated as fully contained, non-crossing rings;
+- reshape consumes a source-pixel trace and preserves a valid canonical polygon;
+- merge/split use `replace-annotations-batch`, so each operation creates one undo step.
+
+`app/editor/interactions/use-advanced-vector-interactions.ts` owns hole/split/reshape gestures, while `app/editor/vector/vector-toolbar.tsx` only emits commands.
+
+## Keyboard commands
+
+`app/editor/commands/editor-shortcuts.ts` translates keyboard input into editor commands. The current canonical shortcuts include:
+
+- `V` select;
+- `H` hand/pan;
+- `B` box;
+- `P` polygon;
+- `F` freehand;
+- `L` line;
+- `K` point;
+- `O` polygon hole;
+- `X` split;
+- `R` reshape;
+- `Enter` finish the active draft;
+- `Esc` cancel the active draft/tool;
+- `Delete`/`Backspace` delete the selected vertex first, otherwise selected annotations;
+- `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and `Ctrl/Cmd+Y` for undo/redo;
+- unmodified class shortcut keys select their corresponding label.
+
+Keyboard commands are ignored while an input, textarea, select or content-editable element owns focus.
 
 ## Quality and review
 

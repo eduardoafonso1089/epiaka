@@ -77,7 +77,27 @@ export function EditorManagementPanels(props: Props) {
     setNewLabelName("");
   }
 
-  return <section aria-label="Editor management" className={ui.managementGrid}>
+  function confirmAnnotationDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`${copy.confirmDeleteAnnotations}\n${copy.deleteAnnotationsWarning}`)) return;
+    props.onDeleteAnnotations(ids);
+  }
+
+  function confirmAssetDelete(item: Asset, annotationCount: number) {
+    const annotationWarning = annotationCount
+      ? `\n${annotationCount} ${copy.annotations.toLocaleLowerCase()}. ${copy.deleteAnnotationsWarning}`
+      : "";
+    if (!window.confirm(`${copy.deleteSelectedAnnotations}: ${item.name}?${annotationWarning}`)) return;
+    props.onDeleteAsset(item.id);
+  }
+
+  function confirmLabelDelete(label: Label) {
+    if (label.id === UNLABELED_ID) return;
+    if (!window.confirm(`${copy.confirmDeleteClass}\n${copy.deleteClassWarning} ${copy.unlabeled}.`)) return;
+    props.onDeleteLabel(label.id);
+  }
+
+  return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations} · ${copy.manageClasses}`} className={ui.managementGrid}>
     <div className={ui.panelCard}>
       <div className={ui.panelHeader}>
         <strong>{copy.images}</strong><small className={ui.counter}>{assets.length}</small>
@@ -93,7 +113,7 @@ export function EditorManagementPanels(props: Props) {
             </button>
             <button className={ui.rowAction} title={copy.reorderImage} disabled={index <= 0} onClick={() => props.onMoveAsset(item.id, -1)}>↑</button>
             <button className={ui.rowAction} title={copy.reorderImage} disabled={index < 0 || index >= assets.length - 1} onClick={() => props.onMoveAsset(item.id, 1)}>↓</button>
-            <button className={classes(ui.rowAction, ui.dangerAction)} title={`${copy.deleteSelectedAnnotations}: ${item.name}`} onClick={() => props.onDeleteAsset(item.id)}>×</button>
+            <button className={classes(ui.rowAction, ui.dangerAction)} title={`${copy.deleteSelectedAnnotations}: ${item.name}`} onClick={() => confirmAssetDelete(item, count)}>×</button>
           </div>;
         })}
       </div>
@@ -107,7 +127,7 @@ export function EditorManagementPanels(props: Props) {
       <div className={ui.controlRow}>
         <button onClick={props.onSelectAllAnnotations} disabled={!activeAssetAnnotations.length}>{copy.selectAllAnnotations}</button>
         <button onClick={props.onClearAnnotationSelection} disabled={!activeSelectedIds.length}>{copy.clearAnnotationSelection}</button>
-        <button className={ui.dangerAction} onClick={() => props.onDeleteAnnotations(activeSelectedIds)} disabled={!activeSelectedIds.length}>{copy.deleteSelectedAnnotations}</button>
+        <button className={ui.dangerAction} onClick={() => confirmAnnotationDelete(activeSelectedIds)} disabled={!activeSelectedIds.length}>{copy.deleteSelectedAnnotations}</button>
       </div>
       {activeSelectedIds.length > 0 && <div className={ui.batchRow}>
         <small>{activeSelectedIds.length} {copy.batchSelection}</small>
@@ -130,7 +150,7 @@ export function EditorManagementPanels(props: Props) {
             <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index <= 0} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, -1); }}>↑</button>
             <button className={ui.rowAction} title={copy.reorderAnnotation} disabled={index >= activeAssetAnnotations.length - 1} onClick={(event) => { stop(event); props.onMoveAnnotation(annotation.id, 1); }}>↓</button>
             <button className={ui.rowAction} title={hidden ? copy.showAnnotation : copy.hideAnnotation} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? "○" : "●"}</button>
-            <button className={classes(ui.rowAction, ui.dangerAction)} title={copy.deleteShape} onClick={(event) => { stop(event); props.onDeleteAnnotations([annotation.id]); }}>×</button>
+            <button className={classes(ui.rowAction, ui.dangerAction)} title={copy.deleteShape} onClick={(event) => { stop(event); confirmAnnotationDelete([annotation.id]); }}>×</button>
           </div>;
         })}
       </div>
@@ -157,7 +177,7 @@ export function EditorManagementPanels(props: Props) {
             <input aria-label={`${copy.renameClass}: ${labelName(label)}`} key={`${label.id}-${label.name}-${copy.unlabeled}`} defaultValue={labelName(label)} disabled={protectedLabel} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
             <small>{count}</small>
             <button className={ui.rowAction} title={hidden ? copy.showClass : copy.hideClass} onClick={() => props.onToggleLabelVisibility(label.id)}>{hidden ? "○" : "●"}</button>
-            <button className={classes(ui.rowAction, ui.dangerAction)} title={protectedLabel ? copy.unlabeledProtected : copy.deleteClass} disabled={protectedLabel} onClick={() => props.onDeleteLabel(label.id)}>×</button>
+            <button className={classes(ui.rowAction, ui.dangerAction)} title={protectedLabel ? copy.unlabeledProtected : copy.deleteClass} disabled={protectedLabel} onClick={() => confirmLabelDelete(label)}>×</button>
           </div>;
         })}
       </div>

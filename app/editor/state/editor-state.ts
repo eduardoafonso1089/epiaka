@@ -93,12 +93,20 @@ function keepExistingSelection(state: EditorState, annotations: EditorAnnotation
   };
 }
 
-function reorderByDelta<T extends { id: string }>(items: T[], id: string, delta: -1 | 1) {
+function reorderAnnotationWithinAsset(items: EditorAnnotation[], id: string, delta: -1 | 1) {
   const index = items.findIndex((item) => item.id === id);
-  const target = index + delta;
-  if (index < 0 || target < 0 || target >= items.length) return items;
+  if (index < 0) return items;
+  const assetId = items[index].asset;
+  const peerIndexes = items.reduce<number[]>((indexes, item, itemIndex) => {
+    if (item.asset === assetId) indexes.push(itemIndex);
+    return indexes;
+  }, []);
+  const peerIndex = peerIndexes.indexOf(index);
+  const targetPeerIndex = peerIndex + delta;
+  if (peerIndex < 0 || targetPeerIndex < 0 || targetPeerIndex >= peerIndexes.length) return items;
+  const targetIndex = peerIndexes[targetPeerIndex];
   const next = [...items];
-  [next[index], next[target]] = [next[target], next[index]];
+  [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
   return next;
 }
 
@@ -136,7 +144,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case "reorder-annotation": {
-      const annotations = reorderByDelta(state.annotations, action.id, action.delta);
+      const annotations = reorderAnnotationWithinAsset(state.annotations, action.id, action.delta);
       return annotations === state.annotations ? state : mutate(state, annotations);
     }
 

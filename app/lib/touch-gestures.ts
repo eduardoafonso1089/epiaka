@@ -35,7 +35,11 @@ export class TouchGesture {
   pair() {
     const [a, b] = this.points.values();
     if (!a || !b) return null;
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
+    return {
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+    };
   }
 }
 
@@ -45,15 +49,4 @@ export function pinchZoom(initialZoom: number, initialDistance: number, distance
 
 export function touchToolUsesTap(tool: string) {
   return ["polygon", "ring", "line", "point", "sam", "split"].includes(tool);
-}
-
-/** Legacy helper retained for non-canonical callers. Canonical vertex targeting uses source-image geometry. */
-export function nearestTouchVertex(points: number[], x: number, y: number, width: number, height: number, radius = 22) {
-  let closest = -1;
-  let distance = radius;
-  for (let i = 0; i < points.length; i += 2) {
-    const candidate = Math.hypot((points[i] - x) * width / 1000, (points[i + 1] - y) * height / 650);
-    if (candidate <= distance) { closest = i / 2; distance = candidate; }
-  }
-  return closest;
 }

@@ -1,0 +1,463 @@
+name: Part 1 Audit Fixes
+
+on:
+  push:
+    branches:
+      - refactor/editor-architecture
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/editor-architecture
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fix 1.1 demo route
+        run: |
+          cat > app/editor/session/demo-route.ts <<'EOF'
+          /** Resolve and consume the landing-page demo query without discarding other URL state. */
+          export function demoRouteTarget(href: string) {
+            const url = new URL(href, "http://localhost");
+            if (url.searchParams.get("demo") !== "1") return null;
+            url.searchParams.delete("demo");
+            return `${url.pathname}${url.search}${url.hash}`;
+          }
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/editor/workbench/canonical-editor-workbench.tsx')
+          s=p.read_text()
+          s=s.replace('import { CogTiledLayer } from "../raster/cog-tiled-layer";','import { CogTiledLayer } from "../raster/cog-tiled-layer";\nimport { demoRouteTarget } from "../session/demo-route";')
+          s=s.replace('  const idCounter = useRef(0);','  const idCounter = useRef(0);\n  const demoQueryHandled = useRef(false);')
+          needle='''  async function openProject(file: File) {'''
+          effect='''  useEffect(() => {\n    if (demoQueryHandled.current || typeof window === "undefined") return;\n    demoQueryHandled.current = true;\n    const target = demoRouteTarget(window.location.href);\n    if (target === null) return;\n    window.history.replaceState(window.history.state, "", target);\n    void loadDemo();\n  }, []);\n\n'''
+          if needle not in s: raise SystemExit('1.1 insertion point missing')
+          s=s.replace(needle,effect+needle,1)
+          p.write_text(s)
+          PY
+          cat > tests/demo-route.test.mjs <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { demoRouteTarget } from '../app/editor/session/demo-route.ts';
+
+          test('demo query is consumed while preserving other query parameters and hash', () => {
+            assert.equal(demoRouteTarget('https://poligome.com/annotate?demo=1&foo=bar#x'), '/annotate?foo=bar#x');
+            assert.equal(demoRouteTarget('https://poligome.com/annotate?foo=bar'), null);
+          });
+
+          test('canonical workbench consumes demo=1, clears history URL and loads the demo', () => {
+            const source = readFileSync(new URL('../app/editor/workbench/canonical-editor-workbench.tsx', import.meta.url), 'utf8');
+            assert.match(source, /demoRouteTarget\(window\.location\.href\)/);
+            assert.match(source, /window\.history\.replaceState/);
+            assert.match(source, /void loadDemo\(\)/);
+          });
+          EOF
+          node --import tsx --test tests/demo-route.test.mjs
+          git add app/editor/session/demo-route.ts app/editor/workbench/canonical-editor-workbench.tsx tests/demo-route.test.mjs
+          git commit -m "fix(editor): restore landing demo route"
+
+      - name: Fix 1.2 persisted preferences
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/editor/workbench/canonical-editor-workbench.tsx')
+          s=p.read_text()
+          s=s.replace('import { getCopy } from "../../lib/i18n";','import { getCopy, storedLanguage, storedTheme, type Language } from "../../lib/i18n";')
+          s=s.replace('  const [projectName, setProjectName] = useState("Poligome V4");','  const [projectName, setProjectName] = useState("Poligome V4");\n  const [language, setLanguage] = useState<Language>("pt");')
+          s=s.replace('  const editor = useEditorState();','  const editor = useEditorState();\n  const copy = getCopy(language);')
+          cleanup='''  useEffect(() => () => objectUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);'''
+          pref='''  useEffect(() => {\n    setLanguage(storedLanguage());\n    document.documentElement.dataset.theme = storedTheme();\n  }, []);'''
+          s=s.replace(cleanup,cleanup+'\n'+pref,1)
+          s=s.replace('async function loadDemo() {','async function loadDemo(requestedLanguage: Language = language) {')
+          s=s.replace('createEditorDemo("pt")','createEditorDemo(requestedLanguage)')
+          s=s.replace('void loadDemo();\n  }, []);','void loadDemo(storedLanguage());\n  }, []);',1)
+          s=s.replace('openEditorProject(file, getCopy("pt"))','openEditorProject(file, copy)')
+          s=s.replace('saveEditorProject(projectName, assets, labels, editor.annotations, "complete", getCopy("pt"))','saveEditorProject(projectName, assets, labels, editor.annotations, "complete", copy)')
+          s=s.replace('return <main style={{ minHeight: "100vh", background: "#111315", color: "#f4f5f5", padding: 16, fontFamily: "system-ui, sans-serif" }}>','return <main style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink)", padding: 16, fontFamily: "var(--sans), system-ui, sans-serif" }}>')
+          s=s.replace('background: "#080909", overflow: "auto", border: "1px solid #34383b"','background: "var(--canvas-bg)", overflow: "auto", border: "1px solid var(--line)"')
+          p.write_text(s)
+          p=Path('app/editor/raster/cog-tiled-layer.tsx')
+          s=p.read_text().replace('background: "#080909", color: "#9ba3a7"','background: "var(--canvas-bg)", color: "var(--muted)"').replace('background: "#080909"','background: "var(--canvas-bg)"')
+          p.write_text(s)
+          PY
+          cat > tests/editor-preferences.test.mjs <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          test('canonical editor reads the persisted language and theme instead of fixing Portuguese/dark colors', () => {
+            const source = readFileSync(new URL('../app/editor/workbench/canonical-editor-workbench.tsx', import.meta.url), 'utf8');
+            assert.match(source, /storedLanguage\(\)/);
+            assert.match(source, /storedTheme\(\)/);
+            assert.match(source, /const copy = getCopy\(language\)/);
+            assert.doesNotMatch(source, /getCopy\("pt"\)/);
+            assert.match(source, /var\(--paper\)/);
+            assert.match(source, /var\(--canvas-bg\)/);
+            assert.doesNotMatch(source, /background: "#111315"/);
+          });
+          EOF
+          node --import tsx --test tests/editor-preferences.test.mjs tests/demo-route.test.mjs
+          git add app/editor/workbench/canonical-editor-workbench.tsx app/editor/raster/cog-tiled-layer.tsx tests/editor-preferences.test.mjs
+          git commit -m "fix(editor): honor persisted language and theme"
+
+      - name: Fix 1.3 protect dormant SAM module
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('docs/EDITOR_ARCHITECTURE.md')
+          s=p.read_text()
+          old='10. Remove any remaining orphaned legacy utility modules after CI confirms they have no consumers. **Next.**'
+          new='''10. Remove only utilities proven to be legacy and behaviorally superseded. A module must **not** be deleted solely because its application UI has not yet been ported. In particular, `app/lib/sam.ts` and modules reachable only from parity-pending UI are protected until the relevant product decision and port are complete. `app/lib/sam.ts` currently also needs migration away from the removed normalized-geometry helpers before it can be reactivated. **Guarded cleanup, not blanket orphan deletion.**'''
+          if old not in s: raise SystemExit('migration item 10 not found')
+          p.write_text(s.replace(old,new))
+          PY
+          cat > tests/dormant-module-policy.test.mjs <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          test('architecture docs protect dormant feature modules from orphan cleanup', () => {
+            const docs = readFileSync(new URL('../docs/EDITOR_ARCHITECTURE.md', import.meta.url), 'utf8');
+            assert.match(docs, /app\/lib\/sam\.ts/);
+            assert.match(docs, /must \*\*not\*\* be deleted solely because its application UI has not yet been ported/);
+            assert.match(docs, /needs migration away from the removed normalized-geometry helpers/);
+          });
+          EOF
+          node --import tsx --test tests/dormant-module-policy.test.mjs
+          git add docs/EDITOR_ARCHITECTURE.md tests/dormant-module-policy.test.mjs
+          git commit -m "docs(editor): protect dormant parity modules from cleanup"
+
+      - name: Fix 1.4 runtime raster serialization comment
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/lib/types.ts')
+          s=p.read_text()
+          old='''  /** Runtime-only local/bundled tiled raster. Never serialized. */\n  runtimeRasterSource?: File;'''
+          new='''  /**\n   * Runtime-only handle to a local/bundled tiled raster. This field itself is never\n   * serialized into project.json; in a complete .plgm, project.ts may bundle the\n   * underlying raster bytes and restore a new runtime handle when the project opens.\n   */\n  runtimeRasterSource?: File;'''
+          if old not in s: raise SystemExit('runtimeRasterSource comment not found')
+          p.write_text(s.replace(old,new))
+          PY
+          cat >> tests/raster-project.test.mjs <<'EOF'
+
+          test('runtime tiled raster handle stays out of project.json while its bytes are bundled', async () => {
+            const originalDocument=globalThis.document, originalWindow=globalThis.window;
+            const originalCreate=URL.createObjectURL, originalRevoke=URL.revokeObjectURL;
+            let saved;
+            URL.createObjectURL=blob=>{saved=blob;return 'blob:project';}; URL.revokeObjectURL=()=>{};
+            globalThis.document={createElement:()=>({style:{},click(){},remove(){}}),body:{appendChild(){}}};
+            globalThis.window={setTimeout:callback=>{callback();return 1;}};
+            const rasterBytes=new Uint8Array([73,73,42,0,1,2,3,4]);
+            const asset={id:'cog',name:'ortho.tif',src:'blob:cog',local:true,width:50000,height:30000,
+              raster:{kind:'cog',mode:'tiled',sourceType:'local'},runtimeRasterSource:rasterBytes};
+            try {
+              await savePoligomeProjectV4('COG',[asset],[{id:'u',name:'Unlabeled',color:'#aaa',key:''}],[], 'complete', getCopy('en'));
+              const JSZip=(await import('jszip')).default;
+              const zip=await JSZip.loadAsync(await saved.arrayBuffer());
+              const manifest=JSON.parse(await zip.file('project.json').async('string'));
+              assert.equal(Object.hasOwn(manifest.assets[0],'runtimeRasterSource'),false);
+              assert.equal(typeof manifest.assets[0].bundled_path,'string');
+              const bundled=await zip.file(manifest.assets[0].bundled_path).async('uint8array');
+              assert.deepEqual([...bundled],[...rasterBytes]);
+            } finally {
+              globalThis.document=originalDocument; globalThis.window=originalWindow;
+              URL.createObjectURL=originalCreate; URL.revokeObjectURL=originalRevoke;
+            }
+          });
+          EOF
+          node --import tsx --test tests/raster-project.test.mjs
+          git add app/lib/types.ts tests/raster-project.test.mjs
+          git commit -m "docs(raster): clarify bundled runtime source persistence"
+
+      - name: Fix 1.5 expose project save mode
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/editor/workbench/canonical-editor-workbench.tsx')
+          s=p.read_text()
+          s=s.replace('  const [language, setLanguage] = useState<Language>("pt");','  const [language, setLanguage] = useState<Language>("pt");\n  const [saveMode, setSaveMode] = useState<"annotations" | "complete">("complete");')
+          s=s.replace('saveEditorProject(projectName, assets, labels, editor.annotations, "complete", copy)','saveEditorProject(projectName, assets, labels, editor.annotations, saveMode, copy)')
+          old='<button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V4</button>'
+          new='''<select aria-label={copy.saveProjectDescription} value={saveMode} onChange={(event) => setSaveMode(event.target.value as "annotations" | "complete")} disabled={loading}>\n          <option value="complete">{copy.imagesAndAnnotations}</option>\n          <option value="annotations">{copy.annotationsOnly}</option>\n        </select>\n        <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V4</button>'''
+          if old not in s: raise SystemExit('save button not found')
+          p.write_text(s.replace(old,new))
+          PY
+          cat > tests/project-save-mode-ui.test.mjs <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          test('canonical workbench exposes complete and annotations-only project saves', () => {
+            const source=readFileSync(new URL('../app/editor/workbench/canonical-editor-workbench.tsx',import.meta.url),'utf8');
+            assert.match(source,/useState<"annotations" \| "complete">\("complete"\)/);
+            assert.match(source,/value="complete"/);
+            assert.match(source,/value="annotations"/);
+            assert.match(source,/saveEditorProject\(projectName, assets, labels, editor\.annotations, saveMode, copy\)/);
+            assert.doesNotMatch(source,/editor\.annotations, "complete", copy/);
+          });
+          EOF
+          node --import tsx --test tests/project-save-mode-ui.test.mjs tests/raster-project.test.mjs
+          git add app/editor/workbench/canonical-editor-workbench.tsx tests/project-save-mode-ui.test.mjs
+          git commit -m "fix(project): expose annotations-only and complete save modes"
+
+      - name: Fix 1.6 document application parity honestly
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('README.md')
+          s=p.read_text()
+          marker='Poligome runs entirely in the tab. Images and annotations are processed on\nyour own machine, and the dataset you export never passes through a backend. AI\nassistance is optional and also local: the SAM connector and the GeoTIFF\nconverter run on your computer, not in the cloud.\n'
+          notice='''\n> [!IMPORTANT]\n> **Status of `refactor/editor-architecture`:** the canonical source-pixel editor core is active,\n> but application-level parity with `main` is still in progress. The branch does **not currently**\n> expose the local SAM UI, advanced vector operations (snap/simplify/merge/split/reshape/hole creation),\n> the full image/annotation/class management panels, keyboard shortcuts, complete editor i18n, the\n> Quality/Review UI, selective COCO import, or cephalometric-landmark import. These are tracked as\n> parity decisions rather than silently treated as completed features.\n'''
+          if notice.strip() not in s:
+            s=s.replace(marker,marker+notice)
+          s=s.replace('The image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly,\nreads them by tiles, and crops a region into the project as a regular image.\nAnnotations drawn over a georeferenced crop can be exported as GeoJSON.',
+          'The refactored image annotator opens GeoTIFF and Cloud Optimized GeoTIFF files directly. COGs can be rendered natively as a tiled raster without a PNG intermediary, while the existing crop workflow remains available. Annotations over georeferenced assets can be exported as GeoJSON.')
+          s=s.replace('Four languages — Portuguese, English, French, and Spanish — with light, dark,\nand system themes. Keyboard shortcuts cover the drawing tools, and the language\nand theme choices are remembered per browser.',
+          'The landing page provides Portuguese, English, French, and Spanish plus light, dark, and system themes, and stores those preferences in the browser. The canonical editor now honors the stored language/theme preference, but full translation coverage and the former keyboard-shortcut surface are still pending application-parity work on this branch.')
+          p.write_text(s)
+
+          p=Path('docs/EDITOR_ARCHITECTURE.md')
+          s=p.read_text()
+          insert='''\n## Application parity\n\nCore migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be decided/ported before the refactor is considered product-complete:\n\n- advanced vector operations: snapping, reshape, simplify, union/merge, split and polygon-hole creation;\n- image and annotation panels: search, reorder, delete, hide/show and list-based modifier selection;\n- class management: create/rename/color/delete/hide, quick label creation and batch reclassification;\n- local SAM activation/setup, include/exclude prompts and save-and-edit workflow;\n- Quality/Review UI (`reviewScore` remains only in data types);\n- keyboard shortcuts from the previous annotator;\n- selective COCO category/annotation import and cephalometric-landmark import;\n- complete i18n coverage for the canonical workbench;\n- final visual-system decision for the canonical shell.\n\nUntil D1/D2 product decisions are made, these missing surfaces must not be treated as dead legacy solely because they have no canonical consumer.\n'''
+          anchor='\n## Validation\n'
+          if '## Application parity' not in s:
+            s=s.replace(anchor,insert+anchor)
+          s=s.replace('## Migration status','## Core migration status')
+          p.write_text(s)
+          PY
+          cat > tests/application-parity-docs.test.mjs <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          test('README and architecture docs distinguish core migration from application parity', () => {
+            const readme=readFileSync(new URL('../README.md',import.meta.url),'utf8');
+            const docs=readFileSync(new URL('../docs/EDITOR_ARCHITECTURE.md',import.meta.url),'utf8');
+            assert.match(readme,/Status of `refactor\/editor-architecture`/);
+            assert.match(readme,/does \*\*not currently\*\* expose the local SAM UI/);
+            assert.match(docs,/## Application parity/);
+            assert.match(docs,/advanced vector operations/);
+            assert.match(docs,/local SAM activation/);
+            assert.match(docs,/## Core migration status/);
+          });
+          EOF
+          node --import tsx --test tests/application-parity-docs.test.mjs tests/dormant-module-policy.test.mjs
+          git add README.md docs/EDITOR_ARCHITECTURE.md tests/application-parity-docs.test.mjs
+          git commit -m "docs: separate core migration from application parity"
+
+      - name: Fix 1.7 add parity gates
+        run: |
+          mkdir -p scripts tests/fixtures
+          cat > scripts/check-editor-i18n-parity.mjs <<'EOF'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const allowlistPath='tests/fixtures/editor-i18n-debt-allowlist.json';
+          const keyPattern=/\bcopy\.([A-Za-z0-9_]+)/g;
+          const keysFrom=(source)=>new Set([...source.matchAll(keyPattern)].map((match)=>match[1]));
+          const mainFiles=execFileSync('git',['ls-tree','-r','--name-only','origin/main','--','app/annotate'],{encoding:'utf8'})
+            .trim().split('\n').filter((file)=>/\.[cm]?[jt]sx?$/.test(file));
+          const mainKeys=new Set();
+          for(const file of mainFiles){
+            const source=execFileSync('git',['show',`origin/main:${file}`],{encoding:'utf8'});
+            for(const key of keysFrom(source)) mainKeys.add(key);
+          }
+          const currentKeys=new Set();
+          function walk(path){
+            for(const name of readdirSync(path)){
+              const full=join(path,name); const stat=statSync(full);
+              if(stat.isDirectory()) walk(full);
+              else if(/\.[cm]?[jt]sx?$/.test(name)) for(const key of keysFrom(readFileSync(full,'utf8'))) currentKeys.add(key);
+            }
+          }
+          for(const root of ['app/editor','app/raster','app/annotate']) walk(root);
+          const debt=[...mainKeys].filter((key)=>!currentKeys.has(key)).sort();
+          if(process.argv.includes('--write-allowlist')){
+            writeFileSync(allowlistPath,JSON.stringify(debt,null,2)+'\n');
+            console.log(`Wrote ${debt.length} explicit i18n parity-debt keys.`);
+            process.exit(0);
+          }
+          const allowed=JSON.parse(readFileSync(allowlistPath,'utf8'));
+          const allowedSet=new Set(allowed);
+          const unexpected=debt.filter((key)=>!allowedSet.has(key));
+          const stale=allowed.filter((key)=>!debt.includes(key));
+          if(unexpected.length||stale.length){
+            console.error('i18n parity gate failed.');
+            if(unexpected.length) console.error('Missing and not allowlisted:',unexpected.join(', '));
+            if(stale.length) console.error('Stale allowlist entries (remove them):',stale.join(', '));
+            process.exit(1);
+          }
+          console.log(`i18n parity debt: ${debt.length} explicitly allowlisted key(s); allowlist is exact and can only shrink as UI returns.`);
+          EOF
+          node scripts/check-editor-i18n-parity.mjs --write-allowlist
+
+          cat > tests/fixtures/export-parity-justifications.json <<'EOF'
+          {
+            "coco.info.version": {
+              "main": "1.0",
+              "refactor": "4.0",
+              "reason": "Pending product decision D8; the gate makes this divergence explicit instead of silently accepting it."
+            },
+            "project.manifest.version": {
+              "main": 2,
+              "refactor": 4,
+              "reason": "Intentional V4 canonical source-image-pixel project format."
+            },
+            "project.coordinate_space": {
+              "main": null,
+              "refactor": "image-pixels",
+              "reason": "V4 explicitly declares the canonical source-image coordinate space."
+            },
+            "project.annotation_model": {
+              "main": "legacy-normalized",
+              "refactor": "canonical-source-pixels",
+              "reason": "Intentional internal project-model migration; semantic geometry must still compare equal."
+            }
+          }
+          EOF
+
+          cat > scripts/check-export-parity.mjs <<'EOF'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          import JSZip from 'jszip';
+
+          const root=process.cwd();
+          const mainRoot=resolve('.tmp-export-main');
+          rmSync(mainRoot,{recursive:true,force:true});
+          execFileSync('git',['worktree','add','--detach',mainRoot,'origin/main'],{stdio:'ignore'});
+          if(!existsSync(resolve(mainRoot,'node_modules'))) symlinkSync(resolve(root,'node_modules'),resolve(mainRoot,'node_modules'),'dir');
+          const justifications=JSON.parse(readFileSync('tests/fixtures/export-parity-justifications.json','utf8'));
+
+          const objectBlobs=new Map(); let serial=0; let lastBlob=null;
+          const originalCreate=URL.createObjectURL, originalRevoke=URL.revokeObjectURL;
+          const originalFetch=globalThis.fetch, originalDocument=globalThis.document, originalWindow=globalThis.window;
+          URL.createObjectURL=(blob)=>{ const url=`blob:parity-${++serial}`; objectBlobs.set(url,blob); lastBlob=blob; return url; };
+          URL.revokeObjectURL=()=>{};
+          globalThis.document={createElement:()=>({style:{},click(){},remove(){}}),body:{appendChild(){}}};
+          globalThis.window={setTimeout:(fn)=>{fn();return 1;}};
+          globalThis.fetch=async(input)=>{
+            const url=String(input);
+            if(url.startsWith('/demo/')) return new Response(new Blob([`fixture:${url}`],{type:'image/jpeg'}),{status:200});
+            if(objectBlobs.has(url)) return new Response(objectBlobs.get(url),{status:200});
+            return new Response(null,{status:404});
+          };
+          const imp=(base,path)=>import(pathToFileURL(resolve(base,path)).href);
+          const round=(value)=>{
+            if(typeof value==='number') return Number.isFinite(value)?Number(value.toFixed(8)):value;
+            if(Array.isArray(value)) return value.map(round);
+            if(value&&typeof value==='object') return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,round(v)]));
+            return value;
+          };
+          const stripVersion=(doc)=>{ const clone=structuredClone(doc); if(clone.info) delete clone.info.version; return round(clone); };
+          const geoFor=(asset)=>({source:'demo.tif',crs:'EPSG:4326',originX:-45,originY:-20,scaleX:.0001,scaleY:-.0001,sourceWidth:asset.width,sourceHeight:asset.height,window:{x:0,y:0,w:asset.width,h:asset.height},cropWidth:asset.width,cropHeight:asset.height,transform:[.0001,0,-45,0,-.0001,-20]});
+          const normalizeAnnotation=(annotation,asset,legacy)=>{
+            const sx=legacy?asset.width/1000:1, sy=legacy?asset.height/650:1;
+            if(annotation.type==='box') return round({id:annotation.id,asset:annotation.asset,label:annotation.label,type:'box',x:annotation.x*sx,y:annotation.y*sy,width:(legacy?annotation.w:annotation.width)*sx,height:(legacy?annotation.h:annotation.height)*sy,rotation:annotation.rotation??0});
+            if(annotation.type==='point') return round({id:annotation.id,asset:annotation.asset,label:annotation.label,type:'point',x:annotation.x*sx,y:annotation.y*sy});
+            const rings=legacy?[annotation.pts??[],...(annotation.holes??[])]:[annotation.vertices.flatMap(v=>[v.x,v.y]),...(annotation.holes??[]).map(h=>h.flatMap(v=>[v.x,v.y]))];
+            const scale=(flat)=>flat.map((n,i)=>n*(i%2?sy:sx));
+            return round({id:annotation.id,asset:annotation.asset,label:annotation.label,type:annotation.type,vertices:scale(rings[0]),holes:rings.slice(1).map(scale)});
+          };
+          async function zipSnapshot(blob){
+            const zip=await JSZip.loadAsync(await blob.arrayBuffer()); const out={};
+            for(const name of Object.keys(zip.files).sort()){
+              if(zip.files[name].dir) continue;
+              if(/\.(txt|yaml|json)$/i.test(name)) out[name]=await zip.files[name].async('string');
+              else { const bytes=await zip.files[name].async('uint8array'); out[name]=createHash('sha256').update(bytes).digest('hex'); }
+            }
+            return out;
+          }
+          async function projectManifest(blob){ const zip=await JSZip.loadAsync(await blob.arrayBuffer()); const doc=JSON.parse(await zip.file('project.json').async('string')); doc.saved_at='<timestamp>'; return doc; }
+          async function snapshot(base,legacy){
+            const demoMod=await imp(base,'app/lib/demo.ts');
+            const i18n=await imp(base,'app/lib/i18n.ts');
+            const demo=legacy?await demoMod.createDemoProject('pt'):await demoMod.createCanonicalDemoProject('pt');
+            const assets=demo.assets.map(a=>({...a,geo:geoFor(a)}));
+            let coco,yolo,geo,manifest;
+            if(legacy){
+              const exporters=await imp(base,'app/lib/exporters.ts');
+              lastBlob=null; exporters.exportCoco(assets,demo.labels,demo.annotations); coco=JSON.parse(await lastBlob.text());
+              lastBlob=null; await exporters.exportYoloZip(assets,demo.labels,demo.annotations,'golden'); yolo=await zipSnapshot(lastBlob);
+              geo=exporters.annotationsToGeoJson(assets,demo.labels,demo.annotations).colecao;
+              const project=await imp(base,'app/lib/project.ts');
+              lastBlob=null; await project.savePoligomeProject(demo.name,assets,demo.labels,demo.annotations,'annotations',i18n.getCopy('pt')); manifest=await projectManifest(lastBlob);
+            } else {
+              const exporters=await imp(base,'app/editor/export/export-files.ts');
+              coco=exporters.buildCocoDocument(assets,demo.labels,demo.annotations);
+              yolo=await zipSnapshot(await exporters.exportEditorYoloZip(assets,demo.labels,demo.annotations,'golden'));
+              geo=exporters.buildGeoJson(assets,demo.labels,demo.annotations);
+              const project=await imp(base,'app/lib/project.ts');
+              lastBlob=null; await project.savePoligomeProjectV4(demo.name,assets,demo.labels,demo.annotations,'annotations',i18n.getCopy('pt')); manifest=await projectManifest(lastBlob);
+            }
+            const assetMap=new Map(assets.map(a=>[a.id,a]));
+            const semanticProject={project_name:manifest.project_name,assets:manifest.assets.map(a=>({id:a.id,name:a.name,width:a.width,height:a.height,missing:a.missing})),labels:manifest.labels,annotations:manifest.annotations.map(a=>normalizeAnnotation(a,assetMap.get(a.asset),legacy))};
+            return {coco,yolo,geo,manifest,semanticProject};
+          }
+          try{
+            const main=await snapshot(mainRoot,true); const refactor=await snapshot(root,false);
+            assert.deepEqual(stripVersion(refactor.coco),stripVersion(main.coco),'COCO demo golden diverged beyond explicitly tracked info.version');
+            assert.deepEqual(round(refactor.yolo),round(main.yolo),'YOLO demo golden diverged');
+            assert.deepEqual(round(refactor.geo),round(main.geo),'GeoJSON demo golden diverged');
+            assert.deepEqual(round(refactor.semanticProject),round(main.semanticProject),'semantic .plgm demo content diverged');
+            assert.equal(main.coco.info.version,justifications['coco.info.version'].main); assert.equal(refactor.coco.info.version,justifications['coco.info.version'].refactor);
+            assert.equal(main.manifest.version,justifications['project.manifest.version'].main); assert.equal(refactor.manifest.version,justifications['project.manifest.version'].refactor);
+            assert.equal(main.manifest.coordinate_space??null,justifications['project.coordinate_space'].main); assert.equal(refactor.manifest.coordinate_space??null,justifications['project.coordinate_space'].refactor);
+            for(const [name,item] of Object.entries(justifications)) assert.ok(item.reason?.trim(),`${name} needs a non-empty justification`);
+            console.log('Cross-branch demo goldens: COCO, YOLO, GeoJSON and semantic .plgm parity verified; intentional divergences are explicit.');
+          } finally {
+            URL.createObjectURL=originalCreate; URL.revokeObjectURL=originalRevoke; globalThis.fetch=originalFetch; globalThis.document=originalDocument; globalThis.window=originalWindow;
+            try{execFileSync('git',['worktree','remove','--force',mainRoot],{stdio:'ignore'});}catch{} rmSync(mainRoot,{recursive:true,force:true});
+          }
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/editor-refactor.yml')
+          s=p.read_text()
+          s=s.replace('uses: actions/checkout@v4\n','uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n',1)
+          needle='''      - name: Run tests\n        run: node --import tsx --test tests/*.test.mjs\n'''
+          extra='''\n      - name: Check editor i18n parity debt\n        run: node scripts/check-editor-i18n-parity.mjs\n\n      - name: Check cross-branch export goldens\n        run: node --import tsx scripts/check-export-parity.mjs\n\n      - name: Smoke demo route\n        run: node --import tsx --test tests/demo-route.test.mjs\n'''
+          if needle not in s: raise SystemExit('CI test step not found')
+          p.write_text(s.replace(needle,needle+extra))
+          PY
+          node scripts/check-editor-i18n-parity.mjs
+          node --import tsx scripts/check-export-parity.mjs
+          node --import tsx --test tests/demo-route.test.mjs
+          git add scripts/check-editor-i18n-parity.mjs scripts/check-export-parity.mjs tests/fixtures/editor-i18n-debt-allowlist.json tests/fixtures/export-parity-justifications.json .github/workflows/editor-refactor.yml
+          git commit -m "ci(editor): gate application parity and export goldens"
+
+      - name: Full validation
+        run: |
+          npm run build
+          node --import tsx --test tests/*.test.mjs
+          node scripts/check-editor-i18n-parity.mjs
+          node --import tsx scripts/check-export-parity.mjs
+
+      - name: Push correction commits
+        run: git push origin HEAD:refactor/editor-architecture

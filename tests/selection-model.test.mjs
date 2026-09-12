@@ -9,9 +9,9 @@ import {
 } from "../app/editor/selection/selection-model.ts";
 
 const annotations = [
-  { id: "a", asset: "img", label: "x", type: "box", x: 10, y: 10, w: 50, h: 50 },
-  { id: "b", asset: "img", label: "x", type: "box", x: 100, y: 10, w: 50, h: 50 },
-  { id: "c", asset: "img", label: "x", type: "box", x: 200, y: 10, w: 50, h: 50 },
+  { id: "a", asset: "img", label: "x", type: "box", x: 10, y: 10, width: 50, height: 50 },
+  { id: "b", asset: "img", label: "x", type: "box", x: 100, y: 10, width: 50, height: 50 },
+  { id: "c", asset: "img", label: "x", type: "box", x: 200, y: 10, width: 50, height: 50 },
 ];
 
 test("normalizes marquee regardless of drag direction", () => {

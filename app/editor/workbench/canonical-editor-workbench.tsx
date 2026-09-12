@@ -9,6 +9,7 @@ import type { BoxCorner } from "../layers/box-layer";
 import { createEditorDemo, openEditorProject, saveEditorProject } from "../session/editor-session-io";
 import { loadLocalImageAssets } from "../session/image-assets";
 import { CocoImportControl } from "../import/coco-import-control";
+import { ExportControls } from "../export/export-controls";
 import { useEditorState } from "../state/use-editor-state";
 import { useCanvasInteractions } from "../interactions/use-canvas-interactions";
 import { EditorCanvas } from "../canvas/editor-canvas";
@@ -85,9 +86,8 @@ export function CanonicalEditorWorkbench() {
       setSessionDirty(false);
       resetInteractionState();
       setMessage("Demo carregado no modelo canônico EditorAnnotation/V3.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao carregar demo.");
-    } finally { setLoading(false); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao carregar demo."); }
+    finally { setLoading(false); }
   }
 
   async function openProject(file: File) {
@@ -95,19 +95,15 @@ export function CanonicalEditorWorkbench() {
     try {
       const loaded = await openEditorProject(file, getCopy("pt"));
       replaceObjectUrls(loaded.objectUrls);
-      setAssets(loaded.assets);
-      setLabels(loaded.labels);
-      const firstLabel = loaded.labels[0] ?? EMPTY_LABELS[0];
-      setActiveLabel(firstLabel.id);
+      setAssets(loaded.assets); setLabels(loaded.labels);
+      setActiveLabel((loaded.labels[0] ?? EMPTY_LABELS[0]).id);
       setCurrent(loaded.assets.find((item) => !item.missing)?.id ?? loaded.assets[0]?.id ?? "");
       setProjectName(loaded.projectName);
       editor.replaceAnnotations(loaded.annotations, true);
-      setSessionDirty(false);
-      resetInteractionState();
+      setSessionDirty(false); resetInteractionState();
       setMessage(loaded.missingImages ? `Projeto V3 aberto. ${loaded.missingImages} imagem(ns) ausente(s).` : `Projeto V3 aberto: ${file.name}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao abrir projeto V3.");
-    } finally { setLoading(false); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao abrir projeto V3."); }
+    finally { setLoading(false); }
   }
 
   async function addImages(files: File[]) {
@@ -117,7 +113,7 @@ export function CanonicalEditorWorkbench() {
       const loaded = await loadLocalImageAssets(files, makeId);
       objectUrls.current.push(...loaded.objectUrls);
       if (loaded.assets.length) {
-        setAssets((currentAssets) => [...currentAssets, ...loaded.assets]);
+        setAssets((items) => [...items, ...loaded.assets]);
         if (!current) setCurrent(loaded.assets[0].id);
         setSessionDirty(true);
       }
@@ -129,10 +125,7 @@ export function CanonicalEditorWorkbench() {
     setLabels(result.labels);
     if (!result.labels.some((label) => label.id === activeLabel)) setActiveLabel(result.labels[0]?.id ?? EMPTY_LABELS[0].id);
     editor.replaceAnnotations(result.annotations, false);
-    setSessionDirty(true);
-    setMessage(result.message);
-    drawing.cancelDraft();
-    setTool("select");
+    setSessionDirty(true); setMessage(result.message); drawing.cancelDraft(); setTool("select");
   }
 
   function chooseTool(next: DrawingTool) {
@@ -145,9 +138,7 @@ export function CanonicalEditorWorkbench() {
     if (!asset || !assets.length) return;
     const index = assets.findIndex((item) => item.id === asset.id);
     const next = Math.max(0, Math.min(assets.length - 1, index + delta));
-    drawing.cancelDraft();
-    setCurrent(assets[next].id);
-    editor.dispatch({ type: "clear-selection" });
+    drawing.cancelDraft(); setCurrent(assets[next].id); editor.dispatch({ type: "clear-selection" });
   }
 
   async function saveProject() {
@@ -155,12 +146,9 @@ export function CanonicalEditorWorkbench() {
     setLoading(true);
     try {
       const name = await saveEditorProject(projectName, assets, labels, editor.annotations, "complete", getCopy("pt"));
-      editor.markSaved();
-      setSessionDirty(false);
-      setMessage(`Projeto V3 salvo: ${name}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Falha ao salvar projeto.");
-    } finally { setLoading(false); }
+      editor.markSaved(); setSessionDirty(false); setMessage(`Projeto V3 salvo: ${name}`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao salvar projeto."); }
+    finally { setLoading(false); }
   }
 
   const noopElement = useCallback((_event: ReactPointerEvent<SVGElement>) => undefined, []);
@@ -186,6 +174,7 @@ export function CanonicalEditorWorkbench() {
         <button onClick={() => projectInputRef.current?.click()} disabled={loading}>Abrir V3</button>
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
         <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
+        <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
         <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
         <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
         <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V3</button>

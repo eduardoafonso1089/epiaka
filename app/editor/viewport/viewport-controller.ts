@@ -1,5 +1,4 @@
 import {
-  DEFAULT_ANNOTATION_SPACE,
   ViewportTransform,
   anchoredScrollOffset,
   canvasLayout,
@@ -16,7 +15,7 @@ export type ViewportState = {
   scrollTop: number;
 };
 
-/** Pure viewport model. DOM adapters can use this without embedding layout math in components. */
+/** Pure viewport model. Canonical annotation coordinates are source-image pixels. */
 export class ViewportController {
   constructor(private state: ViewportState) {}
 
@@ -29,7 +28,8 @@ export class ViewportController {
   }
 
   transform(frame: ScreenFrame) {
-    return new ViewportTransform(frame, this.state.image, DEFAULT_ANNOTATION_SPACE);
+    // annotation space === image space in the canonical editor.
+    return new ViewportTransform(frame, this.state.image, this.state.image);
   }
 
   private clampScroll(scrollLeft: number, scrollTop: number) {
@@ -97,10 +97,6 @@ export class ViewportController {
     return this.snapshot();
   }
 
-  /**
-   * Scale around the previous gesture center, then translate the viewport so the
-   * same image content follows the moving midpoint between the two fingers.
-   */
   pinchPan(nextZoom: number, frame: ScreenFrame, previousCenter: Point2D, currentCenter: Point2D) {
     this.zoomAt(nextZoom, frame, previousCenter);
     this.setScroll(

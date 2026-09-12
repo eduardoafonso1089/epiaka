@@ -60,8 +60,8 @@ test('discrete touch drawing commits on pointerup, not pointerdown',()=>{
   assert.match(drawingSource,/if \(!start\.moved\) appendDiscretePoint/);
 });
 
-test('canonical workbench exposes hand tool and capture-phase touch navigation',()=>{
-  assert.match(workbenchSource,/id: "pan", label: "Mão(?: \(H\))?"/);
+test('canonical workbench exposes localized hand tool and capture-phase touch navigation',()=>{
+  assert.match(workbenchSource,/id: "pan", label: copy\.pan/);
   assert.match(workbenchSource,/onPointerDownCapture=\{touch\.onPointerDownCapture\}/);
   assert.match(workbenchSource,/onPointerMoveCapture=\{touch\.onPointerMoveCapture\}/);
   assert.match(workbenchSource,/touchMode=\{touch\.touchMode\}/);

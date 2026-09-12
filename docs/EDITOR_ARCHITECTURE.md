@@ -111,6 +111,7 @@ Internal geometry remains in image pixels.
 
 - COCO uses image pixels directly.
 - COCO import scales only when the document dimensions differ from the loaded image dimensions.
+- Selective COCO import first plans records against loaded image basenames, then lets the user filter geometry types and individual annotation records before labels or geometry are materialized.
 - YOLO normalization happens only at export using the actual asset width/height.
 - GeoJSON projects image pixels through raster/georeference metadata.
 - Flat coordinate arrays are allowed only at external format boundaries.
@@ -134,7 +135,6 @@ Internal geometry remains in image pixels.
 Core migration completion does **not** mean product-surface parity with `main`. The canonical `/annotate` route still has explicit application debt that must be ported before the refactor is considered product-complete:
 
 - local SAM activation/setup, include/exclude prompts and save-and-edit workflow;
-- selective COCO category/annotation import;
 - complete i18n coverage for the canonical workbench;
 - final visual-system decision for the canonical shell.
 
@@ -145,7 +145,8 @@ The following application surfaces have already been restored on the canonical a
 - class management: quick label creation, rename, color, hide/show, protected `Sem label`, delete with reclassification to `Sem label`, active class selection and batch reclassification;
 - Quality/Review, including image/annotation/class scores and source-pixel dataset summaries;
 - advanced vector operations: snapping, simplify, union/merge, split, polygon-hole creation and reshape;
-- keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys.
+- keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys;
+- selective COCO import by geometry type and individual annotation record, matched only against loaded images.
 
 Cephalometric-landmark import is **not part of Poligome parity** and must not be ported into the canonical editor.
 

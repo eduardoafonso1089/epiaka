@@ -4,8 +4,18 @@ import type { ProjectLayout, ProjectSaveMode } from "../../lib/project";
 import { openPoligomeProjectV3, savePoligomeProjectV3 } from "../../lib/project";
 import type { EditorAnnotation } from "../models/annotation-model";
 import { createCanonicalDemoProject } from "../../lib/demo";
-import { buildCocoExport, buildGeoJsonExport, buildYoloRows } from "../export/annotation-export";
-import { importCocoToEditor } from "../import/coco-import";
+import {
+  annotationToCoco,
+  annotationToGeoJsonGeometry,
+  annotationToYolo,
+  type GeoPointProjector,
+} from "../export/annotation-export";
+import {
+  cocoAnnotationToEditor,
+  cocoGeometryTypes,
+  type CocoAnnotationInput,
+  type CocoImportContext,
+} from "../import/coco-import";
 
 export type CanonicalProject = {
   projectName: string;
@@ -37,23 +47,22 @@ export async function createEditorDemo(language: Language) {
   return createCanonicalDemoProject(language);
 }
 
-export function exportEditorCoco(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
-  return buildCocoExport(assets, labels, annotations);
+export function editorAnnotationsToCoco(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
+  return annotations.map((annotation, index) => annotationToCoco(annotation, index, assets, labels));
 }
 
-export function exportEditorGeoJson(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
-  return buildGeoJsonExport(assets, labels, annotations);
+export function editorAnnotationToYolo(annotation: EditorAnnotation, labels: Label[]) {
+  return annotationToYolo(annotation, labels);
 }
 
-export function exportEditorYoloRows(assets: Asset[], labels: Label[], annotations: EditorAnnotation[]) {
-  return buildYoloRows(assets, labels, annotations);
+export function editorAnnotationToGeoJson(annotation: EditorAnnotation, project: GeoPointProjector) {
+  return annotationToGeoJsonGeometry(annotation, project);
 }
 
-export function importEditorCoco(
-  document: unknown,
-  assets: Asset[],
-  labels: Label[],
-  options?: Parameters<typeof importCocoToEditor>[3],
-) {
-  return importCocoToEditor(document, assets, labels, options);
+export function importEditorCocoAnnotation(input: CocoAnnotationInput, context: CocoImportContext) {
+  return cocoAnnotationToEditor(input, context);
+}
+
+export function editorCocoGeometryTypes(input: CocoAnnotationInput) {
+  return cocoGeometryTypes(input);
 }

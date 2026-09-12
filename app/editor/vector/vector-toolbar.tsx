@@ -37,6 +37,7 @@ export function VectorToolbar({
     type="button"
     aria-pressed={vectorTool === id}
     disabled={disabled}
+    title={id === "transform" ? copy.transformTip : undefined}
     onClick={() => onVectorTool(vectorTool === id ? null : id)}
   >{label}</button>;
 
@@ -48,5 +49,6 @@ export function VectorToolbar({
     {toolButton("hole", "Buraco (O)", !canEditPolygon)}
     {toolButton("split", `${copy.split} (X)`, !canEditPolygon)}
     {toolButton("reshape", `${copy.reshape} (R)`, !canEditPolygon)}
+    {toolButton("transform", `${copy.transform} (T)`, !canEditPolygon)}
   </div>;
 }

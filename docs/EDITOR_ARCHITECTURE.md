@@ -118,7 +118,7 @@ Cephalometric-landmark import is not part of Poligome and must not be ported int
 
 ## Interface structure
 
-There is no separate runtime or operating-system shell in Poligome. In this documentation, the UI is described as the **editor interface structure**.
+The outer browser UI is described throughout this documentation as the **editor interface structure**. It is ordinary web interface composition and does not introduce an additional runtime layer or local process.
 
 The canonical editor reuses the application-wide design tokens from `app/globals.css` (`--paper`, `--surface`, `--line`, `--green`, `--canvas-bg`, and related tokens) rather than defining a separate theme. Editor-specific composition lives in:
 

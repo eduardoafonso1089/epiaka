@@ -83,17 +83,20 @@ function names(value: unknown) {
   return Array.isArray(value) ? value.map((name) => typeof name === "string" ? name.trim() : "") : [];
 }
 
-function sourceScale(width: number, height: number) {
-  const safeWidth = Number.isFinite(width) && width > 0 ? width : 1;
-  const safeHeight = Number.isFinite(height) && height > 0 ? height : 1;
-  return { x: 1000 / safeWidth, y: 650 / safeHeight };
+function sourceScale(context: CocoImportContext) {
+  const sourceWidth = Number(context.sourceWidth);
+  const sourceHeight = Number(context.sourceHeight);
+  if (!Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    throw new Error("COCO source dimensions must be finite positive numbers");
+  }
+  return { x: 1000 / sourceWidth, y: 650 / sourceHeight };
 }
 
 export function cocoAnnotationToEditor(
   input: CocoAnnotationInput,
   context: CocoImportContext,
 ): EditorAnnotation[] {
-  const scale = sourceScale(context.sourceWidth, context.sourceHeight);
+  const scale = sourceScale(context);
   const result: EditorAnnotation[] = [];
 
   if (context.geometryTypes.has("polygon")) {
@@ -115,7 +118,10 @@ export function cocoAnnotationToEditor(
       const label = name && context.pointLabelId ? context.pointLabelId(name, point.index) : context.labelId;
       result.push(createPoint(
         { id: context.annotationId(), asset: context.assetId, label },
-        { x: point.x * scale.x, y: point.y * scale.y },
+        {
+          x: point.x / Number(context.sourceWidth) * 1000,
+          y: point.y / Number(context.sourceHeight) * 650,
+        },
       ));
     }
   }

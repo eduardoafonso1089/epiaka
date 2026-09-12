@@ -1,17 +1,10 @@
 import type { Asset, Label } from "../../lib/types";
 import type { BoxAnnotation, EditorAnnotation } from "../models/annotation-model";
 import type { Vertex } from "../models/vertex-model";
-import { EDITOR_HEIGHT, EDITOR_WIDTH, annotationBounds } from "../geometry/annotation-geometry";
+import { annotationBounds } from "../geometry/annotation-geometry";
 
 export function verticesToFlat(vertices: Vertex[]) {
   return vertices.flatMap((vertex) => [vertex.x, vertex.y]);
-}
-
-export function scaleVertices(vertices: Vertex[], width: number, height: number) {
-  return vertices.flatMap((vertex) => [
-    vertex.x / EDITOR_WIDTH * width,
-    vertex.y / EDITOR_HEIGHT * height,
-  ]);
 }
 
 export function polygonArea(vertices: Vertex[]) {
@@ -57,45 +50,32 @@ export function exportBounds(annotation: EditorAnnotation) {
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
-export function annotationToCoco(
-  annotation: EditorAnnotation,
-  annotationIndex: number,
-  assets: Asset[],
-  labels: Label[],
-) {
+export function annotationToCoco(annotation: EditorAnnotation, annotationIndex: number, assets: Asset[], labels: Label[]) {
   const imageIndex = assets.findIndex((asset) => asset.id === annotation.asset);
   const categoryIndex = labels.findIndex((label) => label.id === annotation.label);
-  const asset = assets[imageIndex];
-  const width = asset?.width ?? EDITOR_WIDTH;
-  const height = asset?.height ?? EDITOR_HEIGHT;
   const bounds = exportBounds(annotation);
-  const sx = width / EDITOR_WIDTH;
-  const sy = height / EDITOR_HEIGHT;
-
   const segmentation = annotation.type === "polygon"
-    ? [annotation.vertices, ...annotation.holes].map((ring) => scaleVertices(ring, width, height))
+    ? [annotation.vertices, ...annotation.holes].map(verticesToFlat)
     : annotation.type === "box" && Math.abs(annotation.rotation ?? 0) > 0.0001
-      ? [scaleVertices(boxCorners(annotation), width, height)]
+      ? [verticesToFlat(boxCorners(annotation))]
       : [];
-
-  const line = annotation.type === "line" ? scaleVertices(annotation.vertices, width, height) : [];
-
+  const line = annotation.type === "line" ? verticesToFlat(annotation.vertices) : [];
   const area = annotation.type === "polygon"
-    ? (polygonArea(annotation.vertices) - annotation.holes.reduce((sum, hole) => sum + polygonArea(hole), 0)) * sx * sy
+    ? polygonArea(annotation.vertices) - annotation.holes.reduce((sum, hole) => sum + polygonArea(hole), 0)
     : annotation.type === "line"
       ? 0
       : annotation.type === "box"
-        ? annotation.width * annotation.height * sx * sy
+        ? annotation.width * annotation.height
         : 0;
 
   return {
     id: annotationIndex + 1,
     image_id: imageIndex + 1,
     category_id: categoryIndex + 1,
-    bbox: [bounds.x * sx, bounds.y * sy, bounds.width * sx, bounds.height * sy],
+    bbox: [bounds.x, bounds.y, bounds.width, bounds.height],
     segmentation,
     line,
-    keypoints: annotation.type === "point" ? [annotation.x * sx, annotation.y * sy, 2] : [],
+    keypoints: annotation.type === "point" ? [annotation.x, annotation.y, 2] : [],
     num_keypoints: annotation.type === "point" ? 1 : 0,
     area,
     rotation: annotation.type === "box" ? annotation.rotation ?? 0 : undefined,
@@ -103,25 +83,27 @@ export function annotationToCoco(
   };
 }
 
-export function annotationToYolo(annotation: EditorAnnotation, labels: Label[]) {
+export function annotationToYolo(annotation: EditorAnnotation, labels: Label[], asset: Asset) {
   const classIndex = labels.findIndex((label) => label.id === annotation.label);
-  if (classIndex < 0) return null;
+  const width = Number(asset.width);
+  const height = Number(asset.height);
+  if (classIndex < 0 || !Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return null;
 
   if (annotation.type === "box") {
     const bounds = exportBounds(annotation);
     return [
       classIndex,
-      (bounds.x + bounds.width / 2) / EDITOR_WIDTH,
-      (bounds.y + bounds.height / 2) / EDITOR_HEIGHT,
-      bounds.width / EDITOR_WIDTH,
-      bounds.height / EDITOR_HEIGHT,
+      (bounds.x + bounds.width / 2) / width,
+      (bounds.y + bounds.height / 2) / height,
+      bounds.width / width,
+      bounds.height / height,
     ].map((value, index) => index === 0 ? String(value) : Number(value).toFixed(6)).join(" ");
   }
 
   if (annotation.type === "polygon") {
     const normalized = annotation.vertices.flatMap((vertex) => [
-      (vertex.x / EDITOR_WIDTH).toFixed(6),
-      (vertex.y / EDITOR_HEIGHT).toFixed(6),
+      (vertex.x / width).toFixed(6),
+      (vertex.y / height).toFixed(6),
     ]);
     return `${classIndex} ${normalized.join(" ")}`;
   }
@@ -140,9 +122,7 @@ function closeRing(points: Array<[number, number]>) {
 
 export function annotationToGeoJsonGeometry(annotation: EditorAnnotation, project: GeoPointProjector) {
   if (annotation.type === "point") return { type: "Point", coordinates: project(annotation.x, annotation.y) } as const;
-  if (annotation.type === "line") {
-    return { type: "LineString", coordinates: annotation.vertices.map((vertex) => project(vertex.x, vertex.y)) } as const;
-  }
+  if (annotation.type === "line") return { type: "LineString", coordinates: annotation.vertices.map((vertex) => project(vertex.x, vertex.y)) } as const;
   if (annotation.type === "box") {
     return { type: "Polygon", coordinates: [closeRing(boxCorners(annotation).map((vertex) => project(vertex.x, vertex.y)))] } as const;
   }

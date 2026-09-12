@@ -21,18 +21,20 @@ export type Label = {
   reviewScore?: number;
 };
 
-/** X = a*x + b*y + c; Y = d*x + e*y + f, measured at pixel edges. */
+/** X = a*x + b*y + c; Y = d*x + e*y + f, measured at source-raster pixel edges. */
 export type RasterTransform = [number, number, number, number, number, number];
 
 export type GeoRef = {
+  /** Affine transform from source-raster pixels to source CRS coordinates. */
   transform?: RasterTransform;
-  /** Nome ou URL do raster de origem. */
+  /** Name or URL of the source raster. */
   source: string;
-  /** EPSG code of the file, or "sem CRS". */
+  /** EPSG code/definition of the file, or "sem CRS". */
   crs: string;
+  /** Upper-left source-raster edge in CRS units. */
   originX: number;
   originY: number;
-  /** CRS units per source pixel. */
+  /** CRS units per source-raster pixel. */
   scaleX: number;
   scaleY: number;
   sourceWidth: number;

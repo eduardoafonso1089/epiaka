@@ -51,7 +51,7 @@ export function CanonicalEditorWorkbench() {
     return `${prefix}-${random}-${idCounter.current}`;
   }, []);
 
-  const interactions = useCanvasInteractions({ svgRef: viewport.canvasRef, state: editor.state, dispatch: editor.dispatch, makeId });
+  const interactions = useCanvasInteractions({ svgRef: viewport.canvasRef, state: editor.state, dispatch: editor.dispatch, makeId, activeAssetId: current || null });
   const drawing = useDrawingInteractions({ svgRef: viewport.canvasRef, tool, assetId: current || null, labelId: activeLabel, makeId, addAnnotation: editor.addAnnotation });
 
   const replaceObjectUrls = useCallback((next: string[]) => {
@@ -66,25 +66,16 @@ export function CanonicalEditorWorkbench() {
   const projectDirty = sessionDirty || !editor.saved;
 
   function resetInteractionState() {
-    setTool("select");
-    drawing.cancelDraft();
-    editor.dispatch({ type: "clear-selection" });
-    viewport.zoomTo(92);
+    setTool("select"); drawing.cancelDraft(); editor.dispatch({ type: "clear-selection" }); viewport.zoomTo(92);
   }
 
   async function loadDemo() {
     setLoading(true);
     try {
       const demo = await createEditorDemo("pt");
-      replaceObjectUrls(demo.objectUrls);
-      setAssets(demo.assets);
-      setLabels(demo.labels);
-      setActiveLabel(demo.labels[0]?.id ?? EMPTY_LABELS[0].id);
-      setCurrent(demo.assets[0]?.id ?? "");
-      setProjectName(demo.name);
-      editor.replaceAnnotations(demo.annotations, true);
-      setSessionDirty(false);
-      resetInteractionState();
+      replaceObjectUrls(demo.objectUrls); setAssets(demo.assets); setLabels(demo.labels);
+      setActiveLabel(demo.labels[0]?.id ?? EMPTY_LABELS[0].id); setCurrent(demo.assets[0]?.id ?? ""); setProjectName(demo.name);
+      editor.replaceAnnotations(demo.annotations, true); setSessionDirty(false); resetInteractionState();
       setMessage("Demo carregado no modelo canônico EditorAnnotation/V3.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao carregar demo."); }
     finally { setLoading(false); }
@@ -94,13 +85,10 @@ export function CanonicalEditorWorkbench() {
     setLoading(true);
     try {
       const loaded = await openEditorProject(file, getCopy("pt"));
-      replaceObjectUrls(loaded.objectUrls);
-      setAssets(loaded.assets); setLabels(loaded.labels);
+      replaceObjectUrls(loaded.objectUrls); setAssets(loaded.assets); setLabels(loaded.labels);
       setActiveLabel((loaded.labels[0] ?? EMPTY_LABELS[0]).id);
       setCurrent(loaded.assets.find((item) => !item.missing)?.id ?? loaded.assets[0]?.id ?? "");
-      setProjectName(loaded.projectName);
-      editor.replaceAnnotations(loaded.annotations, true);
-      setSessionDirty(false); resetInteractionState();
+      setProjectName(loaded.projectName); editor.replaceAnnotations(loaded.annotations, true); setSessionDirty(false); resetInteractionState();
       setMessage(loaded.missingImages ? `Projeto V3 aberto. ${loaded.missingImages} imagem(ns) ausente(s).` : `Projeto V3 aberto: ${file.name}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao abrir projeto V3."); }
     finally { setLoading(false); }
@@ -112,11 +100,7 @@ export function CanonicalEditorWorkbench() {
     try {
       const loaded = await loadLocalImageAssets(files, makeId);
       objectUrls.current.push(...loaded.objectUrls);
-      if (loaded.assets.length) {
-        setAssets((items) => [...items, ...loaded.assets]);
-        if (!current) setCurrent(loaded.assets[0].id);
-        setSessionDirty(true);
-      }
+      if (loaded.assets.length) { setAssets((items) => [...items, ...loaded.assets]); if (!current) setCurrent(loaded.assets[0].id); setSessionDirty(true); }
       setMessage(`${loaded.assets.length} imagem(ns) adicionada(s)${loaded.rejected.length ? `; ${loaded.rejected.length} rejeitada(s)` : ""}.`);
     } finally { setLoading(false); }
   }
@@ -124,8 +108,7 @@ export function CanonicalEditorWorkbench() {
   function applyCocoImport(result: { labels: Label[]; annotations: EditorAnnotation[]; message: string }) {
     setLabels(result.labels);
     if (!result.labels.some((label) => label.id === activeLabel)) setActiveLabel(result.labels[0]?.id ?? EMPTY_LABELS[0].id);
-    editor.replaceAnnotations(result.annotations, false);
-    setSessionDirty(true); setMessage(result.message); drawing.cancelDraft(); setTool("select");
+    editor.replaceAnnotations(result.annotations, false); setSessionDirty(true); setMessage(result.message); drawing.cancelDraft(); setTool("select");
   }
 
   function chooseTool(next: DrawingTool) {
@@ -175,11 +158,9 @@ export function CanonicalEditorWorkbench() {
         <button onClick={() => imageInputRef.current?.click()} disabled={loading}>Adicionar imagens</button>
         <CocoImportControl assets={assets} labels={labels} annotations={editor.annotations} makeId={makeId} disabled={loading} onImported={applyCocoImport} />
         <ExportControls assets={assets} labels={labels} annotations={editor.annotations} disabled={loading} onMessage={setMessage} />
-        <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button>
-        <button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
+        <button onClick={() => editor.undo()} disabled={!editor.history.length}>Desfazer</button><button onClick={() => editor.redo()} disabled={!editor.redoHistory.length}>Refazer</button>
         <button onClick={saveProject} disabled={loading || !assets.length}>Salvar .plgm V3</button>
-        <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button>
-        <button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>
+        <button onClick={() => stepImage(-1)} disabled={imageIndex <= 0}>← Imagem</button><button onClick={() => stepImage(1)} disabled={imageIndex < 0 || imageIndex >= assets.length - 1}>Imagem →</button>
         <span style={{ opacity: .7, marginLeft: "auto" }}>{asset ? `${imageIndex + 1}/${assets.length} · ${visibleAnnotations.length} anotações` : "sem imagem"}</span>
       </header>
 
@@ -187,31 +168,25 @@ export function CanonicalEditorWorkbench() {
         {TOOLS.map((entry) => <button key={entry.id} onClick={() => chooseTool(entry.id)} aria-pressed={tool === entry.id} style={{ fontWeight: tool === entry.id ? 700 : 400 }}>{entry.label}</button>)}
         <select value={activeLabel} onChange={(event) => setActiveLabel(event.target.value)} disabled={!labels.length}>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select>
         {(tool === "polygon" || tool === "line") && drawing.draft && <><button onClick={() => drawing.finishDraft()} disabled={!drawing.canFinish}>Concluir forma</button><button onClick={drawing.cancelDraft}>Cancelar</button></>}
-        <span style={{ marginLeft: 8 }} />
-        <button onClick={() => viewport.zoomBy(-10)} disabled={!asset}>−</button>
-        <button onClick={() => viewport.zoomTo(92)} disabled={!asset}>{viewport.state.zoom}%</button>
-        <button onClick={() => viewport.zoomBy(10)} disabled={!asset}>+</button>
+        <span style={{ marginLeft: 8 }} /><button onClick={() => viewport.zoomBy(-10)} disabled={!asset}>−</button><button onClick={() => viewport.zoomTo(92)} disabled={!asset}>{viewport.state.zoom}%</button><button onClick={() => viewport.zoomBy(10)} disabled={!asset}>+</button>
       </div>
 
       <div style={{ fontSize: 13, opacity: .75, marginBottom: 8 }}>{message} <span style={{ opacity: .7 }}>Ctrl/⌘ + roda ajusta o zoom no cursor.</span></div>
 
       <section ref={viewport.scrollRef} onScroll={viewport.onScroll} onWheel={viewport.onWheel} style={{ position: "relative", width: "100%", height: "72vh", minHeight: 360, margin: "0 auto", background: "#080909", overflow: "auto", border: "1px solid #34383b", borderRadius: 8 }}>
-        <div style={{ position: "relative", width: viewport.layout.surfaceWidth, height: viewport.layout.surfaceHeight }}>
-          <div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
-            {asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} /> : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? "Imagem ausente" : "Nenhuma imagem carregada"}</div>}
-            {asset && !asset.missing && <EditorCanvas
-              svgRef={viewport.canvasRef}
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none", cursor: selecting ? "default" : "crosshair" }}
-              annotations={visibleAnnotations} labels={labels} tool={tool} selectedId={editor.selection.selected} selectedIds={selectedIds} selectedVertex={editor.selectedVertex} selectionMarquee={null}
-              overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={3} />}
-              lineThickness={3 * handleScale} touchMode={false} touchRadius={22 * handleScale} markerRadius={markerRadius} markerAspect={markerAspect} boxTouchRadius={28 * handleScale} boxRotationTouchRadius={20 * handleScale}
-              onPointerDown={selecting ? interactions.selectAtCanvas : drawing.onPointerDown} onPointerMove={selecting ? (() => undefined) : drawing.onPointerMove} onPointerUp={selecting ? (() => undefined) : drawing.onPointerUp} onPointerCancel={selecting ? interactions.cancel : drawing.cancelDraft}
-              onBeginAnnotationDrag={selecting ? interactions.beginAnnotationDrag : noopAnnotation} onMoveAnnotation={selecting ? interactions.moveAnnotation : noopElement} onFinishAnnotation={selecting ? interactions.finishAnnotation : noopElement}
-              onBeginVertexDrag={selecting ? interactions.beginVertexDrag : noopVertex} onMoveVertex={selecting ? interactions.moveVertex : noopElement} onFinishVertex={selecting ? interactions.finishVertex : noopElement} onInsertVertex={selecting ? interactions.insertVertex : noopInsert}
-              onResizeStart={selecting ? interactions.resizeStart : noopResize} onResizeMove={selecting ? interactions.resizeMove : noopElement} onResizeEnd={selecting ? interactions.resizeEnd : noopElement} onRotateStart={selecting ? interactions.rotateStart : noopAnnotation} onTransformMove={selecting ? interactions.transformMove : noopElement} onTransformEnd={selecting ? interactions.transformEnd : noopElement}
-            />}
-          </div>
-        </div>
+        <div style={{ position: "relative", width: viewport.layout.surfaceWidth, height: viewport.layout.surfaceHeight }}><div style={{ position: "absolute", left: viewport.layout.left, top: viewport.layout.top, width: viewport.layout.width, height: viewport.layout.height }}>
+          {asset?.src ? <img src={asset.src} alt={asset.name} draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", userSelect: "none", pointerEvents: "none" }} /> : <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: .55 }}>{asset?.missing ? "Imagem ausente" : "Nenhuma imagem carregada"}</div>}
+          {asset && !asset.missing && <EditorCanvas
+            svgRef={viewport.canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none", cursor: selecting ? "default" : "crosshair" }}
+            annotations={visibleAnnotations} labels={labels} tool={tool} selectedId={editor.selection.selected} selectedIds={selectedIds} selectedVertex={editor.selectedVertex} selectionMarquee={interactions.selectionMarquee}
+            overlay={<DrawingDraftLayer draft={drawing.draft} color={activeColor} lineThickness={3} />}
+            lineThickness={3 * handleScale} touchMode={false} touchRadius={22 * handleScale} markerRadius={markerRadius} markerAspect={markerAspect} boxTouchRadius={28 * handleScale} boxRotationTouchRadius={20 * handleScale}
+            onPointerDown={selecting ? interactions.selectAtCanvas : drawing.onPointerDown} onPointerMove={selecting ? interactions.moveCanvasSelection : drawing.onPointerMove} onPointerUp={selecting ? interactions.finishCanvasSelection : drawing.onPointerUp} onPointerCancel={selecting ? interactions.cancel : drawing.cancelDraft}
+            onBeginAnnotationDrag={selecting ? interactions.beginAnnotationDrag : noopAnnotation} onMoveAnnotation={selecting ? interactions.moveAnnotation : noopElement} onFinishAnnotation={selecting ? interactions.finishAnnotation : noopElement}
+            onBeginVertexDrag={selecting ? interactions.beginVertexDrag : noopVertex} onMoveVertex={selecting ? interactions.moveVertex : noopElement} onFinishVertex={selecting ? interactions.finishVertex : noopElement} onInsertVertex={selecting ? interactions.insertVertex : noopInsert}
+            onResizeStart={selecting ? interactions.resizeStart : noopResize} onResizeMove={selecting ? interactions.resizeMove : noopElement} onResizeEnd={selecting ? interactions.resizeEnd : noopElement} onRotateStart={selecting ? interactions.rotateStart : noopAnnotation} onTransformMove={selecting ? interactions.transformMove : noopElement} onTransformEnd={selecting ? interactions.transformEnd : noopElement}
+          />}
+        </div></div>
       </section>
 
       <footer style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, opacity: .65, flexWrap: "wrap" }}>

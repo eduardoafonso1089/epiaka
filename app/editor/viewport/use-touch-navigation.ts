@@ -32,7 +32,7 @@ type PanState = {
 export function useTouchNavigation({
   tool,
   zoom,
-  maxZoom = 400,
+  maxZoom = Number.POSITIVE_INFINITY,
   panBy,
   pinchPan,
   cancelEditing,

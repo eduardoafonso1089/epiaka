@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { Asset, Label } from "../../lib/types";
-import { getCopy, type Language } from "../../lib/i18n";
+import { getCopy, storedLanguage, type Language } from "../../lib/i18n";
 import type { EditorAnnotation } from "../models/annotation-model";
 import type { CocoGeometry } from "./coco-import";
 import {
@@ -23,7 +23,7 @@ export function CocoImportControl({
   labels,
   annotations,
   makeId,
-  language = "pt",
+  language,
   disabled = false,
   onImported,
 }: {
@@ -41,7 +41,7 @@ export function CocoImportControl({
   const [geometryTypes, setGeometryTypes] = useState<CocoGeometry[]>([]);
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [tab, setTab] = useState<"categories" | "annotations">("categories");
-  const copy = getCopy(language);
+  const copy = getCopy(language ?? storedLanguage());
 
   const visibleCandidates = useMemo(() => pending?.plan.candidates.filter((candidate) =>
     candidate.geometries.some((geometry) => geometryTypes.includes(geometry)),
@@ -103,7 +103,7 @@ export function CocoImportControl({
     onImported({
       labels: result.labels,
       annotations: [...annotations, ...result.annotations],
-      message: `${result.imported} ${copy.annotationsToLoad}${result.unmatched ? ` · ${result.unmatched} não correspondida(s)` : ""}.`,
+      message: `${result.imported} ${copy.annotationsToLoad}${result.unmatched ? ` · ${result.unmatched}` : ""}.`,
     });
     close();
   }

@@ -4,129 +4,297 @@
   background: var(--paper);
 }
 
+/*
+ * Visual contract for /annotate.
+ * The canonical editor owns state/geometry, but the route keeps the desktop/mobile
+ * composition that existed before the editor refactor: application bar, left image
+ * rail, central editor, right annotation/class rail and bottom status row.
+ */
 .routeRoot > :global(main) {
   height: 100vh !important;
   min-height: 0 !important;
-  overflow: auto !important;
-  padding: 14px !important;
+  overflow: hidden !important;
+  padding: 0 !important;
   background: var(--paper) !important;
   color: var(--ink) !important;
 }
 
 .routeRoot > :global(main) > :global(div) {
-  width: min(100%, 1480px) !important;
-  max-width: 1480px !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100vh;
+  margin: 0 !important;
+  display: grid;
+  grid-template-columns: 256px minmax(0, 1fr) 288px;
+  grid-template-rows: 96px 54px minmax(0, 1fr) 42px;
+  background: var(--paper);
 }
 
-.routeRoot > :global(main) :global(header) {
-  position: sticky;
-  top: -14px;
-  z-index: 45;
-  min-height: 54px;
-  margin: -14px -14px 10px !important;
-  padding: 9px 14px;
+/* Header: same height, surface and two-row rhythm used by the previous annotator. */
+.routeRoot > :global(main) > :global(div) > :global(header) {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: relative !important;
+  top: auto !important;
+  z-index: 50;
+  min-height: 96px !important;
+  height: 96px;
+  margin: 0 !important;
+  padding: 10px 18px 36px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  backdrop-filter: blur(10px);
+  background: var(--surface) !important;
+  backdrop-filter: none !important;
+  scrollbar-width: thin;
 }
 
-.routeRoot > :global(main) :global(header) > :global(strong) {
-  margin-right: 6px !important;
-  font-size: 17px;
-  letter-spacing: -.02em;
+.routeRoot > :global(main) > :global(div) > :global(header)::before {
+  content: "Poligome";
+  flex: none;
+  margin-right: 6px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.065em;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(header)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  background: var(--surface-soft);
+  pointer-events: none;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
+  flex: 0 1 220px;
+  min-width: 80px;
+  max-width: 220px;
+  margin: 0 6px 0 0 !important;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px !important;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .routeRoot > :global(main) :global(button),
 .routeRoot > :global(main) :global(select),
 .routeRoot > :global(main) :global(input:not([type="color"])) {
-  min-height: 32px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  border-color: var(--line);
   background: var(--control-bg);
   color: var(--ink);
-  transition: background .12s ease, border-color .12s ease, color .12s ease, opacity .12s ease;
 }
 
-.routeRoot > :global(main) :global(button) {
-  padding: 0 10px;
-}
-
-.routeRoot > :global(main) :global(select),
-.routeRoot > :global(main) :global(input:not([type="color"])) {
-  padding: 0 8px;
-}
-
-.routeRoot > :global(main) :global(button:hover:not(:disabled)),
-.routeRoot > :global(main) :global(button[aria-pressed="true"]) {
-  border-color: var(--tool-active-border);
-  background: var(--tool-active-bg);
-  color: var(--tool-active-ink);
-}
-
-.routeRoot > :global(main) :global(button:disabled) {
-  opacity: .42;
-}
-
-.routeRoot > :global(main) :global(header + div) {
-  gap: 5px !important;
-  margin-bottom: 0 !important;
-  padding: 7px 8px;
+.routeRoot > :global(main) > :global(div) > :global(header) :global(button),
+.routeRoot > :global(main) > :global(div) > :global(header) :global(select) {
+  flex: none;
+  min-height: 32px;
   border: 1px solid var(--line);
-  border-radius: 9px 9px 0 0;
-  background: var(--surface-soft);
+  border-radius: 8px;
+  padding: 0 9px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.routeRoot > :global(main) :global(header + div) :global(button[aria-pressed="true"]) {
-  font-weight: 700;
+.routeRoot > :global(main) > :global(div) > :global(header) :global(button:hover:not(:disabled)),
+.routeRoot > :global(main) > :global(div) > :global(header) :global(select:hover) {
+  background: var(--theme-hover);
 }
 
-.routeRoot > :global(main) :global(header + div + div + div) {
-  min-height: 34px;
+/* Basic and advanced tool rows occupy the old 54px editor-toolbar band. */
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)),
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) {
+  grid-column: 2;
+  grid-row: 2;
+  z-index: 24;
+  min-width: 0;
   margin: 0 !important;
-  padding: 7px 4px;
+  border: 0 !important;
+  border-bottom: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: var(--surface-soft) !important;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) {
+  align-self: start;
+  height: 30px;
+  padding: 3px 10px !important;
+  display: flex !important;
+  align-items: center;
+  gap: 4px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) {
+  align-self: end;
+  height: 24px;
+  padding: 2px 10px !important;
+  display: flex !important;
+  align-items: center;
+  gap: 3px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent) !important;
+}
+
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) :global(button),
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) :global(button),
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) :global(select) {
+  min-height: 24px !important;
+  height: 24px;
+  padding: 0 7px !important;
+  border-radius: 6px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* The inline message becomes the previous bottom status message. */
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(3)) {
+  grid-column: 2;
+  grid-row: 4;
+  z-index: 20;
+  min-height: 42px;
+  margin: 0 !important;
+  padding: 0 13px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
   color: var(--muted);
-  font-size: 12px !important;
+  font-size: 11px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.routeRoot > :global(main) :global(section) {
-  scrollbar-color: var(--line) transparent;
-}
-
-.routeRoot > :global(main) > :global(div) > :global(section) {
-  border-color: var(--line) !important;
-  border-radius: 10px !important;
+/* Canonical viewport in the same central stage used before the merge. */
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(1)) {
+  grid-column: 2;
+  grid-row: 3;
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
   background-color: var(--canvas-bg) !important;
-  background-image: radial-gradient(color-mix(in srgb, var(--line) 55%, transparent) .7px, transparent .7px) !important;
+  background-image: radial-gradient(var(--dot) .8px, transparent .8px) !important;
   background-size: 14px 14px !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 20%, transparent);
+  box-shadow: none !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
 }
 
-.routeRoot > :global(main) :global(footer) {
-  min-height: 34px;
-  margin-top: 8px !important;
-  padding: 0 4px;
-  color: var(--muted);
-  opacity: 1 !important;
+/* The panel component is layout-transparent; its first child occupies the left rail and
+ * the right-panel wrapper occupies the right rail. */
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) {
+  display: contents !important;
 }
 
-@media (max-width: 720px) {
-  .routeRoot > :global(main) {
-    padding: 8px !important;
+/* Quality/Review was intentionally kept in code but hidden from the standard editor UI
+ * in the visual reference immediately before the refactor merge. */
+.routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(3)) {
+  display: none !important;
+}
+
+/* The canonical footer duplicates information already shown in the historical status row. */
+.routeRoot > :global(main) > :global(div) > :global(footer) {
+  display: none !important;
+}
+
+@media (max-width: 1080px) {
+  .routeRoot > :global(main) > :global(div) {
+    grid-template-columns: 222px minmax(0, 1fr) 252px;
   }
 
-  .routeRoot > :global(main) :global(header) {
-    position: static;
-    margin: -8px -8px 8px !important;
-    padding: 8px;
+  .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
+    max-width: 150px;
+  }
+}
+
+@media (max-width: 860px) {
+  .routeRoot > :global(main) > :global(div) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 96px 54px minmax(0, 1fr) 42px;
   }
 
-  .routeRoot > :global(main) :global(header + div) {
-    overflow-x: auto;
-    flex-wrap: nowrap !important;
+  .routeRoot > :global(main) > :global(div) > :global(header),
+  .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)),
+  .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)),
+  .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(3)),
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(1)) {
+    grid-column: 1;
   }
 
-  .routeRoot > :global(main) > :global(div) > :global(section) {
-    height: 58vh !important;
-    min-height: 300px !important;
+  .routeRoot > :global(main) > :global(div) > :global(header) {
+    padding-left: 52px !important;
+    padding-right: 52px !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header)::before {
+    font-size: 18px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
+    max-width: 120px;
+  }
+}
+
+@media (max-width: 560px) {
+  .routeRoot > :global(main) > :global(div) {
+    grid-template-rows: 88px 50px minmax(0, 1fr) 38px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header) {
+    height: 88px;
+    min-height: 88px !important;
+    padding: 8px 46px 33px !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header)::after {
+    height: 28px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header)::before {
+    content: "P";
+    font-size: 20px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
+    flex-basis: 100px;
+    max-width: 100px;
+    font-size: 12px !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) {
+    height: 28px;
+    padding-inline: 7px !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) {
+    height: 22px;
+    padding-inline: 7px !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(3)) {
+    min-height: 38px;
+    padding-inline: 8px !important;
   }
 }

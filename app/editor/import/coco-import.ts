@@ -1,9 +1,5 @@
 import type { EditorAnnotation } from "../models/annotation-model";
-import {
-  createBox,
-  createPoint,
-  createPolygon,
-} from "../models/annotation-factory";
+import { createBox, createPoint, createPolygon } from "../models/annotation-factory";
 
 export type CocoGeometry = "polygon" | "box" | "point";
 
@@ -27,6 +23,8 @@ export type CocoImportContext = {
   assetId: string;
   sourceWidth: number;
   sourceHeight: number;
+  targetWidth?: number;
+  targetHeight?: number;
   labelId: string;
   geometryTypes: Set<CocoGeometry>;
   annotationId: () => string;
@@ -51,7 +49,6 @@ function coordinatesFromRing(value: unknown, sx: number, sy: number) {
 
 function landmarkPoints(value: unknown): Array<{ x: number; y: number; index: number }> {
   if (!Array.isArray(value)) return [];
-
   const allNumbers = value.every((item) => typeof item === "number" && Number.isFinite(item));
   if (allNumbers) {
     const numbers = value as number[];
@@ -66,16 +63,13 @@ function landmarkPoints(value: unknown): Array<{ x: number; y: number; index: nu
     }
     return points;
   }
-
   return value.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const point = item as { x?: unknown; y?: unknown; visibility?: unknown; v?: unknown };
     const x = Number(point.x);
     const y = Number(point.y);
     const visibility = Number(point.visibility ?? point.v ?? 1);
-    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(visibility) && visibility > 0
-      ? [{ x, y, index }]
-      : [];
+    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(visibility) && visibility > 0 ? [{ x, y, index }] : [];
   });
 }
 
@@ -83,30 +77,26 @@ function names(value: unknown) {
   return Array.isArray(value) ? value.map((name) => typeof name === "string" ? name.trim() : "") : [];
 }
 
-function sourceScale(context: CocoImportContext) {
+function coordinateScale(context: CocoImportContext) {
   const sourceWidth = Number(context.sourceWidth);
   const sourceHeight = Number(context.sourceHeight);
-  if (!Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
-    throw new Error("COCO source dimensions must be finite positive numbers");
+  const targetWidth = Number(context.targetWidth ?? sourceWidth);
+  const targetHeight = Number(context.targetHeight ?? sourceHeight);
+  if (![sourceWidth, sourceHeight, targetWidth, targetHeight].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error("COCO image dimensions must be finite positive numbers");
   }
-  return { x: 1000 / sourceWidth, y: 650 / sourceHeight };
+  return { x: targetWidth / sourceWidth, y: targetHeight / sourceHeight };
 }
 
-export function cocoAnnotationToEditor(
-  input: CocoAnnotationInput,
-  context: CocoImportContext,
-): EditorAnnotation[] {
-  const scale = sourceScale(context);
+export function cocoAnnotationToEditor(input: CocoAnnotationInput, context: CocoImportContext): EditorAnnotation[] {
+  const scale = coordinateScale(context);
   const result: EditorAnnotation[] = [];
 
   if (context.geometryTypes.has("polygon")) {
     for (const ring of arrays(input.segmentation)) {
       const coordinates = coordinatesFromRing(ring, scale.x, scale.y);
       if (coordinates.length < 3) continue;
-      result.push(createPolygon(
-        { id: context.annotationId(), asset: context.assetId, label: context.labelId },
-        coordinates,
-      ));
+      result.push(createPolygon({ id: context.annotationId(), asset: context.assetId, label: context.labelId }, coordinates));
     }
   }
 
@@ -118,10 +108,7 @@ export function cocoAnnotationToEditor(
       const label = name && context.pointLabelId ? context.pointLabelId(name, point.index) : context.labelId;
       result.push(createPoint(
         { id: context.annotationId(), asset: context.assetId, label },
-        {
-          x: point.x / Number(context.sourceWidth) * 1000,
-          y: point.y / Number(context.sourceHeight) * 650,
-        },
+        { x: point.x * scale.x, y: point.y * scale.y },
       ));
     }
   }

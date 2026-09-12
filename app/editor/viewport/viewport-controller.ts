@@ -41,7 +41,7 @@ export class ViewportController {
   }
 
   transform(frame: ScreenFrame) {
-    return new ViewportTransform(frame, this.state.image, this.state.image);
+    return new ViewportTransform(frame, this.state.image);
   }
 
   private clampScroll(scrollLeft: number, scrollTop: number) {

@@ -96,17 +96,27 @@ Native tiled COG assets use the full source-raster dimensions as the logical ima
 
 ## Application parity
 
-The agreed application surface for this branch has been restored on the canonical architecture:
+Most of the agreed product surface has been restored on the canonical architecture:
 
 - image panel: search, select, reorder and delete;
 - annotation panel: hide/show, delete, asset-local reorder, select-all and Shift/Ctrl/Cmd list selection;
-- class management: quick label creation, rename, color, hide/show, protected `Sem label`, delete with reclassification, active class selection and batch reclassification;
+- class management: quick label creation, rename, color, hide/show, protected unlabeled class, delete with reclassification, active class selection and batch reclassification;
 - Quality/Review, including image/annotation/class scores and source-pixel dataset summaries;
 - advanced vector operations: snapping, simplify, union/merge, split, polygon-hole creation and reshape;
 - keyboard shortcuts for tools, history, delete, draft finish/cancel and label keys;
 - selective COCO import by geometry type and individual annotation record;
 - PT/EN/FR/ES internationalization for the active canonical editor surface;
 - canonical visual/interface structure using the shared Poligome visual tokens.
+
+The branch is **not yet merge-ready**. The detailed pre-merge audit is `docs/PRE_MERGE_AUDIT.md`. Confirmed remaining blockers are:
+
+- re-linking the original asset IDs when an annotations-only project is reopened and its images are supplied again;
+- New Project/reset lifecycle with unsaved-work protection and project rename;
+- polygon duplication;
+- polygon scale/rotation transform;
+- recoverable or explicitly confirmed destructive image/class management actions.
+
+These are product-surface gaps, not reasons to reintroduce legacy normalized geometry.
 
 Cephalometric-landmark import is not part of Poligome and must not be ported into the canonical editor.
 
@@ -139,6 +149,8 @@ The canonical management surface lives under `app/editor/panels`.
 - annotation reorder never crosses asset boundaries;
 - batch class changes are recorded through `EditorState`, so one batch operation corresponds to one undo step.
 
+The pre-merge audit additionally requires confirmation or equivalent recovery for management operations that cannot be completely reconstructed by annotation undo.
+
 ## Advanced vector editing
 
 Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` and never uses a normalized editor extent.
@@ -152,6 +164,8 @@ Canonical advanced geometry lives in `app/editor/geometry/vector-operations.ts` 
 - merge/split use `replace-annotations-batch`, so each operation creates one undo step.
 
 `app/editor/interactions/use-advanced-vector-interactions.ts` owns hole/split/reshape gestures, while `app/editor/vector/vector-toolbar.tsx` only emits commands.
+
+Polygon duplication and scale/rotation transform remain pre-merge parity work. Box scale/rotation is already covered by canonical box resize/rotation interactions and should not be reimplemented as a second geometry path.
 
 ## Keyboard commands
 
@@ -175,7 +189,7 @@ Quality metrics must never reintroduce the removed `1000×650` normalization.
 
 `.github/workflows/editor-refactor.yml` runs Node 22.13, the verified Vinext build, the complete test suite, the i18n parity-debt gate, cross-branch export goldens, the demo-route smoke test and the COG benchmark.
 
-The i18n debt allowlist must shrink whenever a canonical UI surface starts consuming keys previously used only by `main`. Remaining entries may include UI intentionally deferred to another branch, such as SAM, and must not be mistaken for active-interface translation regressions.
+The i18n debt allowlist must shrink whenever a canonical UI surface starts consuming keys previously used only by `main`. It is a regression/debt gate, not a merge-readiness signal. Remaining entries include both intentionally deferred surfaces such as SAM and non-SAM parity work listed in `docs/PRE_MERGE_AUDIT.md`.
 
 ## Core migration status
 
@@ -189,3 +203,5 @@ The i18n debt allowlist must shrink whenever a canonical UI surface starts consu
 8. Replace `/annotate` with the canonical editor. **Done.**
 9. Delete duplicate/legacy routes, bridge and annotation adapters. **Done.**
 10. Remove only utilities proven to be legacy and behaviorally superseded. A module must not be deleted solely because its UI is being integrated from another branch. **Guarded cleanup, not blanket orphan deletion.**
+
+Core migration is complete; product parity is still on HOLD according to `docs/PRE_MERGE_AUDIT.md`.

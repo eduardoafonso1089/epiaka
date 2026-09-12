@@ -1,0 +1,234 @@
+"use client";
+
+import { useCallback, useRef } from "react";
+import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { EditorAnnotation } from "../models/annotation-model";
+import type { BoxCorner } from "../layers/box-layer";
+import type { EditorAction, EditorState } from "../state/editor-state";
+import { annotationBounds } from "../geometry/annotation-geometry";
+import { selectSingle } from "../selection/selection-model";
+
+export type CanvasInteractionOptions = {
+  svgRef: RefObject<SVGSVGElement | null>;
+  state: EditorState;
+  dispatch: (action: EditorAction) => void;
+  makeId: (prefix: string) => string;
+};
+
+type DragState = {
+  pointerId: number;
+  start: { x: number; y: number };
+  last: { x: number; y: number };
+  annotationIds: string[];
+};
+
+type VertexDragState = {
+  pointerId: number;
+  annotationId: string;
+  vertexId: string;
+};
+
+type BoxTransformState = {
+  pointerId: number;
+  annotation: Extract<EditorAnnotation, { type: "box" }>;
+  kind: "resize" | "rotate";
+  corner?: BoxCorner;
+  center: { x: number; y: number };
+  startAngle?: number;
+};
+
+function pointInEditor(svg: SVGSVGElement, clientX: number, clientY: number) {
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1000, (clientX - rect.left) / Math.max(1, rect.width) * 1000)),
+    y: Math.max(0, Math.min(650, (clientY - rect.top) / Math.max(1, rect.height) * 650)),
+  };
+}
+
+function eventPoint(svgRef: RefObject<SVGSVGElement | null>, event: ReactPointerEvent<SVGElement>) {
+  const svg = svgRef.current;
+  return svg ? pointInEditor(svg, event.clientX, event.clientY) : null;
+}
+
+export function useCanvasInteractions({ svgRef, state, dispatch, makeId }: CanvasInteractionOptions) {
+  const annotationDrag = useRef<DragState | null>(null);
+  const vertexDrag = useRef<VertexDragState | null>(null);
+  const boxTransform = useRef<BoxTransformState | null>(null);
+
+  const selectedIds = state.selection.multiSelected.length
+    ? state.selection.multiSelected
+    : state.selection.selected ? [state.selection.selected] : [];
+
+  const beginAnnotationDrag = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation) => {
+    if (event.button !== 0) return;
+    const point = eventPoint(svgRef, event);
+    if (!point) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const ids = selectedIds.includes(annotation.id) ? selectedIds : [annotation.id];
+    if (!selectedIds.includes(annotation.id)) dispatch({ type: "set-selection", selection: selectSingle(annotation.id) });
+    dispatch({ type: "begin-gesture" });
+    annotationDrag.current = { pointerId: event.pointerId, start: point, last: point, annotationIds: ids };
+  }, [dispatch, selectedIds, svgRef]);
+
+  const moveAnnotation = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const drag = annotationDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const point = eventPoint(svgRef, event);
+    if (!point) return;
+    const dx = point.x - drag.last.x;
+    const dy = point.y - drag.last.y;
+    if (!dx && !dy) return;
+    dispatch({ type: "translate-annotations", ids: drag.annotationIds, dx, dy });
+    drag.last = point;
+  }, [dispatch, svgRef]);
+
+  const finishAnnotation = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const drag = annotationDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    annotationDrag.current = null;
+    dispatch({ type: "commit-gesture" });
+  }, [dispatch]);
+
+  const beginVertexDrag = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, vertexId: string) => {
+    if (annotation.type !== "polygon" && annotation.type !== "line") return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dispatch({ type: "select-vertex", vertex: { annotationId: annotation.id, vertexId } });
+    dispatch({ type: "begin-gesture" });
+    vertexDrag.current = { pointerId: event.pointerId, annotationId: annotation.id, vertexId };
+  }, [dispatch]);
+
+  const moveVertex = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const drag = vertexDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const point = eventPoint(svgRef, event);
+    if (!point) return;
+    dispatch({ type: "update-vertex", annotationId: drag.annotationId, vertexId: drag.vertexId, point });
+  }, [dispatch, svgRef]);
+
+  const finishVertex = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const drag = vertexDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    vertexDrag.current = null;
+    dispatch({ type: "commit-gesture" });
+  }, [dispatch]);
+
+  const insertVertex = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, afterVertexId: string, x: number, y: number) => {
+    event.stopPropagation();
+    dispatch({
+      type: "insert-vertex",
+      annotationId: annotation.id,
+      afterVertexId,
+      vertexId: makeId(`${annotation.id}:v`),
+      point: { x, y },
+    });
+  }, [dispatch, makeId]);
+
+  const resizeStart = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation, corner: BoxCorner) => {
+    if (annotation.type !== "box") return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dispatch({ type: "begin-gesture" });
+    boxTransform.current = {
+      pointerId: event.pointerId,
+      annotation,
+      kind: "resize",
+      corner,
+      center: { x: annotation.x + annotation.width / 2, y: annotation.y + annotation.height / 2 },
+    };
+  }, [dispatch]);
+
+  const resizeMove = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const transform = boxTransform.current;
+    if (!transform || transform.kind !== "resize" || transform.pointerId !== event.pointerId || !transform.corner) return;
+    const point = eventPoint(svgRef, event);
+    if (!point) return;
+    const original = transform.annotation;
+    const right = original.x + original.width;
+    const bottom = original.y + original.height;
+    const x = transform.corner.includes("w") ? point.x : original.x;
+    const y = transform.corner.includes("n") ? point.y : original.y;
+    const nextRight = transform.corner.includes("e") ? point.x : right;
+    const nextBottom = transform.corner.includes("s") ? point.y : bottom;
+    const next = {
+      ...original,
+      x: Math.min(x, nextRight),
+      y: Math.min(y, nextBottom),
+      width: Math.max(1, Math.abs(nextRight - x)),
+      height: Math.max(1, Math.abs(nextBottom - y)),
+    };
+    dispatch({ type: "replace-annotation", annotation: next });
+  }, [dispatch, svgRef]);
+
+  const rotateStart = useCallback((event: ReactPointerEvent<SVGElement>, annotation: EditorAnnotation) => {
+    if (annotation.type !== "box") return;
+    const point = eventPoint(svgRef, event);
+    if (!point) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const center = { x: annotation.x + annotation.width / 2, y: annotation.y + annotation.height / 2 };
+    dispatch({ type: "begin-gesture" });
+    boxTransform.current = {
+      pointerId: event.pointerId,
+      annotation,
+      kind: "rotate",
+      center,
+      startAngle: Math.atan2(point.y - center.y, point.x - center.x) - (annotation.rotation ?? 0),
+    };
+  }, [dispatch, svgRef]);
+
+  const transformMove = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const transform = boxTransform.current;
+    if (!transform || transform.kind !== "rotate" || transform.pointerId !== event.pointerId) return;
+    const point = eventPoint(svgRef, event);
+    if (!point) return;
+    const rotation = Math.atan2(point.y - transform.center.y, point.x - transform.center.x) - (transform.startAngle ?? 0);
+    dispatch({ type: "replace-annotation", annotation: { ...transform.annotation, rotation } });
+  }, [dispatch, svgRef]);
+
+  const transformEnd = useCallback((event: ReactPointerEvent<SVGElement>) => {
+    const transform = boxTransform.current;
+    if (!transform || transform.pointerId !== event.pointerId) return;
+    boxTransform.current = null;
+    dispatch({ type: "commit-gesture" });
+  }, [dispatch]);
+
+  const cancel = useCallback(() => {
+    annotationDrag.current = null;
+    vertexDrag.current = null;
+    boxTransform.current = null;
+    dispatch({ type: "cancel-gesture" });
+  }, [dispatch]);
+
+  const selectAtCanvas = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.target !== event.currentTarget) return;
+    dispatch({ type: "clear-selection" });
+  }, [dispatch]);
+
+  const activeBounds = state.selection.selected
+    ? (() => {
+        const annotation = state.annotations.find((item) => item.id === state.selection.selected);
+        return annotation ? annotationBounds(annotation) : null;
+      })()
+    : null;
+
+  return {
+    activeBounds,
+    beginAnnotationDrag,
+    moveAnnotation,
+    finishAnnotation,
+    beginVertexDrag,
+    moveVertex,
+    finishVertex,
+    insertVertex,
+    resizeStart,
+    resizeMove,
+    resizeEnd: transformEnd,
+    rotateStart,
+    transformMove,
+    transformEnd,
+    cancel,
+    selectAtCanvas,
+  };
+}

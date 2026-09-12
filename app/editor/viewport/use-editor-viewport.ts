@@ -64,16 +64,25 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
     });
   }, []);
 
-  const zoomTo = useCallback((zoom: number, clientPoint?: { x: number; y: number }) => {
+  const publish = useCallback((next: ViewportState) => {
+    setState(next);
+    applyScroll(next);
+    return next;
+  }, [applyScroll]);
+
+  const syncBeforeGesture = useCallback(() => {
     const scroller = scrollRef.current;
-    const canvas = canvasRef.current;
-    if (!scroller) return;
-    controllerRef.current.sync({
+    if (!scroller) return controllerRef.current.snapshot();
+    return controllerRef.current.sync({
       viewport: { width: scroller.clientWidth || 1, height: scroller.clientHeight || 1 },
       scrollLeft: scroller.scrollLeft,
       scrollTop: scroller.scrollTop,
     });
+  }, []);
 
+  const zoomTo = useCallback((zoom: number, clientPoint?: { x: number; y: number }) => {
+    syncBeforeGesture();
+    const canvas = canvasRef.current;
     let next: ViewportState;
     if (canvas && clientPoint) {
       const rect = canvas.getBoundingClientRect();
@@ -86,9 +95,8 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
       controllerRef.current.setZoom(zoom);
       next = controllerRef.current.snapshot();
     }
-    setState(next);
-    applyScroll(next);
-  }, [applyScroll]);
+    publish(next);
+  }, [publish, syncBeforeGesture]);
 
   const zoomBy = useCallback((delta: number) => {
     const scroller = scrollRef.current;
@@ -97,6 +105,24 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
       : undefined;
     zoomTo(state.zoom + delta, point);
   }, [state.zoom, zoomTo]);
+
+  const panBy = useCallback((pointerDx: number, pointerDy: number) => {
+    syncBeforeGesture();
+    publish(controllerRef.current.panBy(pointerDx, pointerDy));
+  }, [publish, syncBeforeGesture]);
+
+  const pinchPan = useCallback((zoom: number, previousCenter: { x: number; y: number }, currentCenter: { x: number; y: number }) => {
+    syncBeforeGesture();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    publish(controllerRef.current.pinchPan(
+      zoom,
+      { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      previousCenter,
+      currentCenter,
+    ));
+  }, [publish, syncBeforeGesture]);
 
   const onWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -118,6 +144,8 @@ export function useEditorViewport({ image, initialZoom = 92 }: UseEditorViewport
     onWheel,
     zoomTo,
     zoomBy,
+    panBy,
+    pinchPan,
     syncViewport,
   };
 }

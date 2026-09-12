@@ -118,23 +118,35 @@ export function snapPointToAnnotations(
   excludeId = "",
   tolerance = 13,
 ) {
-  let best = { ...point, snapped: false, distance: tolerance };
+  let bestVertex: { x: number; y: number; snapped: boolean; distance: number } | null = null;
+  for (const annotation of annotations) {
+    if (annotation.id === excludeId) continue;
+    for (const ring of ringsForSnap(annotation)) {
+      for (const vertex of ring) {
+        const distance = Math.hypot(point.x - vertex.x, point.y - vertex.y);
+        if (distance <= tolerance && (!bestVertex || distance < bestVertex.distance)) {
+          bestVertex = { x: vertex.x, y: vertex.y, snapped: true, distance };
+        }
+      }
+    }
+  }
+  if (bestVertex) return bestVertex;
+
+  let bestEdge = { ...point, snapped: false, distance: tolerance };
   for (const annotation of annotations) {
     if (annotation.id === excludeId) continue;
     for (const ring of ringsForSnap(annotation)) {
       const open = annotation.type === "line";
       for (let index = 0; index < ring.length; index += 1) {
-        const vertex = ring[index];
-        const vertexDistance = Math.hypot(point.x - vertex.x, point.y - vertex.y);
-        if (vertexDistance < best.distance) best = { x: vertex.x, y: vertex.y, snapped: true, distance: vertexDistance };
         if (open && index === ring.length - 1) continue;
-        const next = ring[(index + 1) % ring.length];
-        const projection = segmentProjection(point, vertex, next);
-        if (projection.distance < best.distance) best = { x: projection.x, y: projection.y, snapped: true, distance: projection.distance };
+        const projection = segmentProjection(point, ring[index], ring[(index + 1) % ring.length]);
+        if (projection.distance < bestEdge.distance) {
+          bestEdge = { x: projection.x, y: projection.y, snapped: true, distance: projection.distance };
+        }
       }
     }
   }
-  return best;
+  return bestEdge;
 }
 
 function perpendicularDistance(point: Point, start: Point, end: Point) {

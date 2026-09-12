@@ -1,0 +1,38 @@
+.routeRoot {}
+
+@media (max-width: 860px) {
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global([data-panel="images"][data-open="true"]),
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global([data-panel="right"][data-open="true"]) {
+    transform: translateX(0) !important;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global([data-mobile-toggle="images"]) {
+    left: 10px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global([data-mobile-toggle="right"]) {
+    right: 10px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global([data-mobile-backdrop="true"]) {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgba(16, 27, 20, .36);
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([data-drawer-header="true"]) {
+    min-height: 53px;
+    padding: 0 14px;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+}

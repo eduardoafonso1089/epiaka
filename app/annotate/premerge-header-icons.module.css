@@ -51,7 +51,25 @@
 }
 
 @media (max-width: 700px) {
-  .headerIcons > :global(main) > :global(div) > :global(header) > :global(button) span {
-    display: none;
+  .headerIcons > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(-n+5)) {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 !important;
+    justify-content: center;
+    gap: 0;
+    overflow: hidden;
+    color: transparent !important;
+    font-size: 0 !important;
+  }
+
+  .headerIcons > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(-n+5))::before {
+    width: 16px;
+    height: 16px;
+    background: var(--ink);
+  }
+
+  .headerIcons > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(-n+5)):hover::before {
+    background: var(--tool-active-ink);
   }
 }

@@ -30,12 +30,20 @@
   font-family: var(--sans), system-ui, sans-serif;
 }
 
+/* The old workspace is one row with three fixed columns. The canonical panel
+   container is deliberately flattened so the visual DOM occupies those same
+   grid cells without changing editor state ownership. */
+:global(.workspace) {
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
 :global(.canonical-management-panels) {
   display: contents !important;
 }
 
 :global(.canonical-management-panels) > :global([data-panel="images"]) {
   grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -50,6 +58,7 @@
 
 :global(.canonical-management-panels) > :global([data-panel="right"]) {
   grid-column: 3;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -59,6 +68,25 @@
   border-radius: 0 !important;
   background: var(--surface) !important;
   box-shadow: none !important;
+}
+
+:global(.workspace) > :global(.editor) {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The refactor added a semantic wrapper around the toolbar. Flatten it so the
+   original .editor grid still sees .tools as its 50px first row. */
+:global(.editor-controls) {
+  display: contents;
+}
+
+:global(.stage) {
+  position: relative;
 }
 
 :global(.canonical-management-panels) > :global([data-mobile-toggle]),
@@ -128,8 +156,9 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  :global(.editor) {
+  :global(.workspace) > :global(.editor) {
     grid-column: 1 !important;
+    grid-row: 1 !important;
   }
 
   :global(.canonical-management-panels) > :global([data-panel="images"]),

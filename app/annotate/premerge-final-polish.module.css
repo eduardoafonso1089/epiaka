@@ -7,6 +7,15 @@
   box-shadow: inset 3px 0 var(--green);
 }
 
+/* Lists in the legacy rails were packed at the top. CSS Grid otherwise stretches the
+ * available rows when the canonical list is allowed to flex to the full rail height. */
+.finalPolish > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="assetList"]),
+.finalPolish > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="annotationList"]),
+.finalPolish > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="labelList"]) {
+  align-content: start !important;
+  grid-auto-rows: max-content;
+}
+
 /* Legacy right-rail tabs used a more legible 13px label and a compact status badge. */
 .finalPolish > :global(main) > :global(div) > :global(section:nth-of-type(2)) :global([class*="panelTabs"]) :global(button) {
   font-size: 13px !important;

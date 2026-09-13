@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import {
   BarChart3, Check, ClipboardCheck, Eye, EyeOff, FileText, GripVertical,
-  ImagePlus, LoaderCircle, Menu, MoreHorizontal, Palette, Plus, Search, ShieldCheck,
-  Trash2, WandSparkles, X,
+  ImagePlus, LoaderCircle, Menu, MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen,
+  PanelRightClose, PanelRightOpen, Plus, Search, ShieldCheck, Tags, Trash2, WandSparkles, X,
 } from "lucide-react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy } from "../../lib/i18n";
@@ -63,12 +63,14 @@ export function EditorManagementPanels(props: Props) {
   const [batchLabel, setBatchLabel] = useState(activeLabelId);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("annotations");
   const [classManagerOpen, setClassManagerOpen] = useState(false);
 
   useEffect(() => {
-    const openImages = () => { setLeftOpen(true); setRightOpen(false); };
-    const openRight = () => { setRightOpen(true); setLeftOpen(false); };
+    const openImages = () => { setLeftPanelCollapsed(false); setLeftOpen(true); setRightOpen(false); };
+    const openRight = () => { setRightPanelCollapsed(false); setRightOpen(true); setLeftOpen(false); };
     window.addEventListener("poligome:open-images", openImages);
     window.addEventListener("poligome:open-right", openRight);
     return () => {
@@ -126,17 +128,19 @@ export function EditorManagementPanels(props: Props) {
   }
 
   return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations}`} className={`${ui.managementGrid} canonical-management-panels`}>
-    <button data-mobile-toggle="images" aria-label={copy.openImages} onClick={() => { setLeftOpen(true); setRightOpen(false); }}><Menu size={19} /></button>
-    <button data-mobile-toggle="right" aria-label={copy.annotations} onClick={() => { setRightOpen(true); setLeftOpen(false); }}><MoreHorizontal size={19} /></button>
+    <button data-mobile-toggle="images" aria-label={copy.openImages} onClick={() => { setLeftPanelCollapsed(false); setLeftOpen(true); setRightOpen(false); }}><Menu size={19} /></button>
+    <button data-mobile-toggle="right" aria-label={copy.annotations} onClick={() => { setRightPanelCollapsed(false); setRightOpen(true); setLeftOpen(false); }}><MoreHorizontal size={19} /></button>
     {(leftOpen || rightOpen) && <button data-mobile-backdrop="true" aria-label={copy.closePanel} onClick={() => { setLeftOpen(false); setRightOpen(false); }} />}
 
-    <aside data-panel="images" data-open={leftOpen ? "true" : "false"} className={classes("assets", leftOpen && "open")}>
+    <aside data-panel="images" data-open={leftOpen ? "true" : "false"} className={classes("assets", leftOpen && "open", leftPanelCollapsed && "collapsed")}>
+      <button className="sidebar-restore sidebar-restore-left" title={copy.openImages} aria-label={copy.openImages} onClick={() => setLeftPanelCollapsed(false)}><PanelLeftOpen size={17} /></button>
+      <button className="panel-collapse panel-collapse-left" title={copy.openImages} aria-label={copy.openImages} onClick={() => { setLeftPanelCollapsed(true); setLeftOpen(false); }}><PanelLeftClose size={16} /></button>
       <div data-drawer-header="true" className="drawer-head"><b>{copy.images}</b><button aria-label={copy.closePanel} onClick={() => setLeftOpen(false)}><X size={19} /></button></div>
       <div className="aside-title">
         <span>{copy.images} <b>{assets.length}</b></span>
         <div>
           <button title={copy.importImages} aria-label={copy.importImages} disabled={props.loading} onClick={props.onImportImages}><Plus size={16} /></button>
-          <button title={copy.selectAllAnnotations} aria-label={copy.selectAllAnnotations} disabled={!assets.length}><Check size={16} /></button>
+          <button title={copy.selectAllAnnotations} aria-label={copy.selectAllAnnotations} disabled={!assets.length} onClick={props.onSelectAllAnnotations}><Check size={16} /></button>
           <button title="COCO JSON" aria-label="COCO JSON" disabled={!assets.length}><FileText size={16} /></button>
           <button title={copy.deleteSelectedAnnotations} aria-label={copy.deleteSelectedAnnotations} disabled={!currentAsset} onClick={() => currentAsset && confirmAssetDelete(currentAsset, annotations.filter((a) => a.asset === currentAsset.id).length)}><Trash2 size={16} /></button>
         </div>
@@ -165,7 +169,9 @@ export function EditorManagementPanels(props: Props) {
       <div className="privacy"><ShieldCheck size={11} /><span>{copy.privacy}</span></div>
     </aside>
 
-    <aside data-panel="right" data-open={rightOpen ? "true" : "false"} className={classes("labels", rightOpen && "open")}>
+    <aside data-panel="right" data-open={rightOpen ? "true" : "false"} className={classes("labels", rightOpen && "open", rightPanelCollapsed && "collapsed")}>
+      <button className="sidebar-restore sidebar-restore-right" title={copy.annotations} aria-label={copy.annotations} onClick={() => setRightPanelCollapsed(false)}><PanelRightOpen size={17} /></button>
+      <button className="panel-collapse panel-collapse-right" title={copy.annotations} aria-label={copy.annotations} onClick={() => { setRightPanelCollapsed(true); setRightOpen(false); }}><PanelRightClose size={16} /></button>
       <div data-drawer-header="true" className="drawer-head"><b>{copy.annotations}</b><button aria-label={copy.closePanel} onClick={() => setRightOpen(false)}><X size={19} /></button></div>
       <div className="tabs dataset-tabs" role="tablist" aria-label={copy.annotations}>
         <button className={rightTab === "annotations" ? "active" : ""} role="tab" aria-selected={rightTab === "annotations"} onClick={() => setRightTab("annotations")}>{copy.annotations}</button>
@@ -173,33 +179,39 @@ export function EditorManagementPanels(props: Props) {
         <button className={rightTab === "review" ? "active" : ""} role="tab" aria-selected={rightTab === "review"} onClick={() => setRightTab("review")}><ClipboardCheck size={14} />{copy.reviewTab}</button>
       </div>
 
-      {rightTab === "annotations" && <>
-        <div className="label-help"><b>{copy.annotations} · {activeAssetAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div>
-        {activeSelectedIds.length > 0 && <div className={ui.batchRow}>
-          <small>{activeSelectedIds.length} {copy.batchSelection}</small>
-          <select value={batchLabel} onChange={(event) => setBatchLabel(event.target.value)} aria-label={copy.changeClass}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select>
-          <button onClick={() => props.onBatchReclassify(activeSelectedIds, batchLabel)}>{copy.applyClass}</button>
-        </div>}
-        <div className="instances canonical-instances">
+      {rightTab === "annotations" && <div className="annotation-editor">
+        <section className="annotation-panel-head">
+          <div><b>{copy.annotations} · {activeAssetAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div>
+          <div className="annotation-panel-actions">
+            <button disabled={!activeAssetAnnotations.length} title={allHidden ? copy.showAllAnnotations : copy.hideAllAnnotations} onClick={toggleAllAnnotations}>{allHidden ? <EyeOff size={14} /> : <Eye size={14} />}{allHidden ? copy.showAllAnnotations : copy.hideAllAnnotations}</button>
+            <button onClick={() => setClassManagerOpen(true)}><Palette size={14} />{copy.manageClasses}</button>
+          </div>
+        </section>
+        {activeSelectedIds.length > 0 && <section className="batch-class">
+          <div><Tags size={14} /><span><b>{activeSelectedIds.length} {copy.batchSelection}</b><small>{copy.changeClass}</small></span></div>
+          <div>
+            <select value={batchLabel} onChange={(event) => setBatchLabel(event.target.value)} aria-label={copy.changeClass}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select>
+            <button onClick={() => props.onBatchReclassify(activeSelectedIds, batchLabel)}>{copy.applyClass}</button>
+            <button className="batch-delete" onClick={() => confirmAnnotationDelete(activeSelectedIds)}><Trash2 size={13} />{copy.deleteSelectedAnnotations}</button>
+          </div>
+        </section>}
+        <div className="instances">
           {activeAssetAnnotations.map((annotation, index) => {
             const label = labels.find((item) => item.id === annotation.label);
             const selected = selectedIds.includes(annotation.id);
             const hidden = hiddenAnnotationIds.has(annotation.id) || hiddenLabelIds.has(annotation.label);
             const dotStyle = { borderColor: label?.color ?? "#929a95" } as CSSProperties;
-            return <div key={annotation.id} className={classes("instance-row", selected && "active")}>
-              <button type="button" className="canonical-instance-main" onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}>
-                <i style={dotStyle} /><span>{label ? labelName(label) : annotation.label} · {annotation.type} #{index + 1}</span>
-              </button>
-              <button type="button" title={hidden ? copy.showAnnotation : copy.hideAnnotation} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-              <button type="button" title={copy.deleteShape} onClick={(event) => { stop(event); confirmAnnotationDelete([annotation.id]); }}><Trash2 size={13} /></button>
+            const displayLabel = label ? labelName(label) : annotation.label;
+            return <div key={annotation.id} className={classes("instance-row", selected && "active", hidden && "hidden")}>
+              <button className="reorder-handle" aria-label={`${copy.reorderAnnotation}: ${displayLabel} #${index + 1}`} title={copy.reorderAnnotation} disabled={activeAssetAnnotations.length < 2} onClick={() => props.onMoveAnnotation(annotation.id, index === 0 ? 1 : -1)}><GripVertical size={14} /></button>
+              <button className={classes("annotation-selector", selected && "selected")} aria-label={`${copy.selectAnnotation}: ${displayLabel} #${index + 1}`} aria-pressed={selected} onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: true })}>{selected && <Check size={11} />}</button>
+              <button className="instance-main" onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}><i style={dotStyle}>{annotation.type === "point" ? "•" : annotation.type === "line" ? "╱" : ""}</i><span>{displayLabel} <small>#{index + 1}</small></span></button>
+              <button className="visibility-toggle" title={hidden ? copy.showAnnotation : copy.hideAnnotation} aria-label={`${hidden ? copy.showAnnotation : copy.hideAnnotation}: ${displayLabel} #${index + 1}`} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+              <button className="delete-annotation" title={copy.deleteShape} aria-label={`${copy.deleteShape}: ${displayLabel} #${index + 1}`} onClick={(event) => { stop(event); confirmAnnotationDelete([annotation.id]); }}><Trash2 size={13} /></button>
             </div>;
           })}
         </div>
-        <div className="canonical-right-actions">
-          <button disabled={!activeAssetAnnotations.length} onClick={toggleAllAnnotations}>{allHidden ? <Eye size={13} /> : <EyeOff size={13} />}{allHidden ? copy.showAllAnnotations : copy.hideAllAnnotations}</button>
-          <button onClick={() => setClassManagerOpen(true)}><Palette size={13} />{copy.manageClasses}</button>
-        </div>
-      </>}
+      </div>}
 
       {rightTab === "quality" && <div className="canonical-placeholder"><BarChart3 size={20} /><b>{copy.quality}</b><span>{copy.annotationPanelHint}</span></div>}
       {rightTab === "review" && <div className="canonical-placeholder"><ClipboardCheck size={20} /><b>{copy.reviewTab}</b><span>{copy.annotationPanelHint}</span></div>}

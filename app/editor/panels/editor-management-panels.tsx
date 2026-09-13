@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import {
-  BarChart3, Check, ChevronDown, ChevronUp, ClipboardCheck, Eye, EyeOff, FileText,
-  ImagePlus, LoaderCircle, Menu, MoreHorizontal, Palette, Plus, Search, Tags, Trash2,
-  WandSparkles, X,
+  BarChart3, Check, ClipboardCheck, Eye, EyeOff, FileText, GripVertical,
+  ImagePlus, LoaderCircle, Menu, MoreHorizontal, Palette, Plus, Search, ShieldCheck,
+  Trash2, WandSparkles, X,
 } from "lucide-react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy } from "../../lib/i18n";
@@ -71,7 +71,10 @@ export function EditorManagementPanels(props: Props) {
     const openRight = () => { setRightOpen(true); setLeftOpen(false); };
     window.addEventListener("poligome:open-images", openImages);
     window.addEventListener("poligome:open-right", openRight);
-    return () => { window.removeEventListener("poligome:open-images", openImages); window.removeEventListener("poligome:open-right", openRight); };
+    return () => {
+      window.removeEventListener("poligome:open-images", openImages);
+      window.removeEventListener("poligome:open-right", openRight);
+    };
   }, []);
 
   useEffect(() => {
@@ -88,6 +91,7 @@ export function EditorManagementPanels(props: Props) {
   const activeSelectedIds = selectedIds.filter((id) => activeAssetAnnotations.some((annotation) => annotation.id === id));
   const completed = assets.filter((item) => annotations.some((annotation) => annotation.asset === item.id)).length;
   const currentAsset = assets.find((item) => item.id === currentAssetId) ?? null;
+  const allHidden = activeAssetAnnotations.length > 0 && activeAssetAnnotations.every((annotation) => hiddenAnnotationIds.has(annotation.id));
   const labelName = (label: Label) => label.id === UNLABELED_ID ? copy.unlabeled : label.name;
 
   function createClass() {
@@ -112,6 +116,13 @@ export function EditorManagementPanels(props: Props) {
     if (label.id === UNLABELED_ID) return;
     if (!window.confirm(`${copy.confirmDeleteClass}\n${copy.deleteClassWarning} ${copy.unlabeled}.`)) return;
     props.onDeleteLabel(label.id);
+  }
+
+  function toggleAllAnnotations() {
+    activeAssetAnnotations.forEach((annotation) => {
+      const hidden = hiddenAnnotationIds.has(annotation.id);
+      if (allHidden ? hidden : !hidden) props.onToggleAnnotationVisibility(annotation.id);
+    });
   }
 
   return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations}`} className={`${ui.managementGrid} canonical-management-panels`}>
@@ -139,21 +150,19 @@ export function EditorManagementPanels(props: Props) {
           const index = assets.findIndex((asset) => asset.id === item.id);
           const count = annotations.filter((annotation) => annotation.asset === item.id).length;
           const details = item.width && item.height ? `${item.width} × ${item.height}` : `${count} ${copy.projectAnnotations}`;
-          return <div key={item.id} className={classes("asset-row", item.id === currentAssetId && "active")}>
-            <span className="asset-selector" aria-hidden="true">{item.id === currentAssetId ? <Check size={11} /> : null}</span>
+          const active = item.id === currentAssetId;
+          return <div key={item.id} className={classes("asset-row", active && "active")}>
+            <button className="reorder-handle" title={copy.reorderImage} aria-label={`${copy.reorderImage}: ${item.name}`} disabled={assets.length < 2} onClick={() => props.onMoveAsset(item.id, index === 0 ? 1 : -1)}><GripVertical size={13} /></button>
+            <span className={classes("asset-selector", active && "selected")} aria-hidden="true">{active ? <Check size={11} /> : null}</span>
             <button className="asset-main" onClick={() => { props.onSelectAsset(item.id); setLeftOpen(false); }} title={item.name}>
-              <span className="thumb" style={{ backgroundImage: item.src ? `url(${item.src})` : "none" }}><span>{String(index + 1).padStart(2, "0")}</span></span>
-              <span><strong>{item.name}</strong><small>{details}</small></span>
+              <div className="thumb" style={{ backgroundImage: item.src ? `url(${item.src})` : "none" }}><span>{String(index + 1).padStart(2, "0")}</span></div>
+              <div><strong>{item.name}</strong><small>{details}</small></div>
               <i className={count > 0 ? "checked" : ""}>{count > 0 ? <Check size={9} /> : null}</i>
             </button>
-            <div className="canonical-asset-actions">
-              <button title={copy.reorderImage} disabled={index <= 0} onClick={() => props.onMoveAsset(item.id, -1)}><ChevronUp size={12} /></button>
-              <button title={copy.reorderImage} disabled={index >= assets.length - 1} onClick={() => props.onMoveAsset(item.id, 1)}><ChevronDown size={12} /></button>
-            </div>
           </div>;
         })}
       </div>
-      <div className="privacy"><ShieldIcon /><span>{copy.privacy}</span></div>
+      <div className="privacy"><ShieldCheck size={11} /><span>{copy.privacy}</span></div>
     </aside>
 
     <aside data-panel="right" data-open={rightOpen ? "true" : "false"} className={classes("labels", rightOpen && "open")}>
@@ -166,10 +175,6 @@ export function EditorManagementPanels(props: Props) {
 
       {rightTab === "annotations" && <>
         <div className="label-help"><b>{copy.annotations} · {activeAssetAnnotations.length}</b><span>{copy.annotationPanelHint}</span></div>
-        <div className="canonical-annotation-actions">
-          <button disabled={!activeAssetAnnotations.length} onClick={props.onSelectAllAnnotations}>{copy.selectAllAnnotations}</button>
-          <button disabled={!activeSelectedIds.length} onClick={props.onClearAnnotationSelection}>{copy.clearAnnotationSelection}</button>
-        </div>
         {activeSelectedIds.length > 0 && <div className={ui.batchRow}>
           <small>{activeSelectedIds.length} {copy.batchSelection}</small>
           <select value={batchLabel} onChange={(event) => setBatchLabel(event.target.value)} aria-label={copy.changeClass}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select>
@@ -181,15 +186,17 @@ export function EditorManagementPanels(props: Props) {
             const selected = selectedIds.includes(annotation.id);
             const hidden = hiddenAnnotationIds.has(annotation.id) || hiddenLabelIds.has(annotation.label);
             const dotStyle = { borderColor: label?.color ?? "#929a95" } as CSSProperties;
-            return <button key={annotation.id} className={classes("instance-row", selected && "active")} onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}>
-              <i style={dotStyle} /><span>{label ? labelName(label) : annotation.label} · {annotation.type} #{index + 1}</span>
+            return <div key={annotation.id} className={classes("instance-row", selected && "active")}>
+              <button type="button" className="canonical-instance-main" onClick={(event) => props.onSelectAnnotation(annotation.id, { shift: event.shiftKey, additive: event.ctrlKey || event.metaKey })}>
+                <i style={dotStyle} /><span>{label ? labelName(label) : annotation.label} · {annotation.type} #{index + 1}</span>
+              </button>
               <button type="button" title={hidden ? copy.showAnnotation : copy.hideAnnotation} onClick={(event) => { stop(event); props.onToggleAnnotationVisibility(annotation.id); }}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
               <button type="button" title={copy.deleteShape} onClick={(event) => { stop(event); confirmAnnotationDelete([annotation.id]); }}><Trash2 size={13} /></button>
-            </button>;
+            </div>;
           })}
         </div>
         <div className="canonical-right-actions">
-          <button disabled={!activeAssetAnnotations.length} onClick={() => activeAssetAnnotations.forEach((annotation) => { if (!hiddenAnnotationIds.has(annotation.id)) props.onToggleAnnotationVisibility(annotation.id); })}><EyeOff size={13} />{copy.hideAnnotation}</button>
+          <button disabled={!activeAssetAnnotations.length} onClick={toggleAllAnnotations}>{allHidden ? <Eye size={13} /> : <EyeOff size={13} />}{allHidden ? copy.showAllAnnotations : copy.hideAllAnnotations}</button>
           <button onClick={() => setClassManagerOpen(true)}><Palette size={13} />{copy.manageClasses}</button>
         </div>
       </>}
@@ -203,12 +210,21 @@ export function EditorManagementPanels(props: Props) {
       <section className="canonical-class-manager" role="dialog" aria-modal="true" aria-label={copy.manageClasses} onMouseDown={(event) => event.stopPropagation()}>
         <header><div><Palette size={18} /><div><b>{copy.classManagerTitle}</b><small>{copy.classManagerHint}</small></div></div><button aria-label={copy.closePanel} onClick={() => setClassManagerOpen(false)}><X size={18} /></button></header>
         <section className={premerge.quickLabelCard}><div className={premerge.cardHeading}><Palette size={14} /><span><strong>{copy.labelStudio}</strong><small>{copy.labelStudioHint}</small></span></div><div className={premerge.createRow}><input aria-label={copy.className} value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createClass(); }} placeholder={copy.className} /><input className={ui.colorInput} aria-label={copy.labelColor} type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} /><button className={premerge.createButton} onClick={createClass} disabled={!newLabelName.trim()}><Plus size={15} /></button></div></section>
-        <div className="canonical-class-list">{labels.map((label) => { const protectedLabel = label.id === UNLABELED_ID; const hidden = hiddenLabelIds.has(label.id); const count = annotations.filter((annotation) => annotation.label === label.id).length; return <div key={label.id}><input type="color" value={label.color} disabled={protectedLabel} onChange={(event) => props.onRecolorLabel(label.id, event.target.value)} /><input defaultValue={labelName(label)} disabled={protectedLabel} onFocus={() => props.onActiveLabelChange(label.id)} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} /><small>{count}</small><button onClick={() => props.onToggleLabelVisibility(label.id)}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button><button disabled={protectedLabel} onClick={() => confirmLabelDelete(label)}><Trash2 size={13} /></button></div>; })}</div>
+        <div className="canonical-class-list">
+          {labels.map((label) => {
+            const protectedLabel = label.id === UNLABELED_ID;
+            const hidden = hiddenLabelIds.has(label.id);
+            const count = annotations.filter((annotation) => annotation.label === label.id).length;
+            return <div key={label.id}>
+              <input type="color" value={label.color} disabled={protectedLabel} onChange={(event) => props.onRecolorLabel(label.id, event.target.value)} />
+              <input defaultValue={labelName(label)} disabled={protectedLabel} onFocus={() => props.onActiveLabelChange(label.id)} onBlur={(event) => props.onRenameLabel(label.id, event.target.value)} />
+              <small>{count}</small>
+              <button onClick={() => props.onToggleLabelVisibility(label.id)}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+              <button disabled={protectedLabel} onClick={() => confirmLabelDelete(label)}><Trash2 size={13} /></button>
+            </div>;
+          })}
+        </div>
       </section>
     </div>}
   </section>;
-}
-
-function ShieldIcon() {
-  return <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", border: "1px solid currentColor", display: "inline-block" }} />;
 }

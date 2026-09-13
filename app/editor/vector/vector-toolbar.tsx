@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { CircleMinus, Combine, Copy, ListRestart, Magnet, Maximize2, PenTool, Scissors } from "lucide-react";
 import { getCopy } from "../../lib/i18n";
 import type { VectorTool } from "../commands/editor-shortcuts";
@@ -37,7 +38,7 @@ export function VectorToolbar({
   const toolButton = (
     id: Exclude<VectorTool, null>,
     label: string,
-    icon: React.ReactNode,
+    icon: ReactNode,
     disabled = false,
   ) => <button
     type="button"

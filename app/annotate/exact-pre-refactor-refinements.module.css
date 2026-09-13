@@ -6,15 +6,19 @@
   display: none !important;
 }
 
-/* Initial demo tutorial: the old UI masked only the image/canvas rectangle,
-   leaving the dotted workspace and side rails untouched. */
+/* Initial demo tutorial: mask only the image rectangle, as the historical
+   guided flow did. Canonical demo annotations stay loaded for later use, but
+   are visually suppressed until the first tutorial task is completed. */
 .contract :global(.editor:has(.pre-refactor-demo-card)) :global(.stage) > section > div > div::after {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 35;
+  z-index: 60;
   background: rgba(11, 16, 20, .58);
   pointer-events: none;
+}
+.contract :global(.editor:has(.pre-refactor-demo-card) .stage svg) {
+  visibility: hidden !important;
 }
 
 .contract :global(.pre-refactor-demo-close) {
@@ -56,9 +60,9 @@
   pointer-events: none;
 }
 
-/* During onboarding the historical UI intentionally presented the dataset as
-   not-yet-reviewed: zero progress, no visible annotation list and empty status
-   circles even though the demo geometries were already loaded underneath. */
+/* During onboarding the historical UI deliberately starts at zero reviewed
+   images and an empty annotation list, even though the demo data is available
+   in memory for subsequent steps. */
 .contract :global(.workspace:has(.pre-refactor-demo-card) .progress b) { font-size: 0; }
 .contract :global(.workspace:has(.pre-refactor-demo-card) .progress b)::after {
   content: "0 de 3";
@@ -76,55 +80,65 @@
   background: transparent !important;
   border-color: var(--line) !important;
 }
-.contract :global(.workspace:has(.pre-refactor-demo-card) .canonical-instances),
-.contract :global(.workspace:has(.pre-refactor-demo-card) .batchRow) { display: none !important; }
-.contract :global(.workspace:has(.pre-refactor-demo-card) .label-help b) { font-size: 0; }
-.contract :global(.workspace:has(.pre-refactor-demo-card) .label-help b)::after {
+.contract :global(.workspace:has(.pre-refactor-demo-card) .annotation-editor .instances),
+.contract :global(.workspace:has(.pre-refactor-demo-card) .annotation-editor .batch-class) { display: none !important; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .annotation-panel-head > div:first-child b) { font-size: 0; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .annotation-panel-head > div:first-child b)::after {
   content: "ANOTAÇÕES · 0";
   font-size: 11px;
 }
-.contract :global(.workspace:has(.pre-refactor-demo-card) .canonical-right-actions button:first-child) {
+.contract :global(.workspace:has(.pre-refactor-demo-card) .annotation-panel-actions button:first-child) {
   opacity: .5;
   pointer-events: none;
 }
 
-/* Valid DOM equivalent of the old annotation row: the main selectable region
-   occupies the first two visual columns and action buttons remain siblings. */
-.contract :global(.canonical-instances .instance-row) {
-  grid-template-columns: minmax(0,1fr) 26px 26px !important;
-}
-.contract :global(.canonical-instance-main) {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 14px minmax(0,1fr);
-  align-items: center;
-  gap: 5px;
-  padding: 0;
+/* The File menu still owns technical raster/COCO controls for functionality,
+   but the historical dropdown exposed only the four export rows. */
+.contract :global(.canonical-file-extras > button:nth-of-type(-n+4)) { display: none !important; }
+.contract :global(.project-pop .canonical-file-extras > button) {
+  width: 100%;
+  min-height: 45px;
   border: 0;
   background: transparent;
-  color: inherit;
+  border-radius: 8px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   text-align: left;
+  cursor: pointer;
+  color: var(--ink);
 }
-.contract :global(.canonical-instance-main > i) {
-  width: 11px;
-  height: 11px;
-  border: 2px solid;
+.contract :global(.project-pop .canonical-file-extras > button:hover:not(:disabled)) {
+  background: var(--theme-hover);
 }
-.contract :global(.canonical-instance-main > span) {
+.contract :global(.project-pop .canonical-file-extras > button:disabled) {
+  opacity: .45;
+  cursor: default;
+}
+.contract :global(.project-pop .canonical-file-extras > button > span) { min-width: 0; }
+.contract :global(.project-pop .canonical-file-extras > button b),
+.contract :global(.project-pop .canonical-file-extras > button small) { display: block; }
+.contract :global(.project-pop .canonical-file-extras > button b) { font-size: 12px; }
+.contract :global(.project-pop .canonical-file-extras > button small) {
+  max-width: 260px;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 11px;
+  white-space: nowrap;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--muted);
 }
 
-/* Raster/COCO import utilities remain mounted for functionality, but they were
-   not part of the old File dropdown. The first four trigger buttons belong to
-   those import controls; the following buttons are the actual export rows. */
-.contract :global(.canonical-file-extras > button:nth-of-type(-n+4)) { display: none !important; }
-.contract :global(.canonical-file-extras > button) {
-  width: 100%;
-  justify-content: flex-start;
-  text-align: left;
+/* Collapsed rails must also release their old column width. */
+@media (min-width: 861px) {
+  .contract :global(.workspace:has(.assets.collapsed)) { grid-template-columns: 34px minmax(0, 1fr) 288px; }
+  .contract :global(.workspace:has(.labels.collapsed)) { grid-template-columns: 256px minmax(0, 1fr) 34px; }
+  .contract :global(.workspace:has(.assets.collapsed):has(.labels.collapsed)) { grid-template-columns: 34px minmax(0, 1fr) 34px; }
+}
+@media (min-width: 861px) and (max-width: 1080px) {
+  .contract :global(.workspace:has(.assets.collapsed)) { grid-template-columns: 34px minmax(0, 1fr) 252px; }
+  .contract :global(.workspace:has(.labels.collapsed)) { grid-template-columns: 222px minmax(0, 1fr) 34px; }
 }
 
 @media (max-width: 860px) {

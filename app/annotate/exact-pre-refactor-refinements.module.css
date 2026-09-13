@@ -6,6 +6,17 @@
   display: none !important;
 }
 
+/* The canonical scroll surface used to be absolutely stretched across the
+   stage, bypassing the historical stage padding. The old editor measured the
+   scroll viewport inside that padding; restore that geometry exactly. */
+.contract :global(.stage) > section {
+  position: relative !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.contract :global(.editor-controls) { overflow: visible !important; }
+
 /* The welcome card is intentionally restated from dfe774 rather than visually
    approximated. It is a large fraction of the empty mobile viewport, so tiny
    differences in its fill, border, spacing or shadow create a large diff. */
@@ -83,6 +94,7 @@
 .contract :global(.editor:has(.pre-refactor-demo-card) .stage svg) {
   visibility: hidden !important;
 }
+.contract :global(.pre-refactor-demo-card) { z-index: 121 !important; }
 
 /* Match the historical tutorial close affordance: the old control rendered a
    typographic multiplication sign rather than the smaller Lucide glyph. */

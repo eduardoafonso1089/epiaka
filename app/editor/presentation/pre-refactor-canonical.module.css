@@ -12,13 +12,8 @@
   overscroll-behavior: contain;
 }
 
-.reviewHidden {
-  display: none;
-}
-
-.fileExtras {
-  display: contents;
-}
+.reviewHidden { display: none; }
+.fileExtras { display: contents; }
 
 :global(.shell) {
   height: 100vh;
@@ -30,16 +25,8 @@
   font-family: var(--sans), system-ui, sans-serif;
 }
 
-/* The old workspace is one row with three fixed columns. The canonical panel
-   container is deliberately flattened so the visual DOM occupies those same
-   grid cells without changing editor state ownership. */
-:global(.workspace) {
-  grid-template-rows: minmax(0, 1fr) !important;
-}
-
-:global(.canonical-management-panels) {
-  display: contents !important;
-}
+:global(.workspace) { grid-template-rows: minmax(0, 1fr) !important; }
+:global(.canonical-management-panels) { display: contents !important; }
 
 :global(.canonical-management-panels) > :global([data-panel="images"]) {
   grid-column: 1;
@@ -79,87 +66,174 @@
   min-height: 0;
 }
 
-/* The refactor added a semantic wrapper around the toolbar. Flatten it so the
-   original .editor grid still sees .tools as its 50px first row. */
-:global(.editor-controls) {
-  display: contents;
-}
-
-:global(.stage) {
-  position: relative;
-}
+:global(.editor-controls) { display: contents; }
+:global(.stage) { position: relative; }
 
 :global(.canonical-management-panels) > :global([data-mobile-toggle]),
-:global(.canonical-management-panels) > :global([data-mobile-backdrop]) {
-  display: none;
-}
+:global(.canonical-management-panels) > :global([data-mobile-backdrop]) { display: none; }
+:global(.canonical-management-panels) :global([data-drawer-header]) { display: none; }
 
-:global(.canonical-management-panels) :global([data-drawer-header]) {
-  display: none;
-}
-
-:global(.canonical-management-panels) :global([class*="panelCard"]) {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
-
-:global(.canonical-management-panels) :global([class*="panelHeader"]) {
-  margin: 0;
-  padding: 12px 13px 9px;
-}
-
-:global(.canonical-management-panels) :global([class*="panelSearch"]) {
-  margin: 0 13px 10px;
-}
-
-:global(.canonical-management-panels) :global([class*="assetList"]) {
-  padding: 0 9px 8px;
-}
-
-:global(.canonical-management-panels) :global([class*="rightPanelCard"]) {
-  height: 100%;
-  border: 0 !important;
-}
-
-:global(.canonical-management-panels) :global([class*="panelTabs"]) {
-  min-height: 47px;
-}
-
-:global(.canonical-management-panels) :global([class*="panelBody"]) {
-  min-height: 0;
-}
-
-:global(.canonical-file-extras) {
-  display: contents;
-}
-
-:global(.canonical-file-extras) > button {
-  width: 100%;
-}
-
-:global(.project-menu-language) {
+/* Left rail details that the canonical state model did not need, but the old UI did. */
+:global(.canonical-management-panels .demo-import) {
+  margin: 0 13px 9px;
+  height: 33px;
+  border: 1px solid var(--tool-active-border);
+  border-radius: 8px;
+  background: var(--tool-active-bg);
+  color: var(--btn-accent-ink);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 10px;
+  justify-content: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+:global(.canonical-management-panels .asset-row) { position: relative; }
+:global(.canonical-management-panels .asset-main) { min-width: 0; }
+:global(.canonical-management-panels .canonical-asset-actions) {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  z-index: 3;
+}
+:global(.canonical-management-panels .asset-row:hover .canonical-asset-actions) { opacity: 1; }
+:global(.canonical-management-panels .canonical-asset-actions button) {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
   color: var(--muted);
+}
+
+/* Old right rail: annotations is the primary surface; Quality/Review remain tabs. */
+:global(.canonical-management-panels .dataset-tabs) { grid-template-columns: 1fr auto auto; }
+:global(.canonical-management-panels .dataset-tabs button) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  white-space: nowrap;
   font-size: 11px;
 }
+:global(.canonical-management-panels .dataset-tabs button:first-child) { justify-content: flex-start; font-size: 12px; }
 
-:global(.project-menu-language) select {
-  min-height: 28px;
+:global(.canonical-annotation-actions),
+:global(.canonical-right-actions) {
+  display: flex;
+  gap: 6px;
+  padding: 0 9px 6px;
+}
+:global(.canonical-annotation-actions button),
+:global(.canonical-right-actions button) {
+  min-height: 29px;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+:global(.canonical-right-actions) { flex-direction: column; padding-top: 5px; }
+:global(.canonical-right-actions button) { min-height: 30px; color: var(--btn-accent-ink); font-weight: 650; }
+
+:global(.canonical-instances) { min-height: 0; padding-top: 4px; }
+:global(.canonical-instances .instance-row) {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 14px minmax(0,1fr) 26px 26px;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  padding: 4px 5px;
+}
+:global(.canonical-instances .instance-row.active) { background: var(--tool-active-bg); color: var(--btn-accent-ink); }
+:global(.canonical-instances .instance-row > i) { width: 11px; height: 11px; border: 2px solid; }
+:global(.canonical-instances .instance-row > span) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+:global(.canonical-instances .instance-row > button) {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
 
-@media (max-width: 860px) {
-  :global(.workspace) {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
+:global(.canonical-placeholder) {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+}
+:global(.canonical-placeholder b) { color: var(--ink); font-size: 12px; }
 
-  :global(.workspace) > :global(.editor) {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-  }
+:global(.canonical-class-manager-backdrop) {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay, rgba(20,18,28,.42));
+}
+:global(.canonical-class-manager) {
+  width: min(680px, 94vw);
+  max-height: min(720px, 90vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(0,0,0,.22);
+  padding: 14px;
+}
+:global(.canonical-class-manager > header) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+:global(.canonical-class-manager > header > div) { display: flex; gap: 9px; align-items: center; }
+:global(.canonical-class-manager > header small) { display: block; color: var(--muted); margin-top: 2px; }
+:global(.canonical-class-manager > header > button) { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--control-bg); }
+:global(.canonical-class-list) { display: grid; gap: 5px; margin-top: 12px; }
+:global(.canonical-class-list > div) { display: grid; grid-template-columns: 34px minmax(0,1fr) 34px 30px 30px; gap: 6px; align-items: center; }
+:global(.canonical-class-list input:not([type="color"])) { min-width: 0; min-height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--control-bg); color: var(--ink); padding: 0 8px; }
+:global(.canonical-class-list button) { height: 30px; border: 1px solid var(--line); border-radius: 7px; background: var(--control-bg); }
+
+:global(.canonical-file-extras) { display: contents; }
+:global(.canonical-file-extras) > button { width: 100%; }
+
+@media (max-width: 860px) {
+  :global(.workspace) { grid-template-columns: minmax(0, 1fr) !important; }
+  :global(.workspace) > :global(.editor) { grid-column: 1 !important; grid-row: 1 !important; }
 
   :global(.canonical-management-panels) > :global([data-panel="images"]),
   :global(.canonical-management-panels) > :global([data-panel="right"]) {
@@ -172,21 +246,9 @@
     transition: transform .22s ease;
     box-shadow: 0 0 40px rgba(22,39,28,.20) !important;
   }
-
-  :global(.canonical-management-panels) > :global([data-panel="images"]) {
-    left: 0;
-    transform: translateX(-105%);
-  }
-
-  :global(.canonical-management-panels) > :global([data-panel="right"]) {
-    right: 0;
-    transform: translateX(105%);
-  }
-
-  :global(.canonical-management-panels) > :global([data-open="true"]) {
-    transform: translateX(0) !important;
-  }
-
+  :global(.canonical-management-panels) > :global([data-panel="images"]) { left: 0; transform: translateX(-105%); }
+  :global(.canonical-management-panels) > :global([data-panel="right"]) { right: 0; transform: translateX(105%); }
+  :global(.canonical-management-panels) > :global([data-open="true"]) { transform: translateX(0) !important; }
   :global(.canonical-management-panels) > :global([data-mobile-backdrop]) {
     position: fixed;
     inset: 0;
@@ -199,7 +261,6 @@
     border-radius: 0;
     background: rgba(16,27,20,.36);
   }
-
   :global(.canonical-management-panels) :global([data-drawer-header]) {
     min-height: 53px;
     padding: 0 14px;

@@ -1,0 +1,142 @@
+.headerLayout {}
+
+/* Preserve the canonical handlers while recreating the compact grouped rhythm of the
+ * pre-merge bar. */
+.headerLayout > :global(main) > :global(div) > :global(header) {
+  column-gap: 6px !important;
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button) {
+  transition: background .12s ease, border-color .12s ease, color .12s ease, opacity .12s ease;
+}
+
+/* Project lifecycle actions */
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(-n+5)) {
+  min-height: 32px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(-n+5)):hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--theme-hover);
+}
+
+/* A subtle divider before open/import reproduces the old project-vs-data grouping. */
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(4)) {
+  margin-left: 5px;
+  position: relative;
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(4))::after {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 5px;
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  pointer-events: none;
+}
+
+/* Format/export buttons stay intentionally textual and compact. */
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:not(:nth-of-type(-n+5)):not(:nth-last-of-type(-n+3))) {
+  min-height: 29px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+/* History is icon-only, like the old toolbar, and separated from export actions. */
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(3)),
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(2)) {
+  width: 31px;
+  min-width: 31px;
+  height: 31px;
+  min-height: 31px;
+  padding: 0 !important;
+  justify-content: center;
+  overflow: hidden;
+  color: transparent !important;
+  font-size: 0 !important;
+  border-color: transparent;
+  background: transparent;
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(3))::before,
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(2))::before {
+  background: var(--ink) !important;
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(3)) {
+  margin-left: 8px;
+  position: relative;
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(3))::after {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 5px;
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+}
+
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(select) {
+  min-height: 31px;
+  max-width: 152px;
+  padding-inline: 7px;
+  font-size: 10px;
+  border-radius: 6px;
+}
+
+/* Save remains the single strong CTA in the bar. */
+.headerLayout > :global(main) > :global(div) > :global(header) > :global(button:last-of-type) {
+  min-height: 32px;
+  padding-inline: 11px;
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+@media (max-width: 1080px) {
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(-n+5)) {
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(select) {
+    max-width: 126px;
+  }
+}
+
+@media (max-width: 700px) {
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(4)),
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(3)) {
+    margin-left: 0;
+  }
+
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-of-type(4))::after,
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:nth-last-of-type(3))::after {
+    display: none;
+  }
+
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(select) {
+    min-width: 94px;
+    max-width: 112px;
+  }
+
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:last-of-type) {
+    width: 32px;
+    min-width: 32px;
+    padding: 0 !important;
+    justify-content: center;
+    overflow: hidden;
+    color: transparent !important;
+    font-size: 0 !important;
+  }
+
+  .headerLayout > :global(main) > :global(div) > :global(header) > :global(button:last-of-type)::before {
+    background: var(--on-brand) !important;
+  }
+}

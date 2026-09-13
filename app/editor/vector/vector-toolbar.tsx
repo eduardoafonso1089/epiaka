@@ -1,10 +1,11 @@
 "use client";
 
+import { CircleMinus, Combine, Copy, ListRestart, Magnet, Maximize2, PenTool, Scissors } from "lucide-react";
 import { getCopy } from "../../lib/i18n";
 import type { VectorTool } from "../commands/editor-shortcuts";
 import ui from "../editor-interface.module.css";
 
-type Copy = ReturnType<typeof getCopy>;
+type CopyType = ReturnType<typeof getCopy>;
 
 export function VectorToolbar({
   copy,
@@ -20,7 +21,7 @@ export function VectorToolbar({
   onMerge,
   onVectorTool,
 }: {
-  copy: Copy;
+  copy: CopyType;
   snapEnabled: boolean;
   vectorTool: VectorTool;
   canSimplify: boolean;
@@ -33,22 +34,29 @@ export function VectorToolbar({
   onMerge: () => void;
   onVectorTool: (tool: VectorTool) => void;
 }) {
-  const toolButton = (id: Exclude<VectorTool, null>, label: string, disabled = false) => <button
+  const toolButton = (
+    id: Exclude<VectorTool, null>,
+    label: string,
+    icon: React.ReactNode,
+    disabled = false,
+  ) => <button
     type="button"
+    className={ui.iconToolButton}
+    aria-label={label}
     aria-pressed={vectorTool === id}
     disabled={disabled}
-    title={id === "transform" ? copy.transformTip : undefined}
+    title={label}
     onClick={() => onVectorTool(vectorTool === id ? null : id)}
-  >{label}</button>;
+  >{icon}</button>;
 
-  return <div className={ui.vectorBar}>
-    <button type="button" aria-pressed={snapEnabled} onClick={onToggleSnap}>{snapEnabled ? copy.snapOn : copy.snapOff}</button>
-    <button type="button" disabled={!canSimplify} onClick={onSimplify}>{copy.simplify}</button>
-    <button type="button" disabled={!canDuplicate} onClick={onDuplicate}>{copy.duplicate}</button>
-    <button type="button" disabled={!canMerge} onClick={onMerge}>{copy.merge}</button>
-    {toolButton("hole", "Buraco (O)", !canEditPolygon)}
-    {toolButton("split", `${copy.split} (X)`, !canEditPolygon)}
-    {toolButton("reshape", `${copy.reshape} (R)`, !canEditPolygon)}
-    {toolButton("transform", `${copy.transform} (T)`, !canEditPolygon)}
+  return <div className={ui.vectorBar} aria-label={copy.editTools}>
+    <button className={ui.iconToolButton} type="button" aria-label={snapEnabled ? copy.snapOn : copy.snapOff} aria-pressed={snapEnabled} title={snapEnabled ? copy.snapOn : copy.snapOff} onClick={onToggleSnap}><Magnet size={17} /></button>
+    <button className={ui.iconToolButton} type="button" aria-label={copy.simplify} title={copy.simplify} disabled={!canSimplify} onClick={onSimplify}><ListRestart size={18} /></button>
+    <button className={ui.iconToolButton} type="button" aria-label={copy.duplicate} title={copy.duplicate} disabled={!canDuplicate} onClick={onDuplicate}><Copy size={17} /></button>
+    <button className={ui.iconToolButton} type="button" aria-label={copy.merge} title={copy.merge} disabled={!canMerge} onClick={onMerge}><Combine size={18} /></button>
+    {toolButton("hole", "Buraco (O)", <CircleMinus size={17} />, !canEditPolygon)}
+    {toolButton("split", `${copy.split} (X)`, <Scissors size={17} />, !canEditPolygon)}
+    {toolButton("transform", `${copy.transform} (T)`, <Maximize2 size={17} />, !canEditPolygon)}
+    {toolButton("reshape", `${copy.reshape} (R)`, <PenTool size={17} />, !canEditPolygon)}
   </div>;
 }

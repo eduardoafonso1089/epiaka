@@ -28,7 +28,7 @@ function ToolButton({ title, keyHint, active, disabled, onClick, children, class
   keyHint?: string;
   active?: boolean;
   disabled?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
   children: ReactNode;
   className?: string;
 }) {

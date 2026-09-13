@@ -18,7 +18,7 @@
   content: "";
   position: absolute;
   inset: 6px;
-  background: var(--ink);
+  background: var(--tool-ink);
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-position: center;
@@ -27,8 +27,24 @@
   mask-size: contain;
 }
 
+.iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:hover:not(:disabled))::before,
 .iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button[aria-pressed="true"])::before {
   background: var(--tool-active-ink);
+}
+
+/* Separate navigation from geometry creation, matching the old toolbar rhythm. */
+.iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-of-type(3)) {
+  margin-left: 9px;
+}
+
+.iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-of-type(3))::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--line);
 }
 
 /* MousePointer2 */
@@ -84,6 +100,37 @@
   font-size: 10px !important;
 }
 
+.iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-last-of-type(3)) {
+  margin-left: 10px;
+  border-left-color: var(--line) !important;
+  border-radius: 7px 0 0 7px !important;
+}
+
+.iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-last-of-type(2)) {
+  margin-left: -4px;
+  margin-right: -4px;
+  border-radius: 0 !important;
+}
+
+.iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:last-of-type) {
+  border-radius: 0 7px 7px 0 !important;
+}
+
 .iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-last-of-type(-n+3))::before {
   display: none;
+}
+
+@media (max-width: 560px) {
+  .iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button) {
+    width: 30px;
+    min-width: 30px;
+  }
+
+  .iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-of-type(3)) {
+    margin-left: 6px;
+  }
+
+  .iconContract > :global(main) > :global(div) > :global(div:nth-of-type(1)) > :global(button:nth-last-of-type(3)) {
+    margin-left: 6px;
+  }
 }

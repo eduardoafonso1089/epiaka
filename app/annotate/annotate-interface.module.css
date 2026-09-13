@@ -4,12 +4,6 @@
   background: var(--paper);
 }
 
-/*
- * Visual contract for /annotate.
- * The canonical editor owns state/geometry, but the route keeps the desktop/mobile
- * composition that existed before the editor refactor: application bar, left image
- * rail, central editor, right annotation/class rail and bottom status row.
- */
 .routeRoot > :global(main) {
   height: 100vh !important;
   min-height: 0 !important;
@@ -26,21 +20,20 @@
   margin: 0 !important;
   display: grid;
   grid-template-columns: 256px minmax(0, 1fr) 288px;
-  grid-template-rows: 96px 54px minmax(0, 1fr) 42px;
+  grid-template-rows: 66px 50px minmax(0, 1fr) 42px;
   background: var(--paper);
 }
 
-/* Header: same height, surface and two-row rhythm used by the previous annotator. */
 .routeRoot > :global(main) > :global(div) > :global(header) {
   grid-column: 1 / -1;
   grid-row: 1;
   position: relative !important;
   top: auto !important;
   z-index: 50;
-  min-height: 96px !important;
-  height: 96px;
+  min-height: 66px !important;
+  height: 66px;
   margin: 0 !important;
-  padding: 10px 18px 36px 20px !important;
+  padding: 0 18px 0 20px !important;
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
@@ -56,30 +49,27 @@
 .routeRoot > :global(main) > :global(div) > :global(header)::before {
   content: "Poligome";
   flex: none;
-  margin-right: 6px;
+  margin-right: 8px;
   color: var(--ink);
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 800;
-  letter-spacing: -.065em;
+  letter-spacing: -.035em;
 }
 
 .routeRoot > :global(main) > :global(div) > :global(header)::after {
   content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 30px;
-  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
-  background: var(--surface-soft);
-  pointer-events: none;
+  flex: none;
+  width: 1px;
+  height: 27px;
+  margin: 0 4px;
+  background: var(--line);
 }
 
 .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
-  flex: 0 1 220px;
+  flex: 0 1 200px;
   min-width: 80px;
-  max-width: 220px;
-  margin: 0 6px 0 0 !important;
+  max-width: 200px;
+  margin: 0 4px 0 0 !important;
   overflow: hidden;
   color: var(--ink);
   font-size: 13px !important;
@@ -112,7 +102,13 @@
   background: var(--theme-hover);
 }
 
-/* Basic and advanced tool rows occupy the old 54px editor-toolbar band. */
+.routeRoot > :global(main) > :global(div) > :global(header) :global(button:last-of-type) {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--on-brand);
+  font-weight: 700;
+}
+
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)),
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) {
   grid-column: 2;
@@ -121,48 +117,52 @@
   min-width: 0;
   margin: 0 !important;
   border: 0 !important;
-  border-bottom: 1px solid var(--line) !important;
   border-radius: 0 !important;
   background: var(--surface-soft) !important;
 }
 
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) {
   align-self: start;
-  height: 30px;
-  padding: 3px 10px !important;
+  height: 31px;
+  padding: 0 12px !important;
   display: flex !important;
   align-items: center;
   gap: 4px !important;
   flex-wrap: nowrap !important;
   overflow-x: auto;
   overflow-y: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62%, transparent) !important;
 }
 
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) {
   align-self: end;
-  height: 24px;
-  padding: 2px 10px !important;
+  height: 19px;
+  padding: 0 12px !important;
   display: flex !important;
   align-items: center;
   gap: 3px !important;
   flex-wrap: nowrap !important;
   overflow-x: auto;
   overflow-y: hidden;
-  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent) !important;
+  border-bottom: 1px solid var(--line) !important;
 }
 
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) :global(button),
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) :global(button),
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) :global(select) {
-  min-height: 24px !important;
-  height: 24px;
-  padding: 0 7px !important;
-  border-radius: 6px;
+  min-height: 29px !important;
+  height: 29px;
+  border-color: transparent;
+  background: transparent;
   font-size: 10px;
   white-space: nowrap;
 }
 
-/* The inline message becomes the previous bottom status message. */
+.routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) :global(button) {
+  min-height: 18px !important;
+  height: 18px;
+}
+
 .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(3)) {
   grid-column: 2;
   grid-row: 4;
@@ -182,7 +182,6 @@
   white-space: nowrap;
 }
 
-/* Canonical viewport in the same central stage used before the merge. */
 .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(1)) {
   grid-column: 2;
   grid-row: 3;
@@ -194,16 +193,14 @@
   overflow: auto !important;
   border: 0 !important;
   border-radius: 0 !important;
-  background-color: var(--canvas-bg) !important;
-  background-image: radial-gradient(var(--dot) .8px, transparent .8px) !important;
+  background-color: var(--theme-hover) !important;
+  background-image: radial-gradient(var(--canvas-bg) .8px, transparent .8px) !important;
   background-size: 14px 14px !important;
   box-shadow: none !important;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
 }
 
-/* Management is transparent to the grid. Its image card and right group become the same
- * fixed rails used by the pre-refactor interface. */
 .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) {
   display: contents !important;
 }
@@ -242,9 +239,8 @@
   flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
-  padding: 10px 9px !important;
+  padding: 0 !important;
   border: 0 !important;
-  border-bottom: 1px solid var(--line) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
@@ -268,7 +264,6 @@
   color: var(--muted);
 }
 
-/* Mobile drawer controls are absent on desktop. */
 .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button) {
   display: none;
 }
@@ -277,13 +272,10 @@
   display: none;
 }
 
-/* Quality/Review was intentionally kept in code but hidden from the standard editor UI
- * in the visual reference immediately before the refactor merge. */
 .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(3)) {
   display: none !important;
 }
 
-/* The canonical footer duplicates information already shown in the historical status row. */
 .routeRoot > :global(main) > :global(div) > :global(footer) {
   display: none !important;
 }
@@ -301,7 +293,7 @@
 @media (max-width: 860px) {
   .routeRoot > :global(main) > :global(div) {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 96px 54px minmax(0, 1fr) 42px;
+    grid-template-rows: 66px 50px minmax(0, 1fr) 42px;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(header),
@@ -322,10 +314,9 @@
   }
 
   .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
-    max-width: 120px;
+    max-width: 115px;
   }
 
-  /* Same mobile behaviour as before: editor stays full screen and both rails become drawers. */
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(1)),
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)) {
     position: fixed;
@@ -350,17 +341,14 @@
     transform: translateX(105%);
   }
 
-  /* React leaves an inline CSS-module token only when open; :has(close button) identifies the
-   * active drawer without coupling the route to the module's generated class name. */
-  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(1)):has(> :global(div:first-child button:focus)),
-  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div:nth-of-type(2)):has(> :global(div:first-child button:focus)) {
-    transform: translateX(0);
+  .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(div[data-open="true"]) {
+    transform: translateX(0) !important;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(1)),
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(2)) {
     position: fixed;
-    top: 13px;
+    top: 16px;
     z-index: 110;
     width: 34px;
     height: 34px;
@@ -371,7 +359,6 @@
     border-radius: 8px;
     background: transparent;
     color: var(--ink);
-    font-size: 17px;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(1)) { left: 10px; }
@@ -402,22 +389,22 @@
 
 @media (max-width: 560px) {
   .routeRoot > :global(main) > :global(div) {
-    grid-template-rows: 88px 50px minmax(0, 1fr) 38px;
+    grid-template-rows: 62px 48px minmax(0, 1fr) 38px;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(header) {
-    height: 88px;
-    min-height: 88px !important;
-    padding: 8px 46px 33px !important;
-  }
-
-  .routeRoot > :global(main) > :global(div) > :global(header)::after {
-    height: 28px;
+    height: 62px;
+    min-height: 62px !important;
+    padding: 0 46px !important;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(header)::before {
     content: "P";
     font-size: 20px;
+  }
+
+  .routeRoot > :global(main) > :global(div) > :global(header)::after {
+    display: none;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(header) > :global(strong) {
@@ -427,12 +414,12 @@
   }
 
   .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(1)) {
-    height: 28px;
+    height: 30px;
     padding-inline: 7px !important;
   }
 
   .routeRoot > :global(main) > :global(div) > :global(div:nth-of-type(2)) {
-    height: 22px;
+    height: 18px;
     padding-inline: 7px !important;
   }
 
@@ -443,6 +430,6 @@
 
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(1)),
   .routeRoot > :global(main) > :global(div) > :global(section:nth-of-type(2)) > :global(button:nth-of-type(2)) {
-    top: 10px;
+    top: 14px;
   }
 }

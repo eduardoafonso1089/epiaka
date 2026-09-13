@@ -6,19 +6,21 @@ const routeCss = await readFile(new URL("../app/annotate/annotate-interface.modu
 const drawerCss = await readFile(new URL("../app/annotate/annotate-drawer-state.module.css", import.meta.url), "utf8");
 const panels = await readFile(new URL("../app/editor/panels/editor-management-panels.tsx", import.meta.url), "utf8");
 
-test("annotate desktop keeps the pre-refactor three-column workspace", () => {
+test("annotate desktop keeps the pre-merge three-column workspace", () => {
   assert.match(routeCss, /grid-template-columns:\s*256px minmax\(0, 1fr\) 288px/);
-  assert.match(routeCss, /grid-template-rows:\s*96px 54px minmax\(0, 1fr\) 42px/);
+  assert.match(routeCss, /grid-template-rows:\s*66px 50px minmax\(0, 1fr\) 42px/);
+  assert.match(routeCss, /min-height:\s*66px !important/);
   assert.match(routeCss, /grid-template-columns:\s*222px minmax\(0, 1fr\) 252px/);
 });
 
-test("annotate responsive breakpoints preserve drawer composition", () => {
+test("annotate responsive breakpoints preserve the pre-merge drawer composition", () => {
   assert.match(routeCss, /@media \(max-width: 860px\)/);
+  assert.match(routeCss, /grid-template-rows:\s*66px 50px minmax\(0, 1fr\) 42px/);
   assert.match(routeCss, /width:\s*min\(310px, 86vw\)/);
   assert.match(routeCss, /transform:\s*translateX\(-105%\)/);
   assert.match(routeCss, /transform:\s*translateX\(105%\)/);
   assert.match(routeCss, /@media \(max-width: 560px\)/);
-  assert.match(routeCss, /grid-template-rows:\s*88px 50px minmax\(0, 1fr\) 38px/);
+  assert.match(routeCss, /grid-template-rows:\s*62px 48px minmax\(0, 1fr\) 38px/);
 });
 
 test("mobile drawers are driven by explicit React state", () => {

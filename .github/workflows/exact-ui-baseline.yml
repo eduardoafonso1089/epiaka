@@ -40,12 +40,11 @@ jobs:
 
       - name: Start reference and candidate
         run: |
-          (cd /tmp/poligome-reference && npm run dev -- --host 127.0.0.1 --port 4173 > /tmp/reference.log 2>&1 &)
-          (npm run dev -- --host 127.0.0.1 --port 4174 > /tmp/candidate.log 2>&1 &)
-          for i in {1..90}; do curl -fsS http://127.0.0.1:4173/annotate >/dev/null && break; sleep 1; done
-          for i in {1..90}; do curl -fsS http://127.0.0.1:4174/annotate >/dev/null && break; sleep 1; done
-          curl -f http://127.0.0.1:4173/annotate >/dev/null
-          curl -f http://127.0.0.1:4174/annotate >/dev/null
+          nohup bash -lc 'cd /tmp/poligome-reference && npm run dev -- --host 127.0.0.1 --port 4173' >/tmp/reference.log 2>&1 &
+          nohup bash -lc 'cd "$GITHUB_WORKSPACE" && npm run dev -- --host 127.0.0.1 --port 4174' >/tmp/candidate.log 2>&1 &
+          ready() { for i in {1..120}; do curl -LfsS "$1" >/dev/null && return 0; sleep 1; done; return 1; }
+          ready http://127.0.0.1:4173/annotate || { cat /tmp/reference.log; exit 1; }
+          ready http://127.0.0.1:4174/annotate || { cat /tmp/candidate.log; exit 1; }
 
       - name: Capture exact baseline and candidate
         run: |

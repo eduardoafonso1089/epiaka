@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CodeXml, Combine, Copy,
-  Crosshair, FileText, Focus, FolderUp, Hand, HardDriveDownload, House, Keyboard,
+  Crosshair, Focus, FolderUp, Hand, HardDriveDownload, House, Keyboard, Link2, LoaderCircle,
   ListRestart, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, PenTool,
-  Pentagon, Plus, Save, Scissors, ShieldCheck, Sparkles, Spline, Square, Trash2, Undo2,
-  Redo2, WandSparkles, ZoomIn, ZoomOut,
+  Pencil, Pentagon, Plus, Save, Scissors, Settings2, ShieldCheck, Sparkles, Spline, Square,
+  Trash2, Undo2, Redo2, WandSparkles, ZoomIn, ZoomOut,
 } from "lucide-react";
 import type { DrawingTool } from "../drawing/use-drawing-interactions";
 import type { VectorTool } from "../commands/editor-shortcuts";
@@ -69,6 +69,8 @@ export type PreRefactorChromeProps = {
   onImportImages: () => void;
   onSaveProject: () => void;
   onLanguageChange: (language: Language) => void;
+  onSamSettings?: () => void;
+  onPreferences?: () => void;
   onTool: (tool: DrawingTool) => void;
   onVectorTool: (tool: VectorTool) => void;
   onSimplify: () => void;
@@ -119,11 +121,12 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
         <button className="home-return" title={copy.homeHint} aria-label={copy.home} onClick={props.onHome}><House size={15} /><span>{copy.home}</span></button>
         {editing
           ? <input className="project-name-input" value={draft} aria-label={copy.renameProject} maxLength={80} autoFocus onChange={(event) => setDraft(event.target.value)} onBlur={saveRename} onKeyDown={(event) => { if (event.key === "Enter") saveRename(); if (event.key === "Escape") { setDraft(props.projectName); setEditing(false); } }} />
-          : <button className="project-name" title={copy.renameProject} onClick={() => { setDraft(props.projectName); setEditing(true); }}><em /><span>{props.projectName}</span><PenLine size={13} /></button>}
+          : <button className="project-name" title={copy.renameProject} onClick={() => { setDraft(props.projectName); setEditing(true); }}><em /><span>{props.projectName}</span><Pencil size={13} /></button>}
       </div>
       <div className="head-actions">
         <button className="new-project-main" disabled={props.loading} title={copy.newProjectHint} onClick={props.onNewProject}><Plus size={15} /><span>{copy.newProject}</span></button>
-        <span className={`save ${props.dirty ? "" : "done"}`}><HardDriveDownload size={14} />{props.dirty ? copy.saving : copy.saved}</span>
+        <span className={`save ${props.dirty ? "" : "done"}`}>{props.loading ? <LoaderCircle className="spin" size={14} /> : <HardDriveDownload size={14} />}{props.dirty ? copy.saving : copy.saved}</span>
+        <button className="sam-connection" onClick={props.onSamSettings}><Link2 size={14} />{copy.activateSam}</button>
         <span className="local-mode" title={copy.localOnlyHint}><ShieldCheck size={14} />{copy.localOnly}</span>
         <a className="source-link" href="https://github.com/eduardoafonso1089/poligome" target="_blank" rel="noreferrer" title={copy.sourceCode}><CodeXml size={14} /><span>{copy.sourceCode}</span></a>
         <button className="mobile" onClick={props.onOpenRightPanel} aria-label={copy.classes}><MoreHorizontal size={19} /></button>
@@ -137,18 +140,12 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
           <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onNewProject(); }}><Plus size={14} /><span><b>{copy.newProject}</b><small>{copy.newProjectHint}</small></span></button>
           <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onOpenProject(); }}><FolderUp size={14} /><span><b>{copy.openProject}</b><small>{copy.openProjectHint}</small></span></button>
           <button role="menuitem" disabled={props.loading || !props.hasAssets} onClick={() => { setFileOpen(false); props.onSaveProject(); }}><Save size={14} /><span><b>{copy.saveProject}</b><small>{copy.saveProjectHint}</small></span></button>
-          <button role="menuitem" onClick={() => { setFileOpen(false); setEditing(true); }}><PenLine size={14} /><span><b>{copy.renameProject}</b><small>{props.projectName}</small></span></button>
+          <button role="menuitem" onClick={() => { setFileOpen(false); setEditing(true); }}><Pencil size={14} /><span><b>{copy.renameProject}</b><small>{props.projectName}</small></span></button>
           <i className="menu-separator" />
-          <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onImportImages(); }}><FileText size={14} /><span><b>{copy.importImages}</b><small>{copy.privacy}</small></span></button>
-          <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onDemo(); }}><WandSparkles size={14} /><span><b>{copy.tryDemo}</b><small>{copy.tryDemo}</small></span></button>
+          <p>{copy.exportFormat}</p>
           {props.fileMenuExtras}
           <i className="menu-separator" />
-          <div className="project-menu-language">
-            <span>{copy.language}</span>
-            <select aria-label={copy.language} value={props.language} onChange={(event) => props.onLanguageChange(event.target.value as Language)}>
-              <option value="pt">PT</option><option value="en">EN</option><option value="fr">FR</option><option value="es">ES</option>
-            </select>
-          </div>
+          <button role="menuitem" onClick={() => { setFileOpen(false); props.onPreferences?.(); }}><Settings2 size={14} /><span><b>{copy.preferences}</b><small>{copy.appearance} · {copy.language}</small></span></button>
         </div>}
       </div>
     </nav>

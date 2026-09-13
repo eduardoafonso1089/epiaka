@@ -6,6 +6,69 @@
   display: none !important;
 }
 
+/* The welcome card is intentionally restated from dfe774 rather than visually
+   approximated. It is a large fraction of the empty mobile viewport, so tiny
+   differences in its fill, border, spacing or shadow create a large diff. */
+.contract :global(.pre-refactor-empty-card) {
+  width: min(520px, calc(100% - 32px)) !important;
+  min-height: 0 !important;
+  padding: 38px 30px !important;
+  border: 1px dashed color-mix(in srgb, var(--green) 45%, var(--line)) !important;
+  border-radius: 18px !important;
+  background: color-mix(in srgb, var(--surface) 88%, transparent) !important;
+  color: var(--ink) !important;
+  text-align: center !important;
+  box-shadow: 0 14px 35px rgba(32,54,40,.08) !important;
+  display: block !important;
+}
+.contract :global(.pre-refactor-empty-card > span) {
+  width: 58px !important;
+  height: 58px !important;
+  margin: 0 auto 15px !important;
+  border-radius: 16px !important;
+  display: grid !important;
+  place-items: center !important;
+  background: color-mix(in srgb, var(--green) 14%, var(--surface)) !important;
+  color: var(--green) !important;
+}
+.contract :global(.pre-refactor-empty-card h2) {
+  margin: 0 !important;
+  font-size: 20px !important;
+}
+.contract :global(.pre-refactor-empty-card p) {
+  max-width: 390px !important;
+  margin: 8px auto 19px !important;
+  color: var(--muted) !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+}
+.contract :global(.pre-refactor-empty-card > div) {
+  display: flex !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+.contract :global(.pre-refactor-empty-card button) {
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 14px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 9px !important;
+  background: var(--control-bg) !important;
+  color: var(--ink) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+.contract :global(.pre-refactor-empty-card small) {
+  display: block !important;
+  margin-top: 18px !important;
+  color: var(--muted) !important;
+  font-size: 10px !important;
+}
+
 /* Initial demo tutorial: mask only the image rectangle, as the historical
    guided flow did. Canonical demo annotations stay loaded for later use, but
    are visually suppressed until the first tutorial task is completed. */
@@ -21,43 +84,74 @@
   visibility: hidden !important;
 }
 
+/* Match the historical tutorial close affordance: the old control rendered a
+   typographic multiplication sign rather than the smaller Lucide glyph. */
 .contract :global(.pre-refactor-demo-close) {
-  background: transparent !important;
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  width: 27px !important;
+  height: 27px !important;
+  margin: 0 !important;
+  padding: 0 !important;
   border: 0 !important;
+  background: transparent !important;
   box-shadow: none !important;
   color: var(--muted) !important;
+  font-size: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+}
+.contract :global(.pre-refactor-demo-close svg) { display: none !important; }
+.contract :global(.pre-refactor-demo-close)::after {
+  content: "×";
+  font-size: 21px;
+  line-height: 1;
 }
 
-.contract :global(.demo-tutorial-tool-target) { overflow: visible; }
+/* Exact first-step tool cue from the pre-refactor tutorial. Desktop can anchor
+   the bubble to the highlighted button directly. Mobile's toolbar scroll box
+   clips overflowing descendants, so the cue is fixed at the historical first
+   viewport position (the Box tool position itself is fixed in the initial row). */
+.contract :global(.demo-tutorial-tool-target) {
+  overflow: visible;
+  position: relative;
+  z-index: 122;
+  box-shadow: 0 0 0 3px #8BE3BD, 0 0 24px rgba(139,227,189,.9) !important;
+  animation: tutorial-pulse 1.4s ease-in-out infinite;
+}
 .contract :global(.demo-tutorial-tool-target)::after {
   content: "Clique aqui";
   position: absolute;
-  z-index: 80;
+  z-index: 125;
   left: 50%;
   top: calc(100% + 14px);
   transform: translateX(-50%);
-  min-width: 88px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: rgba(54, 58, 55, .92);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1;
   white-space: nowrap;
+  padding: 6px 10px;
+  border: 2px solid #8BE3BD;
+  border-radius: 15px;
+  background: #0C0F0E;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: normal;
+  box-shadow: 0 5px 18px rgba(0,0,0,.32);
   pointer-events: none;
+  animation: tutorial-pulse 1.15s ease-in-out infinite;
 }
 .contract :global(.demo-tutorial-tool-target)::before {
   content: "";
   position: absolute;
-  z-index: 81;
+  z-index: 126;
   left: 50%;
-  top: calc(100% + 9px);
+  top: calc(100% + 5px);
   transform: translateX(-50%);
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 5px solid rgba(54, 58, 55, .92);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 9px solid #8BE3BD;
   pointer-events: none;
+  animation: tutorial-pulse 1.15s ease-in-out infinite;
 }
 
 /* During onboarding the historical UI deliberately starts at zero reviewed
@@ -142,6 +236,18 @@
 }
 
 @media (max-width: 860px) {
-  .contract :global(.demo-tutorial-tool-target)::after,
-  .contract :global(.demo-tutorial-tool-target)::before { display: none; }
+  .contract :global(.pre-refactor-empty-overlay) { padding-top: 6px !important; }
+  .contract :global(.pre-refactor-empty-card) { width: min(346px, 100%) !important; }
+  .contract :global(.demo-tutorial-tool-target)::after {
+    position: fixed;
+    left: 175px;
+    top: 151px;
+    transform: translateX(-50%);
+  }
+  .contract :global(.demo-tutorial-tool-target)::before {
+    position: fixed;
+    left: 175px;
+    top: 142px;
+    transform: translateX(-50%);
+  }
 }

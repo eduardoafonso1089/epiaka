@@ -31,8 +31,7 @@ import { createLabel as createPanelLabel, moveItemById, recolorLabel, renameLabe
 import { selectRange } from "../selection/selection-model";
 import { commandFromKeyboard, isEditableShortcutTarget, type VectorTool } from "../commands/editor-shortcuts";
 import { simplifyPolygonAnnotation, unionPolygonAnnotations } from "../geometry/vector-operations";
-import { VectorToolbar } from "../vector/vector-toolbar";
-import { PreRefactorStatus, PreRefactorToolbar, PreRefactorTopbar, type PreRefactorChromeProps } from "../presentation/pre-refactor-chrome";
+import { PreRefactorStatus, PreRefactorToolbar, PreRefactorTopbar, type PreRefactorChromeProps, type ProjectSaveMode } from "../presentation/pre-refactor-chrome";
 import exact from "../presentation/pre-refactor-canonical.module.css";
 
 const EMPTY_LABELS: Label[] = [{ id: UNLABELED_ID, name: "Sem label", color: "#929a95", key: "" }];
@@ -45,9 +44,9 @@ export function CanonicalEditorWorkbench() {
   const [vectorTool, setVectorTool] = useState<VectorTool>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [current, setCurrent] = useState("");
-  const [projectName, setProjectName] = useState("Poligome V4");
+  const [projectName, setProjectName] = useState(() => getCopy(storedLanguage()).newProject);
   const [language, setLanguage] = useState<Language>("pt");
-  const [saveMode, setSaveMode] = useState<"annotations" | "complete">("complete");
+  const [saveMode, setSaveMode] = useState<ProjectSaveMode>("complete");
   const [strokePx, setStrokePx] = useState(3);
   const [reviewMode, setReviewMode] = useState<"quality" | "review">("quality");
   const [hiddenAnnotationIds, setHiddenAnnotationIds] = useState<Set<string>>(() => new Set());
@@ -63,15 +62,6 @@ export function CanonicalEditorWorkbench() {
   const demoQueryHandled = useRef(false);
   const editor = useEditorState();
   const copy = getCopy(language);
-  const tools: Array<{ id: DrawingTool; label: string }> = [
-    { id: "select", label: copy.select },
-    { id: "pan", label: copy.pan },
-    { id: "box", label: copy.box },
-    { id: "polygon", label: copy.polygon },
-    { id: "line", label: copy.line },
-    { id: "point", label: copy.point },
-    { id: "freehand", label: copy.freehand },
-  ];
   const asset = assets.find((item) => item.id === current) ?? assets[0] ?? null;
   const imageSize = { width: asset?.width ?? 1, height: asset?.height ?? 1 };
   const viewport = useEditorViewport({ image: imageSize, initialZoom: 92 });
@@ -196,7 +186,7 @@ export function CanonicalEditorWorkbench() {
     setLabels([unlabeled]);
     setActiveLabel(unlabeled.id);
     setCurrent("");
-    setProjectName(copy.defaultProjectName);
+    setProjectName(copy.newProject);
     setSaveMode("complete");
     editor.replaceAnnotations([], true);
     resetTransientVisibility();
@@ -209,14 +199,6 @@ export function CanonicalEditorWorkbench() {
     if (hasCurrentData && !window.confirm(copy.replaceUnsavedWithNewProject)) return;
     resetProjectState();
     setMessage(copy.newProjectReady);
-  }
-
-  function renameCurrentProject() {
-    const next = window.prompt(copy.renameProject, projectName)?.trim();
-    if (!next || next === projectName) return;
-    setProjectName(next);
-    setSessionDirty(true);
-    setMessage(copy.toastProjectRenamed);
   }
 
   async function loadDemo(requestedLanguage: Language = language) {
@@ -233,7 +215,7 @@ export function CanonicalEditorWorkbench() {
       resetTransientVisibility();
       setSessionDirty(false);
       resetInteractionState();
-      setMessage(copy.demoReady);
+      setMessage(getCopy(requestedLanguage).demoReady);
     } catch (error) {
       setMessage(translateErrorCode(error, copy, copy.demoError));
     } finally {
@@ -427,6 +409,14 @@ export function CanonicalEditorWorkbench() {
     setHiddenAnnotationIds((currentHidden) => new Set([...currentHidden].filter((id) => !ids.includes(id))));
   }
 
+  function clearAllAnnotations() {
+    const ids = editor.annotations.map((annotation) => annotation.id);
+    if (!ids.length) return;
+    if (!window.confirm(`${copy.confirmDeleteAnnotations}\n${copy.deleteAnnotationsWarning}`)) return;
+    deleteAnnotations(ids);
+    setMessage(`${ids.length} ${copy.annotationsDeleted}`);
+  }
+
   function batchReclassify(ids: string[], labelId: string) {
     if (!ids.length || !labels.some((label) => label.id === labelId)) return;
     editor.dispatch({ type: "reclassify-annotations", ids, labelId });
@@ -527,11 +517,12 @@ export function CanonicalEditorWorkbench() {
     editor.dispatch({ type: "replace-annotation", annotation: { ...editor.selectedAnnotation, reviewScore: score } });
   }
 
-  async function saveProject() {
+  async function saveProject(mode: ProjectSaveMode = saveMode) {
     if (!assets.length) return;
+    setSaveMode(mode);
     setLoading(true);
     try {
-      const name = await saveEditorProject(projectName, assets, labels, editor.annotations, saveMode, copy);
+      const name = await saveEditorProject(projectName, assets, labels, editor.annotations, mode, copy);
       editor.markSaved();
       setSessionDirty(false);
       setMessage(`${copy.projectSaved}: ${name}`);
@@ -619,15 +610,16 @@ export function CanonicalEditorWorkbench() {
     canRedo: editor.redoHistory.length > 0,
     hasSelection: selectedIds.length > 0,
     strokePx,
-    statusMessage: message || (asset ? `${activeAssetAnnotations.length} ${copy.imageAnnotations}` : copy.emptyProjectTitle),
+    statusMessage: asset ? (message || `${activeAssetAnnotations.length} ${copy.imageAnnotations}`) : copy.emptyProjectTitle,
     onHome: () => { if (!projectDirty || window.confirm(copy.confirmLeaveHome)) window.location.assign("/"); },
     onNewProject: startNewProject,
     onRenameProject: (name: string) => { setProjectName(name); setSessionDirty(true); },
     onDemo: () => { if (!projectDirty || window.confirm(copy.replaceUnsavedProject)) void loadDemo(); },
     onOpenProject: () => projectInputRef.current?.click(),
     onImportImages: () => imageInputRef.current?.click(),
-    onSaveProject: () => void saveProject(),
+    onSaveProject: (mode: ProjectSaveMode) => void saveProject(mode),
     onLanguageChange: changeLanguage,
+    onSamSettings: () => window.dispatchEvent(new CustomEvent("poligome:open-sam")),
     onTool: chooseTool,
     onVectorTool: chooseVectorTool,
     onSimplify: simplifySelected,
@@ -637,6 +629,8 @@ export function CanonicalEditorWorkbench() {
     onUndo: () => editor.undo(),
     onRedo: () => editor.redo(),
     onDelete: () => deleteAnnotations(selectedIds),
+    onClearAnnotations: clearAllAnnotations,
+    onSelectAllAnnotations: selectAllActiveAnnotations,
     onStrokeChange: setStrokePx,
     onZoomOut: () => viewport.zoomBy(-10),
     onZoomIn: () => viewport.zoomBy(10),

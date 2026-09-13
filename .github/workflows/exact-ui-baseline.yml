@@ -1,0 +1,80 @@
+name: Exact UI Baseline
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    if: github.head_ref == 'fix/exact-pre-refactor-ui' || github.ref_name == 'fix/exact-pre-refactor-ui'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - name: Prepare reference worktree
+        run: git worktree add /tmp/poligome-reference dfe774dae2ec76df923e8fcf5f6adba5d90b6b9a
+
+      - name: Install candidate
+        run: npm ci
+
+      - name: Install reference
+        working-directory: /tmp/poligome-reference
+        run: npm ci
+
+      - name: Install browser
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start reference and candidate
+        run: |
+          (cd /tmp/poligome-reference && npm run dev -- --host 127.0.0.1 --port 4173 > /tmp/reference.log 2>&1 &)
+          (npm run dev -- --host 127.0.0.1 --port 4174 > /tmp/candidate.log 2>&1 &)
+          for i in {1..90}; do curl -fsS http://127.0.0.1:4173/annotate >/dev/null && break; sleep 1; done
+          for i in {1..90}; do curl -fsS http://127.0.0.1:4174/annotate >/dev/null && break; sleep 1; done
+          curl -f http://127.0.0.1:4173/annotate >/dev/null
+          curl -f http://127.0.0.1:4174/annotate >/dev/null
+
+      - name: Capture exact baseline and candidate
+        run: |
+          cat > capture-exact-ui.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs/promises';
+          const browser = await chromium.launch({ headless: true });
+          await fs.mkdir('exact-ui', { recursive: true });
+          async function shot(base, prefix, viewport, demo = false) {
+            const context = await browser.newContext({ viewport });
+            const page = await context.newPage();
+            await page.goto(`${base}/annotate${demo ? '?demo=1' : ''}`, { waitUntil: 'networkidle', timeout: 90000 });
+            await page.waitForTimeout(demo ? 2500 : 800);
+            await page.screenshot({ path: `exact-ui/${prefix}-${viewport.width}x${viewport.height}${demo ? '-demo' : ''}.png`, fullPage: false });
+            await context.close();
+          }
+          for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
+            await shot('http://127.0.0.1:4173','reference',viewport,false);
+            await shot('http://127.0.0.1:4173','reference',viewport,true);
+            await shot('http://127.0.0.1:4174','candidate',viewport,false);
+            await shot('http://127.0.0.1:4174','candidate',viewport,true);
+          }
+          await browser.close();
+          EOF
+          node capture-exact-ui.mjs
+
+      - name: Upload comparison screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-ui-baseline
+          path: exact-ui/*.png
+          retention-days: 2

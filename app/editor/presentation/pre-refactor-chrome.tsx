@@ -3,15 +3,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CodeXml, Combine, Copy,
-  Crosshair, Focus, FolderUp, Hand, HardDriveDownload, House, Keyboard, Link2, LoaderCircle,
-  ListRestart, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, PenTool,
-  Pencil, Pentagon, Plus, Save, Scissors, Settings2, ShieldCheck, Sparkles, Spline, Square,
-  Trash2, Undo2, Redo2, WandSparkles, ZoomIn, ZoomOut,
+  Crosshair, Focus, FolderUp, Hand, HardDriveDownload, House, ImagePlus, Images, Keyboard,
+  Link2, LoaderCircle, ListRestart, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2,
+  PenLine, PenTool, Pencil, Pentagon, Plus, Save, Scissors, Settings2, ShieldCheck, Sparkles,
+  Spline, Square, Trash2, Undo2, Redo2, WandSparkles, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import type { DrawingTool } from "../drawing/use-drawing-interactions";
 import type { VectorTool } from "../commands/editor-shortcuts";
 import type { Language } from "../../lib/i18n";
 import { getCopy } from "../../lib/i18n";
+
+const demoGuide = {
+  pt: ["Selecione a ferramenta Caixa", "Clique na ferramenta destacada para começar."],
+  en: ["Select the Box tool", "Click the highlighted tool to begin."],
+  fr: ["Sélectionnez l’outil Boîte", "Cliquez sur l’outil mis en évidence pour commencer."],
+  es: ["Selecciona la herramienta Caja", "Haz clic en la herramienta resaltada para empezar."],
+} as const;
 
 function BrandLockup({ height = 30 }: { height?: number }) {
   return <span className="brand-lockup" role="img" aria-label="Poligome">
@@ -155,42 +162,75 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
 export function PreRefactorToolbar(props: PreRefactorChromeProps) {
   const copy = getCopy(props.language);
   const canEdit = props.hasAsset;
-  return <div className="tools">
-    <div>
-      <ToolButton title={copy.select} keyHint="V" disabled={!canEdit} active={props.tool === "select" && !props.vectorTool} onClick={() => props.onTool("select")}><MousePointer2 size={18} /></ToolButton>
-      <ToolButton title={copy.pan} keyHint="H" disabled={!canEdit} active={props.tool === "pan" && !props.vectorTool} onClick={() => props.onTool("pan")}><Hand size={18} /></ToolButton>
-      <ToolButton title="Guias de coordenadas X/Y" disabled><Crosshair size={18} /></ToolButton>
-    </div><i />
-    <div>
-      <ToolButton title={copy.box} keyHint="B" disabled={!canEdit} active={props.tool === "box" && !props.vectorTool} onClick={() => props.onTool("box")}><Square size={18} /></ToolButton>
-      <ToolButton title={copy.polygon} keyHint="P" disabled={!canEdit} active={props.tool === "polygon" && !props.vectorTool} onClick={() => props.onTool("polygon")}><Pentagon size={18} /></ToolButton>
-      <ToolButton title={copy.freehand} keyHint="F" disabled={!canEdit} active={props.tool === "freehand" && !props.vectorTool} onClick={() => props.onTool("freehand")}><PenLine size={18} /></ToolButton>
-      <ToolButton title={copy.line} keyHint="L" disabled={!canEdit} active={props.tool === "line" && !props.vectorTool} onClick={() => props.onTool("line")}><Spline size={18} /></ToolButton>
-      <ToolButton title={copy.point} keyHint="K" disabled={!canEdit} active={props.tool === "point" && !props.vectorTool} onClick={() => props.onTool("point")}><span className="point-icon" /></ToolButton>
-      <ToolButton title={copy.sam} keyHint="S" disabled><WandSparkles size={18} /></ToolButton>
-    </div><i />
-    <div className="edit-tools">
-      <ToolButton title={copy.simplify} disabled={!props.canSimplify} onClick={props.onSimplify}><ListRestart size={18} /></ToolButton>
-      <ToolButton title={copy.duplicate} disabled={!props.canDuplicate} onClick={props.onDuplicate}><Copy size={17} /></ToolButton>
-      <ToolButton title={copy.merge} disabled={!props.canMerge} onClick={props.onMerge}><Combine size={18} /></ToolButton>
-      <ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!props.canEditPolygon} active={props.vectorTool === "hole"} onClick={() => props.onVectorTool("hole")}><CircleMinus size={17} /></ToolButton>
-      <ToolButton title={copy.split} disabled={!props.canEditPolygon} active={props.vectorTool === "split"} onClick={() => props.onVectorTool("split")}><Scissors size={17} /></ToolButton>
-      <ToolButton title={copy.transform} keyHint="T" disabled={!props.canEditPolygon} active={props.vectorTool === "transform"} onClick={() => props.onVectorTool("transform")}><Maximize2 size={17} /></ToolButton>
-      <ToolButton title={copy.reshape} keyHint="R" disabled={!props.canEditPolygon} active={props.vectorTool === "reshape"} onClick={() => props.onVectorTool("reshape")}><PenTool size={17} /></ToolButton>
-      <ToolButton title={props.snapEnabled ? copy.snapOn : copy.snapOff} disabled={!canEdit} active={props.snapEnabled} onClick={props.onToggleSnap}><Magnet size={17} /></ToolButton>
-    </div><i />
-    <div>
-      <ToolButton title={copy.undo} disabled={!props.canUndo} onClick={props.onUndo}><Undo2 size={18} /></ToolButton>
-      <ToolButton title={copy.redo} disabled={!props.canRedo} onClick={props.onRedo}><Redo2 size={18} /></ToolButton>
-      <ToolButton title={copy.deleteShape} disabled={!props.hasSelection} onClick={props.onDelete}><Trash2 size={18} /></ToolButton>
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [demoGuideOpen, setDemoGuideOpen] = useState(true);
+  const isDemo = props.hasAssets && /^Demo\b/.test(props.projectName);
+  useEffect(() => setDemoGuideOpen(true), [props.projectName]);
+
+  return <>
+    <div className="tools">
+      <div>
+        <ToolButton title={copy.select} keyHint="V" disabled={!canEdit} active={props.tool === "select" && !props.vectorTool} onClick={() => props.onTool("select")}><MousePointer2 size={18} /></ToolButton>
+        <ToolButton title={copy.pan} keyHint="H" disabled={!canEdit} active={props.tool === "pan" && !props.vectorTool} onClick={() => props.onTool("pan")}><Hand size={18} /></ToolButton>
+        <ToolButton title="Guias de coordenadas X/Y" disabled={!canEdit} onClick={() => undefined}><Crosshair size={18} /></ToolButton>
+      </div><i />
+      <div>
+        <ToolButton title={copy.box} keyHint="B" disabled={!canEdit} className={isDemo && demoGuideOpen ? "demo-tutorial-tool-target" : ""} active={props.tool === "box" && !props.vectorTool} onClick={() => props.onTool("box")}><Square size={18} /></ToolButton>
+        <ToolButton title={copy.polygon} keyHint="P" disabled={!canEdit} active={props.tool === "polygon" && !props.vectorTool} onClick={() => props.onTool("polygon")}><Pentagon size={18} /></ToolButton>
+        <ToolButton title={copy.freehand} keyHint="F" disabled={!canEdit} active={props.tool === "freehand" && !props.vectorTool} onClick={() => props.onTool("freehand")}><PenLine size={18} /></ToolButton>
+        <ToolButton title={copy.line} keyHint="L" disabled={!canEdit} active={props.tool === "line" && !props.vectorTool} onClick={() => props.onTool("line")}><Spline size={18} /></ToolButton>
+        <ToolButton title={copy.point} keyHint="K" disabled={!canEdit} active={props.tool === "point" && !props.vectorTool} onClick={() => props.onTool("point")}><span className="point-icon" /></ToolButton>
+        <ToolButton title={copy.sam} keyHint="S" disabled={!canEdit} onClick={props.onSamSettings}><WandSparkles size={18} /></ToolButton>
+      </div><i />
+      <div className="edit-tools">
+        <ToolButton title={copy.simplify} disabled={!props.canSimplify} onClick={props.onSimplify}><ListRestart size={18} /></ToolButton>
+        <ToolButton title={copy.duplicate} disabled={!props.canDuplicate} onClick={props.onDuplicate}><Copy size={17} /></ToolButton>
+        <ToolButton title={copy.merge} disabled={!props.canMerge} onClick={props.onMerge}><Combine size={18} /></ToolButton>
+        <ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!props.canEditPolygon} active={props.vectorTool === "hole"} onClick={() => props.onVectorTool("hole")}><CircleMinus size={17} /></ToolButton>
+        <ToolButton title={copy.split} disabled={!props.canEditPolygon} active={props.vectorTool === "split"} onClick={() => props.onVectorTool("split")}><Scissors size={17} /></ToolButton>
+        <ToolButton title={copy.transform} keyHint="T" disabled={!props.canEditPolygon} active={props.vectorTool === "transform"} onClick={() => props.onVectorTool("transform")}><Maximize2 size={17} /></ToolButton>
+        <ToolButton title={copy.reshape} keyHint="R" disabled={!props.canEditPolygon} active={props.vectorTool === "reshape"} onClick={() => props.onVectorTool("reshape")}><PenTool size={17} /></ToolButton>
+        <ToolButton title={props.snapEnabled ? copy.snapOn : copy.snapOff} disabled={!canEdit} active={props.snapEnabled} onClick={props.onToggleSnap}><Magnet size={17} /></ToolButton>
+      </div><i />
+      <div>
+        <ToolButton title={copy.undo} disabled={!props.canUndo} onClick={props.onUndo}><Undo2 size={18} /></ToolButton>
+        <ToolButton title={copy.redo} disabled={!props.canRedo} onClick={props.onRedo}><Redo2 size={18} /></ToolButton>
+        <ToolButton title={copy.deleteShape} disabled={!props.hasSelection} onClick={props.onDelete}><Trash2 size={18} /></ToolButton>
+      </div>
+      <span className="spacer" />
+      <label className={`stroke-control ${!canEdit ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEdit} type="range" min="1" max="10" step="1" value={props.strokePx} onChange={(event) => props.onStrokeChange(Number(event.target.value))} /><output>{props.strokePx}px</output></label>
+      <div className="zoom"><button aria-label={copy.zoomOut} disabled={!canEdit} onClick={props.onZoomOut}><ZoomOut size={15} /></button><span>{Math.round(props.zoom)}%</span><button aria-label={copy.zoomIn} disabled={!canEdit} onClick={props.onZoomIn}><ZoomIn size={15} /></button></div>
+      <ToolButton title={copy.fitImage} disabled={!canEdit} onClick={props.onFit}><Focus size={16} /></ToolButton>
+      <ToolButton title={copy.removeLoadedAnnotations} disabled={!props.annotationsCount} onClick={() => undefined}><Trash2 size={16} /></ToolButton>
+      <ToolButton title={copy.shortcuts} onClick={() => setTutorialOpen(true)}><Keyboard size={16} /></ToolButton>
     </div>
-    <span className="spacer" />
-    <label className={`stroke-control ${!canEdit ? "disabled" : ""}`} title={copy.lineThickness}><PenLine size={14} /><input aria-label={copy.lineThickness} disabled={!canEdit} type="range" min="1" max="10" step="1" value={props.strokePx} onChange={(event) => props.onStrokeChange(Number(event.target.value))} /><output>{props.strokePx}px</output></label>
-    <div className="zoom"><button aria-label={copy.zoomOut} disabled={!canEdit} onClick={props.onZoomOut}><ZoomOut size={15} /></button><span>{Math.round(props.zoom)}%</span><button aria-label={copy.zoomIn} disabled={!canEdit} onClick={props.onZoomIn}><ZoomIn size={15} /></button></div>
-    <ToolButton title={copy.fitImage} disabled={!canEdit} onClick={props.onFit}><Focus size={16} /></ToolButton>
-    <ToolButton title={copy.shortcuts} onClick={() => undefined}><Keyboard size={16} /></ToolButton>
-  </div>;
+
+    {canEdit && <div className="drawing-actions"><button onClick={() => undefined}><Combine size={14} />Selecionar várias</button><button disabled={!props.hasSelection} onClick={props.onDelete}><Trash2 size={14} />Excluir</button></div>}
+
+    {!props.hasAssets && <div className="pre-refactor-empty-overlay">
+      <div className="pre-refactor-empty-card">
+        <span><Images size={30} /></span>
+        <h2>{copy.emptyProjectTitle}</h2>
+        <p>{copy.emptyProjectHint}</p>
+        <div><button disabled={props.loading} onClick={props.onImportImages}><ImagePlus size={16} />{copy.importImages}</button><button disabled={props.loading} onClick={props.onOpenProject}><FolderUp size={16} />{copy.openProject}</button></div>
+        <small>{copy.privacy}</small>
+      </div>
+    </div>}
+
+    {isDemo && demoGuideOpen && <section className="demo-tutorial-card pre-refactor-demo-card" role="dialog" aria-live="polite">
+      <span>1 / 3</span><button className="pre-refactor-demo-close" aria-label={copy.close} onClick={() => setDemoGuideOpen(false)}><X size={15} /></button>
+      <h2>{demoGuide[props.language][0]}</h2><p>{demoGuide[props.language][1]}</p>
+    </section>}
+
+    {tutorialOpen && <div className="modal-backdrop"><section className="sam-modal tutorial-modal" role="dialog" aria-modal="true" aria-label={copy.shortcuts}>
+      <header><div><span><Keyboard size={18} /></span><div><h2>{copy.shortcuts}</h2><p>{copy.quickTip}</p></div></div><button onClick={() => setTutorialOpen(false)} aria-label={copy.close}><X size={19} /></button></header>
+      <div className="tutorial-grid"><section><ImagePlus size={16} /><div><b>{copy.importImages}</b><p>{copy.rasterImportHint}</p></div></section><section><Hand size={16} /><div><b>{copy.pan}</b><p>{copy.middlePan}</p></div></section><section><MousePointer2 size={16} /><div><b>{copy.select}</b><p>{copy.polygonTipDetail}</p></div></section><section><Pentagon size={16} /><div><b>{copy.polygon}</b><p>{copy.polygonFinish}</p></div></section></div>
+      <footer><button className="connect" onClick={() => setTutorialOpen(false)}><CheckIcon />{copy.close}</button></footer>
+    </section></div>}
+  </>;
 }
+
+function CheckIcon() { return <span aria-hidden="true">✓</span>; }
 
 export function PreRefactorStatus(props: PreRefactorChromeProps) {
   return <div className="status">

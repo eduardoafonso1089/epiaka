@@ -3,6 +3,7 @@ name: Editor Refactor
 on:
   push:
     branches:
+      - main
       - refactor/editor-architecture
       - fix/cloudflare-next-build
   pull_request:

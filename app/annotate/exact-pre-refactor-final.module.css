@@ -12,6 +12,21 @@
   box-shadow: 0 13px 35px rgba(36,54,43,.22), 0 0 0 1px rgba(35,55,42,.15);
 }
 
+/* Demo-ready used the historical checkmark in the status bar. Keep the normal
+   sparkle icon everywhere else and swap only while the onboarding card exists. */
+.contract :global(.shell:has(.pre-refactor-demo-card) .status p svg) {
+  display: none !important;
+}
+.contract :global(.shell:has(.pre-refactor-demo-card) .status p)::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 /* In the old mobile layout the centred fitted image rasterized one pixel lower.
    This visual offset does not change zoom, scroll state or annotation geometry. */
 @media (max-width: 860px) {

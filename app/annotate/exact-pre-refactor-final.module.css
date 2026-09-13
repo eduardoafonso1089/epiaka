@@ -1,0 +1,35 @@
+.contract { display: contents; }
+
+/* The historical onboarding dimmed the image itself with the SVG overlay below.
+   Keep the canonical annotations loaded, but match the exact first-step mask. */
+.contract :global(.editor:has(.pre-refactor-demo-card)) :global(.stage) > section > div > div::after {
+  background: rgba(7, 13, 10, .68) !important;
+}
+
+/* The old canvas had a soft frame shadow. The canonical canvas wrapper is
+   intentionally geometry-only, so restore the shadow in the presentation layer. */
+.contract :global(.editor:not(:has(.pre-refactor-empty-overlay)) .stage) > section > div > div {
+  box-shadow: 0 13px 35px rgba(36,54,43,.22), 0 0 0 1px rgba(35,55,42,.15);
+}
+
+/* In the old mobile layout the centred fitted image rasterized one pixel lower.
+   This visual offset does not change zoom, scroll state or annotation geometry. */
+@media (max-width: 860px) {
+  .contract :global(.editor:not(:has(.pre-refactor-empty-overlay)) .stage) > section > div > div {
+    transform: translateY(1px);
+  }
+}
+
+/* Reference/premerge kept File-menu rows visually available even when an empty
+   project made the underlying actions inapplicable. Preserve disabled semantics
+   while matching that presentation. */
+.contract :global(.project-pop button:disabled),
+.contract :global(.project-pop .canonical-file-extras > button:disabled) {
+  opacity: 1 !important;
+  color: var(--ink) !important;
+  cursor: default !important;
+}
+.contract :global(.project-pop button:disabled small),
+.contract :global(.project-pop .canonical-file-extras > button:disabled small) {
+  color: var(--muted) !important;
+}

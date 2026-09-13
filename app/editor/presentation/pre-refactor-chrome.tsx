@@ -7,7 +7,7 @@ import {
   Images, Keyboard, Languages, Link2, LoaderCircle, ListRestart, Magnet, Maximize2, Menu,
   Monitor, Moon, MoreHorizontal, MousePointer2, PenLine, PenTool, Pencil, Pentagon, Plus,
   Power, Redo2, Save, Scissors, Settings2, ShieldCheck, Sparkles, Spline, Square, Sun,
-  Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut,
+  Tags, Trash2, Undo2, WandSparkles, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import type { DrawingTool } from "../drawing/use-drawing-interactions";
 import type { VectorTool } from "../commands/editor-shortcuts";
@@ -102,9 +102,11 @@ export type PreRefactorChromeProps = {
 
 export function PreRefactorTopbar(props: PreRefactorChromeProps) {
   const copy = getCopy(props.language);
+  const projectLabel = props.projectName.trim() || copy.defaultProjectName;
   const [fileOpen, setFileOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(props.projectName);
+  const [draft, setDraft] = useState(projectLabel);
+  const [renameNotice, setRenameNotice] = useState("");
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [preferencesTab, setPreferencesTab] = useState<"appearance" | "language">("appearance");
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
@@ -113,8 +115,13 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
   const [samOpen, setSamOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setDraft(props.projectName), [props.projectName]);
+  useEffect(() => setDraft(projectLabel), [projectLabel]);
   useEffect(() => setThemeModeState(storedTheme()), []);
+  useEffect(() => {
+    if (!renameNotice) return;
+    const timeout = window.setTimeout(() => setRenameNotice(""), 2500);
+    return () => window.clearTimeout(timeout);
+  }, [renameNotice]);
   useEffect(() => {
     const close = (event: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setFileOpen(false);
@@ -126,8 +133,10 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
   const saveRename = () => {
     const next = draft.trim();
     setEditing(false);
-    if (next && next !== props.projectName) props.onRenameProject(next);
-    else setDraft(props.projectName);
+    if (next && next !== projectLabel) {
+      props.onRenameProject(next);
+      setRenameNotice(copy.toastProjectRenamed);
+    } else setDraft(projectLabel);
   };
 
   function setTheme(mode: ThemeMode) {
@@ -141,6 +150,8 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
     setSamOpen(true);
   }
 
+  const demoProject = props.hasAssets && /^Demo\b/.test(projectLabel);
+
   return <>
     <header className="topbar">
       <div className="topbar-main">
@@ -149,8 +160,8 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
           <span className="brand-static"><BrandLockup height={28} /></span><i />
           <button className="home-return" title={copy.homeHint} aria-label={copy.home} onClick={props.onHome}><House size={15} /><span>{copy.home}</span></button>
           {editing
-            ? <input className="project-name-input" value={draft} aria-label={copy.renameProject} maxLength={80} autoFocus onChange={(event) => setDraft(event.target.value)} onBlur={saveRename} onKeyDown={(event) => { if (event.key === "Enter") saveRename(); if (event.key === "Escape") { setDraft(props.projectName); setEditing(false); } }} />
-            : <button className="project-name" title={copy.renameProject} onClick={() => { setDraft(props.projectName); setEditing(true); }}><em /><span>{props.projectName}</span><Pencil size={13} /></button>}
+            ? <input className="project-name-input" value={draft} aria-label={copy.renameProject} maxLength={80} autoFocus onChange={(event) => setDraft(event.target.value)} onBlur={saveRename} onKeyDown={(event) => { if (event.key === "Enter") saveRename(); if (event.key === "Escape") { setDraft(projectLabel); setEditing(false); } }} />
+            : <button className="project-name" title={renameNotice || copy.renameProject} onClick={() => { setDraft(projectLabel); setEditing(true); }}><em /><span>{projectLabel}</span><Pencil size={13} /></button>}
         </div>
         <div className="head-actions">
           <button className="new-project-main" disabled={props.loading} title={copy.newProjectHint} onClick={props.onNewProject}><Plus size={15} /><span>{copy.newProject}</span></button>
@@ -165,11 +176,11 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
         <div className="menu" ref={menuRef}>
           <button className={`menu-trigger ${fileOpen ? "open" : ""}`} aria-haspopup="menu" aria-expanded={fileOpen} onClick={() => setFileOpen((value) => !value)}>{copy.fileMenu}<ChevronDown size={13} /></button>
           {fileOpen && <div className="project-pop menu-pop" role="menu" aria-label={copy.fileMenu}>
-            <div className="project-summary"><span><em />{props.projectName}</span><small>{props.assetsCount} {copy.projectImages} · {props.annotationsCount} {copy.projectAnnotations}</small></div>
+            <div className="project-summary" title={demoProject ? copy.demoReady : projectLabel}><span><em />{projectLabel}</span><small>{props.assetsCount} {copy.projectImages} · {props.annotationsCount} {copy.projectAnnotations}</small></div>
             <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onNewProject(); }}><Plus size={14} /><span><b>{copy.newProject}</b><small>{copy.newProjectHint}</small></span></button>
             <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onOpenProject(); }}><FolderUp size={14} /><span><b>{copy.openProject}</b><small>{copy.openProjectHint}</small></span></button>
             <button role="menuitem" disabled={props.loading || !props.hasAssets} onClick={() => { setFileOpen(false); setProjectSaveOpen(true); }}><Save size={14} /><span><b>{copy.saveProject}</b><small>{copy.saveProjectHint}</small></span></button>
-            <button role="menuitem" onClick={() => { setFileOpen(false); setEditing(true); }}><Pencil size={14} /><span><b>{copy.renameProject}</b><small>{props.projectName}</small></span></button>
+            <button role="menuitem" onClick={() => { setFileOpen(false); setEditing(true); }}><Pencil size={14} /><span><b>{copy.renameProject}</b><small>{projectLabel}</small></span></button>
             <i className="menu-separator" />
             <p>{copy.exportFormat}</p>
             {props.fileMenuExtras}
@@ -250,7 +261,7 @@ export function PreRefactorToolbar(props: PreRefactorChromeProps) {
         <ToolButton title={copy.split} disabled={!props.canEditPolygon} active={props.vectorTool === "split"} onClick={() => props.onVectorTool("split")}><Scissors size={17} /></ToolButton>
         <ToolButton title={copy.transform} keyHint="T" disabled={!props.canEditPolygon} active={props.vectorTool === "transform"} onClick={() => props.onVectorTool("transform")}><Maximize2 size={17} /></ToolButton>
         <ToolButton title={copy.reshape} keyHint="R" disabled={!props.canEditPolygon} active={props.vectorTool === "reshape"} onClick={() => props.onVectorTool("reshape")}><PenTool size={17} /></ToolButton>
-        <ToolButton title={props.snapEnabled ? copy.snapOn : copy.snapOff} disabled={!canEdit} active={props.snapEnabled} onClick={props.onToggleSnap}><Magnet size={17} /></ToolButton>
+        <ToolButton title={`${props.snapEnabled ? copy.snapOn : copy.snapOff} · ${props.snapEnabled ? copy.snapStateOn : copy.snapStateOff}`} disabled={!canEdit} active={props.snapEnabled} onClick={props.onToggleSnap}><Magnet size={17} /></ToolButton>
       </div><i />
       <div>
         <ToolButton title={copy.undo} disabled={!props.canUndo} onClick={props.onUndo}><Undo2 size={18} /></ToolButton>
@@ -277,14 +288,20 @@ export function PreRefactorToolbar(props: PreRefactorChromeProps) {
       </div>
     </div>}
 
-    {isDemo && demoGuideOpen && <section className="demo-tutorial-card pre-refactor-demo-card" role="dialog" aria-live="polite">
+    {isDemo && demoGuideOpen && <section className="demo-tutorial-card pre-refactor-demo-card" role="dialog" aria-live="polite" title={copy.demoReady}>
       <span>1 / 3</span><button className="pre-refactor-demo-close" aria-label={copy.close} onClick={() => setDemoGuideOpen(false)}><X size={15} /></button>
       <h2>{demoGuide[props.language][0]}</h2><p>{demoGuide[props.language][1]}</p>
     </section>}
 
     {tutorialOpen && <div className="modal-backdrop"><section className="sam-modal tutorial-modal" role="dialog" aria-modal="true" aria-label={copy.shortcuts}>
       <header><div><span><Keyboard size={18} /></span><div><h2>{copy.shortcuts}</h2><p>{copy.quickTip}</p></div></div><button onClick={() => setTutorialOpen(false)} aria-label={copy.close}><X size={19} /></button></header>
-      <div className="tutorial-grid"><section><ImagePlus size={16} /><div><b>{copy.importImages}</b><p>{copy.rasterImportHint}</p></div></section><section><Hand size={16} /><div><b>{copy.pan}</b><p>{copy.middlePan}</p></div></section><section><MousePointer2 size={16} /><div><b>{copy.select}</b><p>{copy.polygonTipDetail}</p></div></section><section><Pentagon size={16} /><div><b>{copy.polygon}</b><p>{copy.polygonFinish}</p></div></section></div>
+      <div className="tutorial-grid">
+        <section><ImagePlus size={16} /><div><b>{copy.importImages}</b><p>{copy.rasterImportHint}</p></div></section>
+        <section><Hand size={16} /><div><b>{copy.pan}</b><p>{copy.middlePan}</p></div></section>
+        <section><MousePointer2 size={16} /><div><b>{copy.select}</b><p>{copy.polygonTipDetail}</p></div></section>
+        <section><Pentagon size={16} /><div><b>{copy.polygon}</b><p>{copy.polygonFinish} · {copy.finishDrawing}</p></div></section>
+        <section><Tags size={16} /><div><b>{copy.classList}</b><p>{copy.createLabel} · {copy.renameClass} · {copy.hideClass}/{copy.showClass} · {copy.deleteClass}</p><p>{copy.newAnnotationClass}: {copy.newShapesClass} {copy.unlabeledProtected}</p></div></section>
+      </div>
       <footer><button className="connect" onClick={() => setTutorialOpen(false)}><Check size={15} />{copy.close}</button></footer>
     </section></div>}
   </>;

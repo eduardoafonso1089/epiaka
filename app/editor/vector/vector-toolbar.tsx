@@ -41,13 +41,14 @@ export function VectorToolbar({
     label: string,
     icon: ReactNode,
     disabled = false,
+    title = label,
   ) => <button
     type="button"
     className={legacy.iconToolButton}
     aria-label={label}
     aria-pressed={vectorTool === id}
     disabled={disabled}
-    title={label}
+    title={title}
     onClick={() => onVectorTool(vectorTool === id ? null : id)}
   >{icon}</button>;
 
@@ -58,7 +59,7 @@ export function VectorToolbar({
     <button className={legacy.iconToolButton} type="button" aria-label={copy.merge} title={copy.merge} disabled={!canMerge} onClick={onMerge}><Combine size={18} /></button>
     {toolButton("hole", "Buraco (O)", <CircleMinus size={17} />, !canEditPolygon)}
     {toolButton("split", `${copy.split} (X)`, <Scissors size={17} />, !canEditPolygon)}
-    {toolButton("transform", `${copy.transform} (T)`, <Maximize2 size={17} />, !canEditPolygon)}
+    {toolButton("transform", `${copy.transform} (T)`, <Maximize2 size={17} />, !canEditPolygon, copy.transformTip)}
     {toolButton("reshape", `${copy.reshape} (R)`, <PenTool size={17} />, !canEditPolygon)}
   </div>;
 }

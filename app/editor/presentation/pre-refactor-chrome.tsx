@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CodeXml, Combine, Copy,
-  Crosshair, FileText, Focus, FolderUp, Hand, HardDriveDownload, House, Keyboard, Link2,
+  ChevronDown, ChevronLeft, ChevronRight, CircleMinus, CodeXml, Combine, Copy,
+  Crosshair, FileText, Focus, FolderUp, Hand, HardDriveDownload, House, Keyboard,
   ListRestart, Magnet, Maximize2, Menu, MoreHorizontal, MousePointer2, PenLine, PenTool,
   Pentagon, Plus, Save, Scissors, ShieldCheck, Sparkles, Spline, Square, Trash2, Undo2,
-  Redo2, WandSparkles, X, ZoomIn, ZoomOut,
+  Redo2, WandSparkles, ZoomIn, ZoomOut,
 } from "lucide-react";
 import type { DrawingTool } from "../drawing/use-drawing-interactions";
 import type { VectorTool } from "../commands/editor-shortcuts";
@@ -71,6 +71,9 @@ export type PreRefactorChromeProps = {
   onLanguageChange: (language: Language) => void;
   onTool: (tool: DrawingTool) => void;
   onVectorTool: (tool: VectorTool) => void;
+  onSimplify: () => void;
+  onDuplicate: () => void;
+  onMerge: () => void;
   onToggleSnap: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -137,7 +140,7 @@ export function PreRefactorTopbar(props: PreRefactorChromeProps) {
           <button role="menuitem" onClick={() => { setFileOpen(false); setEditing(true); }}><PenLine size={14} /><span><b>{copy.renameProject}</b><small>{props.projectName}</small></span></button>
           <i className="menu-separator" />
           <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onImportImages(); }}><FileText size={14} /><span><b>{copy.importImages}</b><small>{copy.privacy}</small></span></button>
-          <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onDemo(); }}><WandSparkles size={14} /><span><b>{copy.tryDemo}</b><small>{copy.demoReady}</small></span></button>
+          <button role="menuitem" disabled={props.loading} onClick={() => { setFileOpen(false); props.onDemo(); }}><WandSparkles size={14} /><span><b>{copy.tryDemo}</b><small>{copy.tryDemo}</small></span></button>
           {props.fileMenuExtras}
           <i className="menu-separator" />
           <div className="project-menu-language">
@@ -170,12 +173,12 @@ export function PreRefactorToolbar(props: PreRefactorChromeProps) {
       <ToolButton title={copy.sam} keyHint="S" disabled><WandSparkles size={18} /></ToolButton>
     </div><i />
     <div className="edit-tools">
-      <ToolButton title={copy.simplify} disabled={!props.canSimplify} onClick={() => props.onVectorTool("simplify")}><ListRestart size={18} /></ToolButton>
-      <ToolButton title={copy.duplicate} disabled={!props.canDuplicate} onClick={() => props.onVectorTool("duplicate")}><Copy size={17} /></ToolButton>
-      <ToolButton title={copy.merge} disabled={!props.canMerge} onClick={() => props.onVectorTool("merge")}><Combine size={18} /></ToolButton>
+      <ToolButton title={copy.simplify} disabled={!props.canSimplify} onClick={props.onSimplify}><ListRestart size={18} /></ToolButton>
+      <ToolButton title={copy.duplicate} disabled={!props.canDuplicate} onClick={props.onDuplicate}><Copy size={17} /></ToolButton>
+      <ToolButton title={copy.merge} disabled={!props.canMerge} onClick={props.onMerge}><Combine size={18} /></ToolButton>
       <ToolButton title="Adicionar buraco ao polígono (O)" keyHint="O" disabled={!props.canEditPolygon} active={props.vectorTool === "hole"} onClick={() => props.onVectorTool("hole")}><CircleMinus size={17} /></ToolButton>
       <ToolButton title={copy.split} disabled={!props.canEditPolygon} active={props.vectorTool === "split"} onClick={() => props.onVectorTool("split")}><Scissors size={17} /></ToolButton>
-      <ToolButton title={copy.transform} keyHint="X" disabled={!props.canEditPolygon} active={props.vectorTool === "transform"} onClick={() => props.onVectorTool("transform")}><Maximize2 size={17} /></ToolButton>
+      <ToolButton title={copy.transform} keyHint="T" disabled={!props.canEditPolygon} active={props.vectorTool === "transform"} onClick={() => props.onVectorTool("transform")}><Maximize2 size={17} /></ToolButton>
       <ToolButton title={copy.reshape} keyHint="R" disabled={!props.canEditPolygon} active={props.vectorTool === "reshape"} onClick={() => props.onVectorTool("reshape")}><PenTool size={17} /></ToolButton>
       <ToolButton title={props.snapEnabled ? copy.snapOn : copy.snapOff} disabled={!canEdit} active={props.snapEnabled} onClick={props.onToggleSnap}><Magnet size={17} /></ToolButton>
     </div><i />

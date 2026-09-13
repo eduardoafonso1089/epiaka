@@ -51,7 +51,7 @@ export function VectorToolbar({
     onClick={() => onVectorTool(vectorTool === id ? null : id)}
   >{icon}</button>;
 
-  return <div className={ui.vectorBar} aria-label={copy.editTools}>
+  return <div className={ui.vectorBar} aria-label="Ferramentas de edição vetorial">
     <button className={legacy.iconToolButton} type="button" aria-label={snapEnabled ? copy.snapOn : copy.snapOff} aria-pressed={snapEnabled} title={snapEnabled ? copy.snapOn : copy.snapOff} onClick={onToggleSnap}><Magnet size={17} /></button>
     <button className={legacy.iconToolButton} type="button" aria-label={copy.simplify} title={copy.simplify} disabled={!canSimplify} onClick={onSimplify}><ListRestart size={18} /></button>
     <button className={legacy.iconToolButton} type="button" aria-label={copy.duplicate} title={copy.duplicate} disabled={!canDuplicate} onClick={onDuplicate}><Copy size={17} /></button>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import {
-  Check, ChevronDown, ChevronUp, Eye, EyeOff, Images, Menu, MoreHorizontal,
+  Check, ChevronDown, ChevronUp, Eye, EyeOff, Images, Menu, MoreHorizontal, Palette, Plus,
   Search, Tags, Trash2, X,
 } from "lucide-react";
 import type { Asset, Label } from "../../lib/types";
@@ -11,6 +11,7 @@ import type { EditorAnnotation } from "../models/annotation-model";
 import type { SelectionState } from "../selection/selection-model";
 import { UNLABELED_ID } from "./panel-model";
 import ui from "../editor-interface.module.css";
+import premerge from "./premerge-panel-refinement.module.css";
 
 type Copy = ReturnType<typeof getCopy>;
 type RightTab = "classes" | "annotations";
@@ -182,12 +183,16 @@ export function EditorManagementPanels(props: Props) {
             })}
           </div>
         </div> : <div className={ui.panelBody}>
-          <small className={ui.helperText}>{copy.classManagerHint}</small>
-          <div className={ui.classCreator}>
-            <input aria-label={copy.className} value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createClass(); }} placeholder={copy.className} />
-            <input className={ui.colorInput} aria-label={copy.labelColor} type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} />
-            <button onClick={createClass} disabled={!newLabelName.trim()}>{copy.createLabel}</button>
-          </div>
+          <div className={premerge.classIntro}><Palette size={14} /><span><strong>{copy.classManagerTitle}</strong><small>{copy.classManagerHint}</small></span></div>
+          <section className={premerge.quickLabelCard}>
+            <div className={premerge.cardHeading}><Palette size={14} /><span><strong>{copy.labelStudio}</strong><small>{copy.labelStudioHint}</small></span></div>
+            <div className={premerge.createRow}>
+              <input aria-label={copy.className} value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createClass(); }} placeholder={copy.className} />
+              <input className={ui.colorInput} aria-label={copy.labelColor} type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} />
+              <button className={premerge.createButton} aria-label={copy.createLabel} title={copy.createLabel} onClick={createClass} disabled={!newLabelName.trim()}><Plus size={15} /></button>
+            </div>
+          </section>
+          <div className={premerge.labelSectionHeader}><strong>{copy.classList}</strong><small>{labels.length} {copy.classes.toLocaleLowerCase()}</small></div>
           <div className={classes(ui.list, ui.labelList)}>
             {labels.map((label) => {
               const protectedLabel = label.id === UNLABELED_ID;
@@ -202,9 +207,10 @@ export function EditorManagementPanels(props: Props) {
               </div>;
             })}
           </div>
-          <div className={ui.activeClass}>
-            <label>{copy.newAnnotationClass}: <select value={activeLabelId} onChange={(event) => props.onActiveLabelChange(event.target.value)}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select></label>
-          </div>
+          <section className={premerge.activeLabelCard}>
+            <div className={premerge.cardHeading}><Tags size={14} /><span><strong>{copy.newAnnotationClass}</strong><small>{copy.newShapesClass}</small></span></div>
+            <select value={activeLabelId} onChange={(event) => props.onActiveLabelChange(event.target.value)} aria-label={copy.newAnnotationClass}>{labels.map((label) => <option key={label.id} value={label.id}>{labelName(label)}</option>)}</select>
+          </section>
         </div>}
       </div>
     </div>

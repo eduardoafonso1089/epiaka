@@ -24,10 +24,7 @@
   color: var(--muted) !important;
 }
 
-.contract :global(.demo-tutorial-tool-target) {
-  overflow: visible;
-}
-
+.contract :global(.demo-tutorial-tool-target) { overflow: visible; }
 .contract :global(.demo-tutorial-tool-target)::after {
   content: "Clique aqui";
   position: absolute;
@@ -46,7 +43,6 @@
   white-space: nowrap;
   pointer-events: none;
 }
-
 .contract :global(.demo-tutorial-tool-target)::before {
   content: "";
   position: absolute;
@@ -60,13 +56,71 @@
   pointer-events: none;
 }
 
+/* During onboarding the historical UI intentionally presented the dataset as
+   not-yet-reviewed: zero progress, no visible annotation list and empty status
+   circles even though the demo geometries were already loaded underneath. */
+.contract :global(.workspace:has(.pre-refactor-demo-card) .progress b) { font-size: 0; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .progress b)::after {
+  content: "0 de 3";
+  font-size: 11px;
+}
+.contract :global(.workspace:has(.pre-refactor-demo-card) .progress em) { width: 0 !important; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .asset-selector.selected) {
+  background: var(--control-bg) !important;
+  border-color: var(--line) !important;
+  color: transparent !important;
+}
+.contract :global(.workspace:has(.pre-refactor-demo-card) .asset-selector.selected svg),
+.contract :global(.workspace:has(.pre-refactor-demo-card) .asset-main i.checked svg) { display: none; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .asset-main i.checked) {
+  background: transparent !important;
+  border-color: var(--line) !important;
+}
+.contract :global(.workspace:has(.pre-refactor-demo-card) .canonical-instances),
+.contract :global(.workspace:has(.pre-refactor-demo-card) .batchRow) { display: none !important; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .label-help b) { font-size: 0; }
+.contract :global(.workspace:has(.pre-refactor-demo-card) .label-help b)::after {
+  content: "ANOTAÇÕES · 0";
+  font-size: 11px;
+}
+.contract :global(.workspace:has(.pre-refactor-demo-card) .canonical-right-actions button:first-child) {
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* Valid DOM equivalent of the old annotation row: the main selectable region
+   occupies the first two visual columns and action buttons remain siblings. */
+.contract :global(.canonical-instances .instance-row) {
+  grid-template-columns: minmax(0,1fr) 26px 26px !important;
+}
+.contract :global(.canonical-instance-main) {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 14px minmax(0,1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.contract :global(.canonical-instance-main > i) {
+  width: 11px;
+  height: 11px;
+  border: 2px solid;
+}
+.contract :global(.canonical-instance-main > span) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+
 /* Raster/COCO import utilities remain mounted for functionality, but they were
    not part of the old File dropdown. The first four trigger buttons belong to
    those import controls; the following buttons are the actual export rows. */
-.contract :global(.canonical-file-extras > button:nth-of-type(-n+4)) {
-  display: none !important;
-}
-
+.contract :global(.canonical-file-extras > button:nth-of-type(-n+4)) { display: none !important; }
 .contract :global(.canonical-file-extras > button) {
   width: 100%;
   justify-content: flex-start;
@@ -75,7 +129,5 @@
 
 @media (max-width: 860px) {
   .contract :global(.demo-tutorial-tool-target)::after,
-  .contract :global(.demo-tutorial-tool-target)::before {
-    display: none;
-  }
+  .contract :global(.demo-tutorial-tool-target)::before { display: none; }
 }

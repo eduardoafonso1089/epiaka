@@ -12,6 +12,13 @@
   box-shadow: 0 13px 35px rgba(36,54,43,.22), 0 0 0 1px rgba(35,55,42,.15);
 }
 
+/* The tutorial target in the historical toolbar used only the mint halo. The
+   canonical bridge also added the theme accent as an inner border, which made
+   the same control look double-selected. */
+.contract :global(.demo-tutorial-tool-target) {
+  border-color: transparent !important;
+}
+
 /* Demo-ready used the historical checkmark in the status bar. Keep the normal
    sparkle icon everywhere else and swap only while the onboarding card exists. */
 .contract :global(.shell:has(.pre-refactor-demo-card) .status p svg) {

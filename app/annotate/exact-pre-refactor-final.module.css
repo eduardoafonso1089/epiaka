@@ -18,6 +18,11 @@
   .contract :global(.editor:not(:has(.pre-refactor-empty-overlay)) .stage) > section > div > div {
     transform: translateY(1px);
   }
+  /* The temporary canonical shell imposed a 152px minimum on both welcome
+     actions. Pre-refactor sized each action to its own icon + label content. */
+  .contract :global(.pre-refactor-empty-card button) {
+    min-width: 0 !important;
+  }
 }
 
 /* Reference/premerge kept File-menu rows visually available even when an empty

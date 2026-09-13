@@ -1,0 +1,182 @@
+.stageScroll {
+  position: absolute !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overscroll-behavior: contain;
+}
+
+.reviewHidden {
+  display: none;
+}
+
+.fileExtras {
+  display: contents;
+}
+
+:global(.shell) {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans), system-ui, sans-serif;
+}
+
+:global(.canonical-management-panels) {
+  display: contents !important;
+}
+
+:global(.canonical-management-panels) > :global([data-panel="images"]) {
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 0 !important;
+  border-right: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+}
+
+:global(.canonical-management-panels) > :global([data-panel="right"]) {
+  grid-column: 3;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border: 0 !important;
+  border-left: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+}
+
+:global(.canonical-management-panels) > :global([data-mobile-toggle]),
+:global(.canonical-management-panels) > :global([data-mobile-backdrop]) {
+  display: none;
+}
+
+:global(.canonical-management-panels) :global([data-drawer-header]) {
+  display: none;
+}
+
+:global(.canonical-management-panels) :global([class*="panelCard"]) {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+:global(.canonical-management-panels) :global([class*="panelHeader"]) {
+  margin: 0;
+  padding: 12px 13px 9px;
+}
+
+:global(.canonical-management-panels) :global([class*="panelSearch"]) {
+  margin: 0 13px 10px;
+}
+
+:global(.canonical-management-panels) :global([class*="assetList"]) {
+  padding: 0 9px 8px;
+}
+
+:global(.canonical-management-panels) :global([class*="rightPanelCard"]) {
+  height: 100%;
+  border: 0 !important;
+}
+
+:global(.canonical-management-panels) :global([class*="panelTabs"]) {
+  min-height: 47px;
+}
+
+:global(.canonical-management-panels) :global([class*="panelBody"]) {
+  min-height: 0;
+}
+
+:global(.canonical-file-extras) {
+  display: contents;
+}
+
+:global(.canonical-file-extras) > button {
+  width: 100%;
+}
+
+:global(.project-menu-language) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+:global(.project-menu-language) select {
+  min-height: 28px;
+}
+
+@media (max-width: 860px) {
+  :global(.workspace) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  :global(.editor) {
+    grid-column: 1 !important;
+  }
+
+  :global(.canonical-management-panels) > :global([data-panel="images"]),
+  :global(.canonical-management-panels) > :global([data-panel="right"]) {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    width: min(310px, 86vw);
+    height: 100vh;
+    transition: transform .22s ease;
+    box-shadow: 0 0 40px rgba(22,39,28,.20) !important;
+  }
+
+  :global(.canonical-management-panels) > :global([data-panel="images"]) {
+    left: 0;
+    transform: translateX(-105%);
+  }
+
+  :global(.canonical-management-panels) > :global([data-panel="right"]) {
+    right: 0;
+    transform: translateX(105%);
+  }
+
+  :global(.canonical-management-panels) > :global([data-open="true"]) {
+    transform: translateX(0) !important;
+  }
+
+  :global(.canonical-management-panels) > :global([data-mobile-backdrop]) {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgba(16,27,20,.36);
+  }
+
+  :global(.canonical-management-panels) :global([data-drawer-header]) {
+    min-height: 53px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+}

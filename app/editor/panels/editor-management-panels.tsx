@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import {
-  Check, ChevronDown, ChevronUp, Eye, EyeOff, Images, Menu, MoreHorizontal, Palette, Plus,
-  Search, Tags, Trash2, X,
+  Check, ChevronDown, ChevronUp, Eye, EyeOff, ImagePlus, Images, LoaderCircle, Menu, MoreHorizontal, Palette, Plus,
+  Search, Tags, Trash2, WandSparkles, X,
 } from "lucide-react";
 import type { Asset, Label } from "../../lib/types";
 import { getCopy } from "../../lib/i18n";
@@ -27,6 +27,9 @@ type Props = {
   hiddenAnnotationIds: ReadonlySet<string>;
   hiddenLabelIds: ReadonlySet<string>;
   copy: Copy;
+  loading?: boolean;
+  onImportImages?: () => void;
+  onLoadDemo?: () => void;
   onSelectAsset: (id: string) => void;
   onMoveAsset: (id: string, delta: -1 | 1) => void;
   onDeleteAsset: (id: string) => void;
@@ -65,6 +68,14 @@ export function EditorManagementPanels(props: Props) {
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("classes");
+
+  useEffect(() => {
+    const openImages = () => { setLeftOpen(true); setRightOpen(false); };
+    const openRight = () => { setRightOpen(true); setLeftOpen(false); };
+    window.addEventListener("poligome:open-images", openImages);
+    window.addEventListener("poligome:open-right", openRight);
+    return () => { window.removeEventListener("poligome:open-images", openImages); window.removeEventListener("poligome:open-right", openRight); };
+  }, []);
 
   useEffect(() => {
     if (!labels.some((label) => label.id === batchLabel)) {
@@ -106,16 +117,18 @@ export function EditorManagementPanels(props: Props) {
     props.onDeleteLabel(label.id);
   }
 
-  return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations} · ${copy.manageClasses}`} className={ui.managementGrid}>
+  return <section aria-label={`${copy.appTitle} · ${copy.images} · ${copy.annotations} · ${copy.manageClasses}`} className={`${ui.managementGrid} canonical-management-panels`}>
     <button data-mobile-toggle="images" aria-label={copy.openImages} onClick={() => { setLeftOpen(true); setRightOpen(false); }}><Menu size={19} /></button>
     <button data-mobile-toggle="right" aria-label={copy.classes} onClick={() => { setRightOpen(true); setLeftOpen(false); }}><MoreHorizontal size={19} /></button>
     {(leftOpen || rightOpen) && <button data-mobile-backdrop="true" aria-label={copy.closePanel} onClick={() => { setLeftOpen(false); setRightOpen(false); }} />}
 
-    <div data-panel="images" data-open={leftOpen ? "true" : "false"} className={classes(ui.panelCard, ui.imageRail)}>
+    <div data-panel="images" data-open={leftOpen ? "true" : "false"} className={classes("assets", leftOpen && "open", ui.panelCard, ui.imageRail)}>
       <div data-drawer-header="true"><strong>{copy.images}</strong><button aria-label={copy.closePanel} onClick={() => setLeftOpen(false)}><X size={18} /></button></div>
       <div className={ui.panelHeader}>
         <strong>{copy.images}</strong><small className={ui.counter}>{assets.length}</small>
       </div>
+      {props.onImportImages && <button type="button" className="import" disabled={props.loading} onClick={props.onImportImages}><ImagePlus size={16} />{copy.importImages}</button>}
+      {props.onLoadDemo && <button type="button" className="demo-import" disabled={props.loading} onClick={props.onLoadDemo}>{props.loading ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}{copy.tryDemo}</button>}
       <label className={ui.panelSearch}>
         <Search size={14} />
         <input aria-label={copy.searchImage} placeholder={copy.searchImage} value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} />
@@ -142,7 +155,7 @@ export function EditorManagementPanels(props: Props) {
       </div>
     </div>
 
-    <div data-panel="right" data-open={rightOpen ? "true" : "false"} className={ui.rightRail}>
+    <div data-panel="right" data-open={rightOpen ? "true" : "false"} className={classes("labels", rightOpen && "open", ui.rightRail)}>
       <div data-drawer-header="true"><strong>{rightTab === "classes" ? copy.manageClasses : copy.annotations}</strong><button aria-label={copy.closePanel} onClick={() => setRightOpen(false)}><X size={18} /></button></div>
       <div className={classes(ui.panelCard, ui.rightPanelCard)}>
         <div className={ui.panelTabs} role="tablist" aria-label={`${copy.manageClasses} · ${copy.annotations}`}>

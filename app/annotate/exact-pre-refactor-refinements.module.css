@@ -1,0 +1,81 @@
+.contract { display: contents; }
+
+/* The canonical workbench still renders its missing-image placeholder when no
+   asset exists. The pre-refactor editor showed only the centered welcome card. */
+.contract :global(.editor:has(.pre-refactor-empty-overlay) .stage .empty-project) {
+  display: none !important;
+}
+
+/* Initial demo tutorial: the old UI masked only the image/canvas rectangle,
+   leaving the dotted workspace and side rails untouched. */
+.contract :global(.editor:has(.pre-refactor-demo-card)) :global(.stage) > section > div > div::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  background: rgba(11, 16, 20, .58);
+  pointer-events: none;
+}
+
+.contract :global(.pre-refactor-demo-close) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--muted) !important;
+}
+
+.contract :global(.demo-tutorial-tool-target) {
+  overflow: visible;
+}
+
+.contract :global(.demo-tutorial-tool-target)::after {
+  content: "Clique aqui";
+  position: absolute;
+  z-index: 80;
+  left: 50%;
+  top: calc(100% + 14px);
+  transform: translateX(-50%);
+  min-width: 88px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(54, 58, 55, .92);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.contract :global(.demo-tutorial-tool-target)::before {
+  content: "";
+  position: absolute;
+  z-index: 81;
+  left: 50%;
+  top: calc(100% + 9px);
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid rgba(54, 58, 55, .92);
+  pointer-events: none;
+}
+
+/* Raster/COCO import utilities remain mounted for functionality, but they were
+   not part of the old File dropdown. The first four trigger buttons belong to
+   those import controls; the following buttons are the actual export rows. */
+.contract :global(.canonical-file-extras > button:nth-of-type(-n+4)) {
+  display: none !important;
+}
+
+.contract :global(.canonical-file-extras > button) {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+@media (max-width: 860px) {
+  .contract :global(.demo-tutorial-tool-target)::after,
+  .contract :global(.demo-tutorial-tool-target)::before {
+    display: none;
+  }
+}

@@ -33,18 +33,18 @@ jobs:
         working-directory: /tmp/poligome-reference
         run: npm ci
 
-      - name: Capture candidate test diagnostics
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          node --import tsx --test tests/*.test.mjs 2>&1 | tee exact-ui-tests.log
-
       - name: Build candidate static export
         run: npm run build:pages
 
       - name: Build reference static export
         working-directory: /tmp/poligome-reference
         run: npm run build:pages
+
+      - name: Capture candidate test diagnostics
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node --import tsx --test tests/*.test.mjs 2>&1 | tee exact-ui-tests.log
 
       - name: Install browser
         run: |
@@ -73,6 +73,10 @@ jobs:
             await page.waitForTimeout(demo ? 2500 : 800);
             return { context, page };
           }
+          async function save(page, prefix, viewport, suffix) {
+            await page.waitForTimeout(180);
+            await page.screenshot({ path: `exact-ui/${prefix}-${viewport.width}x${viewport.height}-${suffix}.png`, fullPage: false });
+          }
           async function shot(base, prefix, viewport, demo = false) {
             const { context, page } = await openPage(base, viewport, demo);
             await page.screenshot({ path: `exact-ui/${prefix}-${viewport.width}x${viewport.height}${demo ? '-demo' : ''}.png`, fullPage: false });
@@ -80,10 +84,22 @@ jobs:
           }
           async function fileMenuShot(base, prefix, viewport) {
             const { context, page } = await openPage(base, viewport, false);
-            const trigger = page.locator('.menu-trigger').first();
-            await trigger.click();
-            await page.waitForTimeout(200);
-            await page.screenshot({ path: `exact-ui/${prefix}-${viewport.width}x${viewport.height}-file-menu.png`, fullPage: false });
+            await page.locator('.menu-trigger').first().click();
+            await save(page, prefix, viewport, 'file-menu');
+            await context.close();
+          }
+          async function preferencesShot(base, prefix, viewport) {
+            const { context, page } = await openPage(base, viewport, false);
+            await page.locator('.menu-trigger').first().click();
+            await page.getByRole('menuitem').filter({ hasText: 'Preferências' }).click();
+            await save(page, prefix, viewport, 'preferences');
+            await context.close();
+          }
+          async function saveProjectShot(base, prefix, viewport) {
+            const { context, page } = await openPage(base, viewport, true);
+            await page.locator('.menu-trigger').first().click();
+            await page.getByRole('menuitem').filter({ hasText: 'Salvar projeto' }).click();
+            await save(page, prefix, viewport, 'save-project');
             await context.close();
           }
           for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
@@ -93,6 +109,10 @@ jobs:
             await shot('http://127.0.0.1:4174','candidate',viewport,true);
             await fileMenuShot('http://127.0.0.1:4173','reference',viewport);
             await fileMenuShot('http://127.0.0.1:4174','candidate',viewport);
+            await preferencesShot('http://127.0.0.1:4173','reference',viewport);
+            await preferencesShot('http://127.0.0.1:4174','candidate',viewport);
+            await saveProjectShot('http://127.0.0.1:4173','reference',viewport);
+            await saveProjectShot('http://127.0.0.1:4174','candidate',viewport);
           }
           await browser.close();
           EOF
